@@ -29,11 +29,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Device-local settings (active provider ID, path overrides) are stored in `~/.cli-manager/local.json` and never written to the iCloud directory
   3. Provider data model includes protocol type (Anthropic, OpenAI-compatible) and the model is extensible for future protocols
   4. Tauri 2 project scaffolds and builds successfully with React frontend shell
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
+- [ ] 01-01-PLAN.md — Scaffold Tauri 2 project, implement Provider model and iCloud storage CRUD
+- [ ] 01-02-PLAN.md — Implement local settings layer and wire Tauri commands
 
 ### Phase 2: Surgical Patch Engine
 **Goal**: CLI config files are patched surgically -- only credential and model fields change, everything else survives intact
@@ -101,7 +101,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Storage and Data Model | 0/TBD | Not started | - |
+| 1. Storage and Data Model | 0/2 | Planning | - |
 | 2. Surgical Patch Engine | 0/TBD | Not started | - |
 | 3. Provider Management UI | 0/TBD | Not started | - |
 | 4. iCloud Sync and File Watching | 0/TBD | Not started | - |
