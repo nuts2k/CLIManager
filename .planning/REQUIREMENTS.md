@@ -97,35 +97,35 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PROV-01 | — | Pending |
-| PROV-02 | — | Pending |
-| PROV-03 | — | Pending |
-| PROV-04 | — | Pending |
-| PROV-05 | — | Pending |
-| PROV-06 | — | Pending |
-| PTCH-01 | — | Pending |
-| PTCH-02 | — | Pending |
-| PTCH-03 | — | Pending |
-| PTCH-04 | — | Pending |
-| ADPT-01 | — | Pending |
-| ADPT-02 | — | Pending |
-| ADPT-03 | — | Pending |
-| SYNC-01 | — | Pending |
-| SYNC-02 | — | Pending |
-| SYNC-03 | — | Pending |
-| SYNC-04 | — | Pending |
-| SYNC-05 | — | Pending |
-| ONBD-01 | — | Pending |
-| ONBD-02 | — | Pending |
-| I18N-01 | — | Pending |
-| I18N-02 | — | Pending |
-| I18N-03 | — | Pending |
+| PROV-01 | Phase 3 | Pending |
+| PROV-02 | Phase 3 | Pending |
+| PROV-03 | Phase 3 | Pending |
+| PROV-04 | Phase 3 | Pending |
+| PROV-05 | Phase 3 | Pending |
+| PROV-06 | Phase 3 | Pending |
+| PTCH-01 | Phase 2 | Pending |
+| PTCH-02 | Phase 2 | Pending |
+| PTCH-03 | Phase 2 | Pending |
+| PTCH-04 | Phase 2 | Pending |
+| ADPT-01 | Phase 2 | Pending |
+| ADPT-02 | Phase 2 | Pending |
+| ADPT-03 | Phase 1 | Pending |
+| SYNC-01 | Phase 1 | Pending |
+| SYNC-02 | Phase 1 | Pending |
+| SYNC-03 | Phase 4 | Pending |
+| SYNC-04 | Phase 4 | Pending |
+| SYNC-05 | Phase 4 | Pending |
+| ONBD-01 | Phase 5 | Pending |
+| ONBD-02 | Phase 5 | Pending |
+| I18N-01 | Phase 3 | Pending |
+| I18N-02 | Phase 3 | Pending |
+| I18N-03 | Phase 3 | Pending |
 
 **Coverage:**
 - v1 requirements: 23 total
-- Mapped to phases: 0
-- Unmapped: 23 ⚠️
+- Mapped to phases: 23
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-10*
-*Last updated: 2026-03-10 after initial definition*
+*Last updated: 2026-03-10 after roadmap creation*
