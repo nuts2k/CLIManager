@@ -1,4 +1,5 @@
 pub mod icloud;
+pub mod local;
 
 use crate::error::AppError;
 use std::fs;
