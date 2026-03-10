@@ -27,11 +27,11 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [ ] **ADPT-01**: Claude Code adapter reads and patches `~/.claude/settings.json` (credential + model fields only)
 - [ ] **ADPT-02**: Codex adapter reads and patches `~/.codex/auth.json` + `config.toml` with two-phase write and rollback
-- [ ] **ADPT-03**: Provider data model uses protocol type (Anthropic, OpenAI-compatible, etc.) for future CLI reuse
+- [x] **ADPT-03**: Provider data model uses protocol type (Anthropic, OpenAI-compatible, etc.) for future CLI reuse
 
 ### iCloud Sync
 
-- [ ] **SYNC-01**: Provider data stored as individual JSON files in iCloud Drive directory
+- [x] **SYNC-01**: Provider data stored as individual JSON files in iCloud Drive directory
 - [ ] **SYNC-02**: Device-local settings (active provider, path overrides) stored in `~/.cli-manager/local.json`, never synced
 - [ ] **SYNC-03**: File watcher (FSEvents) monitors iCloud sync directory for Provider file changes
 - [ ] **SYNC-04**: UI automatically refreshes when Provider files are added, modified, or deleted via sync
@@ -109,8 +109,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PTCH-04 | Phase 2 | Pending |
 | ADPT-01 | Phase 2 | Pending |
 | ADPT-02 | Phase 2 | Pending |
-| ADPT-03 | Phase 1 | Pending |
-| SYNC-01 | Phase 1 | Pending |
+| ADPT-03 | Phase 1 | Complete |
+| SYNC-01 | Phase 1 | Complete |
 | SYNC-02 | Phase 1 | Pending |
 | SYNC-03 | Phase 4 | Pending |
 | SYNC-04 | Phase 4 | Pending |
