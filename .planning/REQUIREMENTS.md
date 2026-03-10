@@ -32,7 +32,7 @@ Requirements for initial release. Each maps to roadmap phases.
 ### iCloud Sync
 
 - [x] **SYNC-01**: Provider data stored as individual JSON files in iCloud Drive directory
-- [ ] **SYNC-02**: Device-local settings (active provider, path overrides) stored in `~/.cli-manager/local.json`, never synced
+- [x] **SYNC-02**: Device-local settings (active provider, path overrides) stored in `~/.cli-manager/local.json`, never synced
 - [ ] **SYNC-03**: File watcher (FSEvents) monitors iCloud sync directory for Provider file changes
 - [ ] **SYNC-04**: UI automatically refreshes when Provider files are added, modified, or deleted via sync
 - [ ] **SYNC-05**: When active Provider is modified by sync, CLI configs are automatically re-patched with updated values
@@ -111,7 +111,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ADPT-02 | Phase 2 | Pending |
 | ADPT-03 | Phase 1 | Complete |
 | SYNC-01 | Phase 1 | Complete |
-| SYNC-02 | Phase 1 | Pending |
+| SYNC-02 | Phase 1 | Complete |
 | SYNC-03 | Phase 4 | Pending |
 | SYNC-04 | Phase 4 | Pending |
 | SYNC-05 | Phase 4 | Pending |

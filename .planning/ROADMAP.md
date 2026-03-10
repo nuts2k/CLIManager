@@ -12,7 +12,7 @@ CLIManager delivers a desktop app for managing AI CLI provider configurations wi
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Storage and Data Model** - Two-layer storage (iCloud + local) and protocol-based provider data model
+- [x] **Phase 1: Storage and Data Model** - Two-layer storage (iCloud + local) and protocol-based provider data model
 - [ ] **Phase 2: Surgical Patch Engine** - Read-Modify-Write CLI adapters that patch config files without destroying other content
 - [ ] **Phase 3: Provider Management UI** - Full provider CRUD interface with one-click switching and i18n
 - [ ] **Phase 4: iCloud Sync and File Watching** - FSEvents-based live sync with reactive UI refresh and active provider linkage
@@ -29,11 +29,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Device-local settings (active provider ID, path overrides) are stored in `~/.cli-manager/local.json` and never written to the iCloud directory
   3. Provider data model includes protocol type (Anthropic, OpenAI-compatible) and the model is extensible for future protocols
   4. Tauri 2 project scaffolds and builds successfully with React frontend shell
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans executed
 
 Plans:
-- [ ] 01-01-PLAN.md — Scaffold Tauri 2 project, implement Provider model and iCloud storage CRUD
-- [ ] 01-02-PLAN.md — Implement local settings layer and wire Tauri commands
+- [x] 01-01-PLAN.md — Scaffold Tauri 2 project, implement Provider model and iCloud storage CRUD
+- [x] 01-02-PLAN.md — Implement local settings layer and wire Tauri commands
 
 ### Phase 2: Surgical Patch Engine
 **Goal**: CLI config files are patched surgically -- only credential and model fields change, everything else survives intact
@@ -101,7 +101,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Storage and Data Model | 1/2 | In Progress|  |
+| 1. Storage and Data Model | 2/2 | Complete | 2026-03-10 |
 | 2. Surgical Patch Engine | 0/TBD | Not started | - |
 | 3. Provider Management UI | 0/TBD | Not started | - |
 | 4. iCloud Sync and File Watching | 0/TBD | Not started | - |
