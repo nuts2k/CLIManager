@@ -1,3 +1,5 @@
 
+.DS_Store
+
 # exclude vendor reference repo
 cc-switch/
