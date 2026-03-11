@@ -1,11 +1,18 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { Plus } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { ProviderList } from "@/components/provider/ProviderList";
+import {
+  ProviderDialog,
+  type ProviderFormData,
+} from "@/components/provider/ProviderDialog";
+import { DeleteConfirmDialog } from "@/components/provider/DeleteConfirmDialog";
 import { useProviders } from "@/hooks/useProviders";
 import { useSettings } from "@/hooks/useSettings";
+import { createProvider, updateProvider } from "@/lib/tauri";
 import type { Provider } from "@/types/provider";
 
 const CLI_TABS = [
@@ -16,22 +23,25 @@ const CLI_TABS = [
 export function ProviderTabs() {
   const { t } = useTranslation();
   const [currentCliId, setCurrentCliId] = useState<string>("claude");
-  const providerHook = useProviders(currentCliId);
   const {
     providers,
     loading,
     operationLoading,
+    refresh,
     switchProvider,
+    removeProvider,
     copyProvider,
     copyProviderTo,
     testProviderConnection,
-  } = providerHook;
+  } = useProviders(currentCliId);
   const { getActiveProviderId, refresh: refreshSettings } = useSettings();
 
-  // Dialog state -- placeholder setters until Task 2 wires real dialogs
-  const [, setDialogMode] = useState<"create" | "edit" | null>(null);
-  const [, setEditingProvider] = useState<Provider | null>(null);
-  const [, setDeletingProvider] = useState<Provider | null>(null);
+  // Dialog state
+  const [dialogMode, setDialogMode] = useState<"create" | "edit" | null>(null);
+  const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
+  const [deletingProvider, setDeletingProvider] = useState<Provider | null>(
+    null,
+  );
 
   const activeProviderId = getActiveProviderId(currentCliId);
   const currentTabLabel =
@@ -43,6 +53,12 @@ export function ProviderTabs() {
 
   const handleDelete = (provider: Provider) => {
     setDeletingProvider(provider);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingProvider) return;
+    await removeProvider(deletingProvider.id, refreshSettings);
+    setDeletingProvider(null);
   };
 
   const handleEdit = (provider: Provider) => {
@@ -65,6 +81,54 @@ export function ProviderTabs() {
   const handleCreate = () => {
     setEditingProvider(null);
     setDialogMode("create");
+  };
+
+  const handleSave = async (data: ProviderFormData) => {
+    const modelConfig =
+      data.haikuModel || data.sonnetModel || data.opusModel || data.reasoningEffort
+        ? {
+            haiku_model: data.haikuModel || null,
+            sonnet_model: data.sonnetModel || null,
+            opus_model: data.opusModel || null,
+            reasoning_effort: data.reasoningEffort || null,
+          }
+        : null;
+
+    if (dialogMode === "create") {
+      const created = await createProvider({
+        name: data.name,
+        protocolType: data.protocolType,
+        apiKey: data.apiKey,
+        baseUrl: data.baseUrl,
+        model: data.model,
+        cliId: currentCliId,
+      });
+      // If model_config or notes need to be set, do an update right after creation
+      if (modelConfig || data.notes) {
+        await updateProvider({
+          ...created,
+          model_config: modelConfig,
+          notes: data.notes || null,
+        });
+      }
+      toast.success(t("status.createSuccess", { name: data.name }));
+    } else if (dialogMode === "edit" && editingProvider) {
+      await updateProvider({
+        ...editingProvider,
+        name: data.name,
+        api_key: data.apiKey,
+        base_url: data.baseUrl,
+        model: data.model,
+        protocol_type: data.protocolType,
+        notes: data.notes || null,
+        model_config: modelConfig,
+      });
+      toast.success(t("status.updateSuccess", { name: data.name }));
+    }
+
+    await refresh();
+    setDialogMode(null);
+    setEditingProvider(null);
   };
 
   return (
@@ -108,9 +172,28 @@ export function ProviderTabs() {
         ))}
       </Tabs>
 
-      {/* Dialogs will be rendered here in Task 2 */}
-      {/* ProviderDialog: dialogMode, editingProvider */}
-      {/* DeleteConfirmDialog: deletingProvider */}
+      <ProviderDialog
+        open={dialogMode !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDialogMode(null);
+            setEditingProvider(null);
+          }
+        }}
+        mode={dialogMode ?? "create"}
+        provider={editingProvider}
+        cliId={currentCliId}
+        onSave={handleSave}
+      />
+
+      <DeleteConfirmDialog
+        open={deletingProvider !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeletingProvider(null);
+        }}
+        providerName={deletingProvider?.name ?? ""}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   );
 }
