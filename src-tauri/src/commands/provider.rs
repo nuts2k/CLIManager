@@ -203,13 +203,13 @@ pub fn create_provider(
     cli_id: String,
 ) -> Result<Provider, AppError> {
     let provider = Provider::new(name, protocol_type, api_key, base_url, model, cli_id);
-    crate::storage::icloud::save_provider(&provider)?;
 
-    // Record self-write so the file watcher ignores this change
+    // Record self-write BEFORE the file operation so the watcher ignores this change
     let dir = crate::storage::icloud::get_icloud_providers_dir()?;
     let tracker = app_handle.state::<crate::watcher::SelfWriteTracker>();
     tracker.record_write(dir.join(format!("{}.json", provider.id)));
 
+    crate::storage::icloud::save_provider(&provider)?;
     Ok(provider)
 }
 
@@ -217,12 +217,12 @@ pub fn create_provider(
 pub fn update_provider(app_handle: tauri::AppHandle, provider: Provider) -> Result<Provider, AppError> {
     let dir = crate::storage::icloud::get_icloud_providers_dir()?;
     let settings_path = crate::storage::local::get_local_settings_path();
-    let result = _update_provider_in(&dir, &settings_path, provider, None)?;
 
-    // Record self-write so the file watcher ignores this change
+    // Record self-write BEFORE the file operation so the watcher ignores this change
     let tracker = app_handle.state::<crate::watcher::SelfWriteTracker>();
-    tracker.record_write(dir.join(format!("{}.json", result.id)));
+    tracker.record_write(dir.join(format!("{}.json", provider.id)));
 
+    let result = _update_provider_in(&dir, &settings_path, provider, None)?;
     Ok(result)
 }
 

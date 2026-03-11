@@ -99,52 +99,57 @@ export function ProviderTabs({ refreshTrigger }: ProviderTabsProps) {
   };
 
   const handleSave = async (data: ProviderFormData) => {
-    const modelConfig =
-      data.haikuModel || data.sonnetModel || data.opusModel || data.reasoningEffort
-        ? {
-            haiku_model: data.haikuModel || null,
-            sonnet_model: data.sonnetModel || null,
-            opus_model: data.opusModel || null,
-            reasoning_effort: data.reasoningEffort || null,
-          }
-        : null;
+    try {
+      const modelConfig =
+        data.haikuModel || data.sonnetModel || data.opusModel || data.reasoningEffort
+          ? {
+              haiku_model: data.haikuModel || null,
+              sonnet_model: data.sonnetModel || null,
+              opus_model: data.opusModel || null,
+              reasoning_effort: data.reasoningEffort || null,
+            }
+          : null;
 
-    if (dialogMode === "create") {
-      const created = await createProvider({
-        name: data.name,
-        protocolType: data.protocolType,
-        apiKey: data.apiKey,
-        baseUrl: data.baseUrl,
-        model: data.model,
-        cliId: currentCliId,
-      });
-      // If model_config or notes need to be set, do an update right after creation
-      if (modelConfig || data.notes) {
-        await updateProvider({
-          ...created,
-          model_config: modelConfig,
-          notes: data.notes || null,
+      if (dialogMode === "create") {
+        const created = await createProvider({
+          name: data.name,
+          protocolType: data.protocolType,
+          apiKey: data.apiKey,
+          baseUrl: data.baseUrl,
+          model: data.model,
+          cliId: currentCliId,
         });
+        // If model_config or notes need to be set, do an update right after creation
+        if (modelConfig || data.notes) {
+          await updateProvider({
+            ...created,
+            model_config: modelConfig,
+            notes: data.notes || null,
+          });
+        }
+        toast.success(t("status.createSuccess", { name: data.name }));
+      } else if (dialogMode === "edit" && editingProvider) {
+        await updateProvider({
+          ...editingProvider,
+          name: data.name,
+          api_key: data.apiKey,
+          base_url: data.baseUrl,
+          model: data.model,
+          protocol_type: data.protocolType,
+          notes: data.notes || null,
+          model_config: modelConfig,
+        });
+        toast.success(t("status.updateSuccess", { name: data.name }));
       }
-      toast.success(t("status.createSuccess", { name: data.name }));
-    } else if (dialogMode === "edit" && editingProvider) {
-      await updateProvider({
-        ...editingProvider,
-        name: data.name,
-        api_key: data.apiKey,
-        base_url: data.baseUrl,
-        model: data.model,
-        protocol_type: data.protocolType,
-        notes: data.notes || null,
-        model_config: modelConfig,
-      });
-      toast.success(t("status.updateSuccess", { name: data.name }));
-    }
 
-    await refreshSettings();
-    await refresh();
-    setDialogMode(null);
-    setEditingProvider(null);
+      await refreshSettings();
+      await refresh();
+    } catch (err) {
+      toast.error(String(err));
+    } finally {
+      setDialogMode(null);
+      setEditingProvider(null);
+    }
   };
 
   return (

@@ -84,11 +84,54 @@ pub fn list_providers_in(dir: &Path) -> Result<Vec<Provider>, AppError> {
     for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().is_some_and(|ext| ext == "json") {
-            let content = fs::read_to_string(&path).map_err(|e| AppError::Io {
-                path: path.display().to_string(),
-                source: e,
-            })?;
-            let provider: Provider = serde_json::from_str(&content)?;
+            let content = match fs::read_to_string(&path) {
+                Ok(c) => c,
+                Err(e) => {
+                    log::warn!("Skipping unreadable provider file {}: {}", path.display(), e);
+                    continue;
+                }
+            };
+            let provider = match serde_json::from_str::<Provider>(&content) {
+                Ok(p) => p,
+                Err(e) => {
+                    log::warn!("Skipping malformed provider file {}: {}", path.display(), e);
+                    continue;
+                }
+            };
+
+            // Validate: file stem must match provider id
+            let expected_stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+            if provider.id != expected_stem {
+                log::warn!(
+                    "Skipping provider file {} — id mismatch: file stem '{}' != provider id '{}'",
+                    path.display(), expected_stem, provider.id
+                );
+                continue;
+            }
+
+            // Validate: required fields must not be empty
+            if provider.name.trim().is_empty()
+                || provider.api_key.trim().is_empty()
+                || provider.base_url.trim().is_empty()
+            {
+                log::warn!(
+                    "Skipping provider file {} — empty required field(s)",
+                    path.display()
+                );
+                continue;
+            }
+
+            // Validate: base_url must be a valid HTTP(S) URL
+            if !provider.base_url.starts_with("http://")
+                && !provider.base_url.starts_with("https://")
+            {
+                log::warn!(
+                    "Skipping provider file {} — invalid base_url '{}'",
+                    path.display(), provider.base_url
+                );
+                continue;
+            }
+
             providers.push(provider);
         }
     }
@@ -352,5 +395,94 @@ mod tests {
 
         let result = save_existing_provider_to(dir, &provider);
         assert!(matches!(result, Err(AppError::NotFound(ref id)) if id == "missing-update-id"));
+    }
+
+    #[test]
+    fn test_list_skips_id_filename_mismatch() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path();
+
+        // Save a valid provider normally
+        let good = make_test_provider("good-id", "Good Provider", 1710000000000);
+        save_provider_to(dir, &good).unwrap();
+
+        // Manually write a file where filename != internal id
+        let bad_json = r#"{"id":"different-id","cli_id":"claude","name":"Bad","protocol_type":"anthropic","api_key":"sk-test","base_url":"https://api.example.com","model":"test","created_at":1710000000000,"updated_at":1710000000000,"schema_version":1}"#;
+        fs::write(dir.join("wrong-name.json"), bad_json).unwrap();
+
+        let providers = list_providers_in(dir).unwrap();
+        assert_eq!(providers.len(), 1);
+        assert_eq!(providers[0].id, "good-id");
+    }
+
+    #[test]
+    fn test_list_skips_empty_required_fields() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path();
+
+        // Provider with empty name
+        let empty_name = r#"{"id":"empty-name","cli_id":"claude","name":"  ","protocol_type":"anthropic","api_key":"sk-test","base_url":"https://api.example.com","model":"test","created_at":1710000000000,"updated_at":1710000000000,"schema_version":1}"#;
+        fs::write(dir.join("empty-name.json"), empty_name).unwrap();
+
+        // Provider with empty api_key
+        let empty_key = r#"{"id":"empty-key","cli_id":"claude","name":"Test","protocol_type":"anthropic","api_key":"","base_url":"https://api.example.com","model":"test","created_at":1710000000000,"updated_at":1710000000000,"schema_version":1}"#;
+        fs::write(dir.join("empty-key.json"), empty_key).unwrap();
+
+        // Provider with empty base_url
+        let empty_url = r#"{"id":"empty-url","cli_id":"claude","name":"Test","protocol_type":"anthropic","api_key":"sk-test","base_url":"","model":"test","created_at":1710000000000,"updated_at":1710000000000,"schema_version":1}"#;
+        fs::write(dir.join("empty-url.json"), empty_url).unwrap();
+
+        // Provider with empty model is ALLOWED
+        let empty_model = r#"{"id":"empty-model","cli_id":"claude","name":"Test","protocol_type":"anthropic","api_key":"sk-test","base_url":"https://api.example.com","model":"","created_at":1710000000000,"updated_at":1710000000000,"schema_version":1}"#;
+        fs::write(dir.join("empty-model.json"), empty_model).unwrap();
+
+        // Valid provider
+        let good = make_test_provider("valid", "Valid Provider", 1710000000000);
+        save_provider_to(dir, &good).unwrap();
+
+        let providers = list_providers_in(dir).unwrap();
+        assert_eq!(providers.len(), 2);
+        let ids: Vec<&str> = providers.iter().map(|p| p.id.as_str()).collect();
+        assert!(ids.contains(&"empty-model"));
+        assert!(ids.contains(&"valid"));
+    }
+
+    #[test]
+    fn test_list_skips_malformed_json() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path();
+
+        fs::write(dir.join("broken.json"), "not valid json{{{").unwrap();
+
+        let good = make_test_provider("good", "Good", 1710000000000);
+        save_provider_to(dir, &good).unwrap();
+
+        let providers = list_providers_in(dir).unwrap();
+        assert_eq!(providers.len(), 1);
+        assert_eq!(providers[0].id, "good");
+    }
+
+    #[test]
+    fn test_list_skips_invalid_base_url() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path();
+
+        // base_url without http(s)://
+        let bad_url = r#"{"id":"bad-url","cli_id":"claude","name":"Test","protocol_type":"anthropic","api_key":"sk-test","base_url":"not-a-url","model":"test","created_at":1710000000000,"updated_at":1710000000000,"schema_version":1}"#;
+        fs::write(dir.join("bad-url.json"), bad_url).unwrap();
+
+        // http:// is valid
+        let http_url = r#"{"id":"http-ok","cli_id":"claude","name":"Test","protocol_type":"anthropic","api_key":"sk-test","base_url":"http://localhost:8080","model":"test","created_at":1710000000000,"updated_at":1710000000000,"schema_version":1}"#;
+        fs::write(dir.join("http-ok.json"), http_url).unwrap();
+
+        // https:// is valid
+        let good = make_test_provider("https-ok", "Good", 1710000000000);
+        save_provider_to(dir, &good).unwrap();
+
+        let providers = list_providers_in(dir).unwrap();
+        assert_eq!(providers.len(), 2);
+        let ids: Vec<&str> = providers.iter().map(|p| p.id.as_str()).collect();
+        assert!(ids.contains(&"http-ok"));
+        assert!(ids.contains(&"https-ok"));
     }
 }

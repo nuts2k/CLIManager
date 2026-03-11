@@ -4,7 +4,8 @@ use std::sync::Mutex;
 use std::time::Instant;
 
 /// Tracks files written by this app to avoid re-processing our own writes
-/// as incoming sync events. Entries expire after 1 second.
+/// as incoming sync events. Entries expire after 5 seconds to account for
+/// iCloud Drive generating delayed FSEvents during cloud sync.
 pub struct SelfWriteTracker {
     writes: Mutex<HashMap<PathBuf, Instant>>,
 }
@@ -22,12 +23,12 @@ impl SelfWriteTracker {
         map.insert(path, Instant::now());
     }
 
-    /// Check if the given path was written by us within the last 1 second.
+    /// Check if the given path was written by us within the last 5 seconds.
     /// Also cleans up expired entries.
     pub fn is_self_write(&self, path: &PathBuf) -> bool {
         let mut map = self.writes.lock().unwrap();
         let now = Instant::now();
-        let threshold = std::time::Duration::from_secs(1);
+        let threshold = std::time::Duration::from_secs(5);
 
         // Clean up expired entries
         map.retain(|_, timestamp| now.duration_since(*timestamp) < threshold);
@@ -66,8 +67,8 @@ mod tests {
         let path = PathBuf::from("/tmp/expired.json");
 
         tracker.record_write(path.clone());
-        // Wait for expiry (1 second + margin)
-        thread::sleep(Duration::from_millis(1100));
+        // Wait for expiry (5 seconds + margin)
+        thread::sleep(Duration::from_millis(5100));
         assert!(!tracker.is_self_write(&path));
     }
 
@@ -78,7 +79,7 @@ mod tests {
         let new_path = PathBuf::from("/tmp/new.json");
 
         tracker.record_write(old_path.clone());
-        thread::sleep(Duration::from_millis(1100));
+        thread::sleep(Duration::from_millis(5100));
         tracker.record_write(new_path.clone());
 
         // Checking new_path should also clean up old_path
@@ -92,8 +93,8 @@ mod tests {
         let path = PathBuf::from("/tmp/recent.json");
 
         tracker.record_write(path.clone());
-        thread::sleep(Duration::from_millis(500));
-        // Still within 1 second window
+        thread::sleep(Duration::from_millis(2000));
+        // Still within 5 second window
         assert!(tracker.is_self_write(&path));
     }
 }
