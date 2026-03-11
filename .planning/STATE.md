@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: Phase 2 context gathered
-last_updated: "2026-03-11T03:33:08.362Z"
-last_activity: 2026-03-10 -- Completed plan 01-02 (Local Settings and Tauri Commands)
+status: in_progress
+stopped_at: Completed 02-01 (CliAdapter Trait and Claude Adapter)
+last_updated: "2026-03-11T03:56:05.000Z"
+last_activity: 2026-03-11 -- Completed plan 02-01 (CliAdapter Trait and Claude Adapter)
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
-  percent: 20
+  total_plans: 4
+  completed_plans: 3
+  percent: 30
 ---
 
 # Project State
@@ -21,29 +21,30 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-10)
 
 **Core value:** Surgical patch -- switch Provider only modifies credential and model fields, never rewrites other config content
-**Current focus:** Phase 1: Storage and Data Model
+**Current focus:** Phase 2: Surgical Patch Engine
 
 ## Current Position
 
-Phase: 1 of 5 (Storage and Data Model) -- COMPLETE
-Plan: 2 of 2 in current phase
-Status: Phase Complete
-Last activity: 2026-03-10 -- Completed plan 01-02 (Local Settings and Tauri Commands)
+Phase: 2 of 5 (Surgical Patch Engine)
+Plan: 1 of 2 in current phase -- COMPLETE
+Status: In Progress
+Last activity: 2026-03-11 -- Completed plan 02-01 (CliAdapter Trait and Claude Adapter)
 
-Progress: [██░░░░░░░░] 20%
+Progress: [███░░░░░░░] 30%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
-- Average duration: 6min
-- Total execution time: 0.20 hours
+- Total plans completed: 3
+- Average duration: 5min
+- Total execution time: 0.27 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1 - Storage | 2/2 | 12min | 6min |
+| 2 - Patch Engine | 1/2 | 4min | 4min |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -65,6 +66,9 @@ Recent decisions affecting current work:
 - 01-01: schema_version defaults to 1 via serde default for forward compatibility
 - 01-02: Followed _from/_to internal variant pattern for local storage test isolation (consistency with 01-01)
 - 01-02: Tauri commands are thin wrappers delegating to storage modules, no business logic in command layer
+- 02-01: Used serde_json::Value merge for surgical JSON patching (preserves unknown keys, ordering, nesting)
+- 02-01: CliAdapter trait keeps backup/validate as internal details of each adapter's patch() method
+- 02-01: ClaudeAdapter uses new_with_paths() constructor for test isolation (consistent with _in/_to pattern)
 
 ### Pending Todos
 
@@ -77,6 +81,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-11T03:33:08.357Z
-Stopped at: Phase 2 context gathered
-Resume file: .planning/phases/02-surgical-patch-engine/02-CONTEXT.md
+Last session: 2026-03-11T03:56:05.000Z
+Stopped at: Completed 02-01 (CliAdapter Trait and Claude Adapter)
+Resume file: .planning/phases/02-surgical-patch-engine/02-01-SUMMARY.md

@@ -18,14 +18,14 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Surgical Patch
 
-- [ ] **PTCH-01**: Switching Provider only modifies credential and model fields in CLI config files
-- [ ] **PTCH-02**: All other content in CLI config files is preserved intact after switching (including TOML comments)
-- [ ] **PTCH-03**: Config files are validated before and after patching; if validation fails, write is aborted
-- [ ] **PTCH-04**: Original config is backed up before first write to each CLI config file
+- [x] **PTCH-01**: Switching Provider only modifies credential and model fields in CLI config files
+- [x] **PTCH-02**: All other content in CLI config files is preserved intact after switching (including TOML comments)
+- [x] **PTCH-03**: Config files are validated before and after patching; if validation fails, write is aborted
+- [x] **PTCH-04**: Original config is backed up before first write to each CLI config file
 
 ### CLI Adapters
 
-- [ ] **ADPT-01**: Claude Code adapter reads and patches `~/.claude/settings.json` (credential + model fields only)
+- [x] **ADPT-01**: Claude Code adapter reads and patches `~/.claude/settings.json` (credential + model fields only)
 - [ ] **ADPT-02**: Codex adapter reads and patches `~/.codex/auth.json` + `config.toml` with two-phase write and rollback
 - [x] **ADPT-03**: Provider data model uses protocol type (Anthropic, OpenAI-compatible, etc.) for future CLI reuse
 
@@ -103,11 +103,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PROV-04 | Phase 3 | Pending |
 | PROV-05 | Phase 3 | Pending |
 | PROV-06 | Phase 3 | Pending |
-| PTCH-01 | Phase 2 | Pending |
-| PTCH-02 | Phase 2 | Pending |
-| PTCH-03 | Phase 2 | Pending |
-| PTCH-04 | Phase 2 | Pending |
-| ADPT-01 | Phase 2 | Pending |
+| PTCH-01 | Phase 2 | Complete |
+| PTCH-02 | Phase 2 | Complete |
+| PTCH-03 | Phase 2 | Complete |
+| PTCH-04 | Phase 2 | Complete |
+| ADPT-01 | Phase 2 | Complete |
 | ADPT-02 | Phase 2 | Pending |
 | ADPT-03 | Phase 1 | Complete |
 | SYNC-01 | Phase 1 | Complete |
