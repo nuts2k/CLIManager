@@ -2,22 +2,21 @@ import { useState, useEffect } from "react";
 import { Header } from "@/components/layout/Header";
 import { ProviderTabs } from "@/components/provider/ProviderTabs";
 import { SettingsPage } from "@/components/settings/SettingsPage";
-import { getLocalSettings } from "@/lib/tauri";
+import { getLocalSettings, syncActiveProviders } from "@/lib/tauri";
 import i18n from "@/i18n";
 
 export function AppShell() {
   const [view, setView] = useState<"main" | "settings">("main");
 
-  // Restore persisted language on app startup
+  // Restore persisted language and sync active providers on app startup
   useEffect(() => {
     getLocalSettings().then((s) => {
       const lang = s?.language;
       if (lang && lang !== i18n.language) {
         i18n.changeLanguage(lang);
       }
-    }).catch(() => {
-      // Settings not available yet, keep default
-    });
+    }).catch(() => {});
+    syncActiveProviders().catch(() => {});
   }, []);
 
   return (

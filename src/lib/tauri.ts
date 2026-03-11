@@ -38,3 +38,7 @@ export async function updateLocalSettings(
 export async function testProvider(providerId: string): Promise<TestResult> {
   return invoke("test_provider", { providerId });
 }
+
+export async function syncActiveProviders(): Promise<void> {
+  return invoke("sync_active_providers");
+}

@@ -126,6 +126,7 @@ export function ProviderTabs() {
       toast.success(t("status.updateSuccess", { name: data.name }));
     }
 
+    await refreshSettings();
     await refresh();
     setDialogMode(null);
     setEditingProvider(null);

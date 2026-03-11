@@ -17,6 +17,7 @@ pub fn run() {
             commands::provider::get_local_settings,
             commands::provider::set_active_provider,
             commands::provider::update_local_settings,
+            commands::provider::sync_active_providers,
             commands::provider::test_provider,
         ])
         .run(tauri::generate_context!())

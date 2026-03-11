@@ -204,6 +204,24 @@ pub fn set_active_provider(
 }
 
 #[tauri::command]
+pub fn sync_active_providers() -> Result<(), AppError> {
+    let settings = read_local_settings()?;
+    let dir = crate::storage::icloud::get_icloud_providers_dir()?;
+
+    for (cli_id, provider_id) in &settings.active_providers {
+        if let Some(pid) = provider_id {
+            if let Ok(provider) = crate::storage::icloud::get_provider_in(&dir, pid) {
+                if let Ok(adapter) = get_adapter_for_cli(cli_id, &settings) {
+                    let _ = adapter.patch(&provider);
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
 pub fn update_local_settings(settings: LocalSettings) -> Result<LocalSettings, AppError> {
     write_local_settings(&settings)?;
     Ok(settings)
@@ -226,6 +244,15 @@ pub async fn test_provider(provider_id: String) -> Result<TestResult, AppError> 
         .build()
         .map_err(|e| AppError::Http(e.to_string()))?;
 
+    // Use test model from settings if available, otherwise fall back to provider's model
+    let model = settings
+        .test_config
+        .as_ref()
+        .and_then(|c| c.test_model.as_ref())
+        .filter(|m| !m.is_empty())
+        .cloned()
+        .unwrap_or_else(|| provider.model.clone());
+
     let start = Instant::now();
 
     let result = match provider.protocol_type {
@@ -237,7 +264,7 @@ pub async fn test_provider(provider_id: String) -> Result<TestResult, AppError> 
                 .header("anthropic-version", "2023-06-01")
                 .header("content-type", "application/json")
                 .json(&serde_json::json!({
-                    "model": provider.model,
+                    "model": model,
                     "messages": [{"role": "user", "content": "hi"}],
                     "max_tokens": 1
                 }))
@@ -254,7 +281,7 @@ pub async fn test_provider(provider_id: String) -> Result<TestResult, AppError> 
                 .header("Authorization", format!("Bearer {}", provider.api_key))
                 .header("content-type", "application/json")
                 .json(&serde_json::json!({
-                    "model": provider.model,
+                    "model": model,
                     "messages": [{"role": "user", "content": "hi"}],
                     "max_tokens": 1
                 }))
