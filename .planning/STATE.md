@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: Phase 4 context gathered
-last_updated: "2026-03-11T11:12:17.635Z"
-last_activity: 2026-03-11 -- Completed plan 03-04 (Settings page and end-to-end verification)
+status: in-progress
+stopped_at: Completed 04-01 (File watcher backend)
+last_updated: "2026-03-11T12:02:03.000Z"
+last_activity: 2026-03-11 -- Completed plan 04-01 (File watcher backend)
 progress:
   total_phases: 5
   completed_phases: 3
-  total_plans: 8
-  completed_plans: 8
-  percent: 100
+  total_plans: 10
+  completed_plans: 9
+  percent: 90
 ---
 
 # Project State
@@ -25,19 +25,19 @@ See: .planning/PROJECT.md (updated 2026-03-10)
 
 ## Current Position
 
-Phase: 3 of 5 (Provider Management UI) -- COMPLETE
-Plan: 4 of 4 in current phase -- COMPLETE
-Status: Phase 3 complete, ready for Phase 4
-Last activity: 2026-03-11 -- Completed plan 03-04 (Settings page and end-to-end verification)
+Phase: 4 of 5 (iCloud Sync and File Watching) -- IN PROGRESS
+Plan: 1 of 2 in current phase -- COMPLETE
+Status: Plan 04-01 complete, ready for 04-02
+Last activity: 2026-03-11 -- Completed plan 04-01 (File watcher backend)
 
-Progress: [██████████] 100%
+Progress: [█████████░] 90%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
+- Total plans completed: 9
 - Average duration: 6min
-- Total execution time: 0.78 hours
+- Total execution time: 0.86 hours
 
 **By Phase:**
 
@@ -54,6 +54,7 @@ Progress: [██████████] 100%
 *Updated after each plan completion*
 | Phase 03 P03 | 4min | 2 tasks | 11 files |
 | Phase 03 P04 | 15min | 2 tasks | 9 files |
+| Phase 04 P01 | 5min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -92,6 +93,11 @@ Recent decisions affecting current work:
 - 03-04: Language change calls i18n.changeLanguage() for immediate effect AND updateSettings() for persistence
 - 03-04: Startup sync reads persisted language from LocalSettings and applies via i18n.changeLanguage()
 
+- 04-01: notify-debouncer-mini with 500ms debounce for FSEvents batching
+- 04-01: SelfWriteTracker uses 1-second expiry with auto-cleanup on is_self_write check
+- 04-01: Extracted filter_and_dedup_events as pure function with closure for testability
+- 04-01: std::mem::forget(debouncer) to keep watcher alive for app lifetime
+
 ### Pending Todos
 
 None yet.
@@ -103,6 +109,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-11T11:12:17.626Z
-Stopped at: Phase 4 context gathered
-Resume file: .planning/phases/04-icloud-sync-and-file-watching/04-CONTEXT.md
+Last session: 2026-03-11T12:02:03.000Z
+Stopped at: Completed 04-01 (File watcher backend)
+Resume file: .planning/phases/04-icloud-sync-and-file-watching/04-01-SUMMARY.md
