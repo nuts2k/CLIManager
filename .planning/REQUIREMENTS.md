@@ -9,12 +9,12 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Provider Management
 
-- [ ] **PROV-01**: User can create a new Provider with name, API key, base URL, and model
-- [ ] **PROV-02**: User can view all Providers in a list with clear display
-- [ ] **PROV-03**: User can edit an existing Provider's settings
-- [ ] **PROV-04**: User can delete a Provider
-- [ ] **PROV-05**: User can see which Provider is currently active for each CLI at a glance
-- [ ] **PROV-06**: User can switch active Provider with one click (< 1 second)
+- [x] **PROV-01**: User can create a new Provider with name, API key, base URL, and model
+- [x] **PROV-02**: User can view all Providers in a list with clear display
+- [x] **PROV-03**: User can edit an existing Provider's settings
+- [x] **PROV-04**: User can delete a Provider
+- [x] **PROV-05**: User can see which Provider is currently active for each CLI at a glance
+- [x] **PROV-06**: User can switch active Provider with one click (< 1 second)
 
 ### Surgical Patch
 
@@ -97,12 +97,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PROV-01 | Phase 3 | Pending |
-| PROV-02 | Phase 3 | Pending |
-| PROV-03 | Phase 3 | Pending |
-| PROV-04 | Phase 3 | Pending |
-| PROV-05 | Phase 3 | Pending |
-| PROV-06 | Phase 3 | Pending |
+| PROV-01 | Phase 3 | Complete |
+| PROV-02 | Phase 3 | Complete |
+| PROV-03 | Phase 3 | Complete |
+| PROV-04 | Phase 3 | Complete |
+| PROV-05 | Phase 3 | Complete |
+| PROV-06 | Phase 3 | Complete |
 | PTCH-01 | Phase 2 | Complete |
 | PTCH-02 | Phase 2 | Complete |
 | PTCH-03 | Phase 2 | Complete |

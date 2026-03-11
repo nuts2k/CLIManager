@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: Phase 3 context gathered
-last_updated: "2026-03-11T06:07:36.612Z"
-last_activity: 2026-03-11 -- Completed plan 02-02 (CodexAdapter with Two-Phase Write)
+status: in-progress
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-03-11T06:37:47Z"
+last_activity: 2026-03-11 -- Completed plan 03-01 (Backend Provider Commands)
 progress:
   total_phases: 5
   completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
-  percent: 40
+  total_plans: 8
+  completed_plans: 5
+  percent: 50
 ---
 
 # Project State
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-10)
 
 **Core value:** Surgical patch -- switch Provider only modifies credential and model fields, never rewrites other config content
-**Current focus:** Phase 2: Surgical Patch Engine
+**Current focus:** Phase 3: Provider Management UI
 
 ## Current Position
 
-Phase: 2 of 5 (Surgical Patch Engine) -- COMPLETE
-Plan: 2 of 2 in current phase -- COMPLETE
-Status: Phase 2 Complete
-Last activity: 2026-03-11 -- Completed plan 02-02 (CodexAdapter with Two-Phase Write)
+Phase: 3 of 5 (Provider Management UI) -- IN PROGRESS
+Plan: 1 of 4 in current phase -- COMPLETE
+Status: Executing Phase 3
+Last activity: 2026-03-11 -- Completed plan 03-01 (Backend Provider Commands)
 
-Progress: [████░░░░░░] 40%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
+- Total plans completed: 5
 - Average duration: 5min
-- Total execution time: 0.32 hours
+- Total execution time: 0.40 hours
 
 **By Phase:**
 
@@ -45,6 +45,7 @@ Progress: [████░░░░░░] 40%
 |-------|-------|-------|----------|
 | 1 - Storage | 2/2 | 12min | 6min |
 | 2 - Patch Engine | 2/2 | 7min | 3.5min |
+| 3 - Provider UI | 1/4 | 5min | 5min |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -74,6 +75,11 @@ Recent decisions affecting current work:
 - 02-02: Two-phase write order: auth.json first, config.toml second; rollback auth.json from backup if config.toml fails
 - 02-02: restore_from_backup selects newest backup by reverse filename sort
 
+- 03-01: Used skip_serializing on old active_provider_id for backward-compat migration to active_providers HashMap
+- 03-01: Injectable adapter via Option<Box<dyn CliAdapter>> for command test isolation
+- 03-01: Auto-switch picks first provider sorted by created_at when deleting active
+- 03-01: test_provider uses reqwest with configurable timeout from LocalSettings.test_config
+
 ### Pending Todos
 
 None yet.
@@ -85,6 +91,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-11T06:07:36.605Z
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-provider-management-ui/03-CONTEXT.md
+Last session: 2026-03-11T06:37:47Z
+Stopped at: Completed 03-01-PLAN.md
+Resume file: .planning/phases/03-provider-management-ui/03-01-SUMMARY.md
