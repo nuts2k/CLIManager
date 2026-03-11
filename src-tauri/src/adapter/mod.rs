@@ -210,4 +210,161 @@ mod tests {
             "Validation failed: invalid JSON in settings.json"
         );
     }
+
+    #[test]
+    fn test_restore_from_backup_restores_newest() {
+        let tmp = TempDir::new().unwrap();
+        let backup_dir = tmp.path().join("backups");
+        fs::create_dir_all(&backup_dir).unwrap();
+
+        let target = tmp.path().join("auth.json");
+        fs::write(&target, "current").unwrap();
+
+        // Create two backups with ordered timestamps
+        fs::write(
+            backup_dir.join("auth.json.2026-03-11T10-00-01.000.bak"),
+            "backup-old",
+        )
+        .unwrap();
+        fs::write(
+            backup_dir.join("auth.json.2026-03-11T10-00-02.000.bak"),
+            "backup-new",
+        )
+        .unwrap();
+
+        restore_from_backup(&target, &backup_dir).unwrap();
+        assert_eq!(fs::read_to_string(&target).unwrap(), "backup-new");
+    }
+
+    #[test]
+    fn test_restore_from_backup_fails_when_no_backup() {
+        let tmp = TempDir::new().unwrap();
+        let backup_dir = tmp.path().join("backups");
+        fs::create_dir_all(&backup_dir).unwrap();
+
+        let target = tmp.path().join("auth.json");
+        let result = restore_from_backup(&target, &backup_dir);
+
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("No backup found"));
+    }
+
+    #[test]
+    fn test_integration_both_adapters_together() {
+        use crate::adapter::claude::ClaudeAdapter;
+        use crate::adapter::codex::CodexAdapter;
+        use crate::provider::{ProtocolType, Provider};
+
+        let provider = Provider {
+            id: "test-id".to_string(),
+            name: "Test Provider".to_string(),
+            protocol_type: ProtocolType::OpenAiCompatible,
+            api_key: "sk-integration-test-key".to_string(),
+            base_url: "https://proxy.integration.test/v1".to_string(),
+            model: "o4-mini".to_string(),
+            model_config: None,
+            notes: None,
+            created_at: 1710000000000,
+            updated_at: 1710000000000,
+            schema_version: 1,
+        };
+
+        let tmp = TempDir::new().unwrap();
+
+        // Claude adapter dirs
+        let claude_config = tmp.path().join("claude-config");
+        let claude_backup = tmp.path().join("claude-backup");
+        fs::create_dir_all(&claude_config).unwrap();
+
+        // Write Claude settings with extra keys
+        let claude_settings = r#"{
+  "permissions": {"allow": ["Bash", "Read"]},
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "old-claude-key",
+    "CUSTOM_VAR": "keep-me"
+  }
+}"#;
+        fs::write(claude_config.join("settings.json"), claude_settings).unwrap();
+
+        // Codex adapter dirs
+        let codex_config = tmp.path().join("codex-config");
+        let codex_backup = tmp.path().join("codex-backup");
+        fs::create_dir_all(&codex_config).unwrap();
+
+        // Write Codex files with extra keys and comments
+        let codex_auth = r#"{"OPENAI_API_KEY": "old-codex-key", "auth_mode": "api_key"}"#;
+        fs::write(codex_config.join("auth.json"), codex_auth).unwrap();
+
+        let codex_toml = r#"# Codex config
+model = "o4-mini"
+base_url = "https://old.example.com"
+
+[projects]
+# Project settings
+sandbox = true
+"#;
+        fs::write(codex_config.join("config.toml"), codex_toml).unwrap();
+
+        // Patch both adapters
+        let claude_adapter = ClaudeAdapter::new_with_paths(claude_config.clone(), claude_backup.clone());
+        let claude_result = claude_adapter.patch(&provider).unwrap();
+
+        let codex_adapter = CodexAdapter::new_with_paths(codex_config.clone(), codex_backup.clone());
+        let codex_result = codex_adapter.patch(&provider).unwrap();
+
+        // Verify Claude results
+        assert_eq!(claude_result.files_written.len(), 1);
+        assert!(claude_result.files_written[0].contains("settings.json"));
+        assert_eq!(claude_result.backups_created.len(), 1);
+
+        // Verify Codex results
+        assert_eq!(codex_result.files_written.len(), 2);
+        assert!(codex_result.files_written[0].contains("auth.json"));
+        assert!(codex_result.files_written[1].contains("config.toml"));
+        assert_eq!(codex_result.backups_created.len(), 2);
+
+        // Re-read and verify Claude: only target fields changed
+        let claude_patched: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(claude_config.join("settings.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            claude_patched["env"]["ANTHROPIC_AUTH_TOKEN"],
+            "sk-integration-test-key"
+        );
+        assert_eq!(claude_patched["env"]["CUSTOM_VAR"], "keep-me");
+        assert!(claude_patched["permissions"]["allow"].is_array());
+
+        // Re-read and verify Codex auth.json: only OPENAI_API_KEY changed
+        let codex_auth_patched: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(codex_config.join("auth.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            codex_auth_patched["OPENAI_API_KEY"],
+            "sk-integration-test-key"
+        );
+        assert_eq!(codex_auth_patched["auth_mode"], "api_key");
+
+        // Re-read and verify Codex config.toml: only base_url changed, comments survive
+        let codex_toml_content =
+            fs::read_to_string(codex_config.join("config.toml")).unwrap();
+        assert!(codex_toml_content.contains("# Codex config"));
+        assert!(codex_toml_content.contains("# Project settings"));
+        let doc: toml_edit::DocumentMut = codex_toml_content.parse().unwrap();
+        assert_eq!(
+            doc["base_url"].as_str().unwrap(),
+            "https://proxy.integration.test/v1"
+        );
+        assert_eq!(doc["model"].as_str().unwrap(), "o4-mini");
+        assert_eq!(doc["projects"]["sandbox"].as_bool().unwrap(), true);
+
+        // Verify backup files exist on disk
+        assert!(std::path::Path::new(&claude_result.backups_created[0]).exists());
+        assert!(std::path::Path::new(&codex_result.backups_created[0]).exists());
+        assert!(std::path::Path::new(&codex_result.backups_created[1]).exists());
+    }
 }
