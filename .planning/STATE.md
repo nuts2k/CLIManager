@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in-progress
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-03-11T06:37:47Z"
-last_activity: 2026-03-11 -- Completed plan 03-01 (Backend Provider Commands)
+stopped_at: Completed 03-02-PLAN.md
+last_updated: "2026-03-11T06:39:53Z"
+last_activity: 2026-03-11 -- Completed plan 03-02 (Frontend Infrastructure)
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 8
-  completed_plans: 5
-  percent: 50
+  completed_plans: 6
+  percent: 63
 ---
 
 # Project State
@@ -26,18 +26,18 @@ See: .planning/PROJECT.md (updated 2026-03-10)
 ## Current Position
 
 Phase: 3 of 5 (Provider Management UI) -- IN PROGRESS
-Plan: 1 of 4 in current phase -- COMPLETE
+Plan: 2 of 4 in current phase -- COMPLETE
 Status: Executing Phase 3
-Last activity: 2026-03-11 -- Completed plan 03-01 (Backend Provider Commands)
+Last activity: 2026-03-11 -- Completed plan 03-02 (Frontend Infrastructure)
 
-Progress: [█████░░░░░] 50%
+Progress: [██████░░░░] 63%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
+- Total plans completed: 6
 - Average duration: 5min
-- Total execution time: 0.40 hours
+- Total execution time: 0.53 hours
 
 **By Phase:**
 
@@ -45,7 +45,7 @@ Progress: [█████░░░░░] 50%
 |-------|-------|-------|----------|
 | 1 - Storage | 2/2 | 12min | 6min |
 | 2 - Patch Engine | 2/2 | 7min | 3.5min |
-| 3 - Provider UI | 1/4 | 5min | 5min |
+| 3 - Provider UI | 2/4 | 13min | 6.5min |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -80,6 +80,10 @@ Recent decisions affecting current work:
 - 03-01: Auto-switch picks first provider sorted by created_at when deleting active
 - 03-01: test_provider uses reqwest with configurable timeout from LocalSettings.test_config
 
+- 03-02: Dark-only theme with CSS variables set directly on :root using zinc dark palette (no .dark class toggle)
+- 03-02: Spread CreateProviderInput in invoke call to satisfy Record<string, unknown> type constraint
+- 03-02: i18n imported as side-effect in main.tsx before App component for initialization order
+
 ### Pending Todos
 
 None yet.
@@ -91,6 +95,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-11T06:37:47Z
-Stopped at: Completed 03-01-PLAN.md
-Resume file: .planning/phases/03-provider-management-ui/03-01-SUMMARY.md
+Last session: 2026-03-11T06:39:53Z
+Stopped at: Completed 03-02-PLAN.md
+Resume file: .planning/phases/03-provider-management-ui/03-02-SUMMARY.md

@@ -44,9 +44,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### i18n
 
-- [ ] **I18N-01**: UI supports Chinese and English with all text externalized
-- [ ] **I18N-02**: Default language is Chinese
-- [ ] **I18N-03**: User can switch language in settings
+- [x] **I18N-01**: UI supports Chinese and English with all text externalized
+- [x] **I18N-02**: Default language is Chinese
+- [x] **I18N-03**: User can switch language in settings
 
 ## v2 Requirements
 
@@ -117,9 +117,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SYNC-05 | Phase 4 | Pending |
 | ONBD-01 | Phase 5 | Pending |
 | ONBD-02 | Phase 5 | Pending |
-| I18N-01 | Phase 3 | Pending |
-| I18N-02 | Phase 3 | Pending |
-| I18N-03 | Phase 3 | Pending |
+| I18N-01 | Phase 3 | Complete |
+| I18N-02 | Phase 3 | Complete |
+| I18N-03 | Phase 3 | Complete |
 
 **Coverage:**
 - v1 requirements: 23 total
