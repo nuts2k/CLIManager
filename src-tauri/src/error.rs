@@ -8,6 +8,8 @@ pub enum AppError {
     },
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
+    #[error("Invalid provider ID: {0}")]
+    InvalidProviderId(String),
     #[error("Provider not found: {0}")]
     NotFound(String),
     #[error("iCloud directory not available")]

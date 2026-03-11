@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use crate::error::AppError;
 use crate::provider::Provider;
@@ -40,8 +40,26 @@ fn get_providers_dir_impl(override_dir: Option<&Path>) -> Result<PathBuf, AppErr
     Ok(providers_dir)
 }
 
-fn provider_file_path_in(dir: &Path, id: &str) -> PathBuf {
-    dir.join(format!("{}.json", id))
+fn validate_provider_id(id: &str) -> Result<(), AppError> {
+    if id.is_empty() || id.contains('/') || id.contains('\\') {
+        return Err(AppError::InvalidProviderId(id.to_string()));
+    }
+
+    let mut components = Path::new(id).components();
+    match (components.next(), components.next()) {
+        (Some(Component::Normal(_)), None) => Ok(()),
+        _ => Err(AppError::InvalidProviderId(id.to_string())),
+    }
+}
+
+fn provider_file_path_in(dir: &Path, id: &str) -> Result<PathBuf, AppError> {
+    validate_provider_id(id)?;
+    Ok(dir.join(format!("{}.json", id)))
+}
+
+fn write_provider_to_path(path: &Path, provider: &Provider) -> Result<(), AppError> {
+    let json = serde_json::to_string_pretty(provider)?;
+    atomic_write(path, json.as_bytes())
 }
 
 /// List all providers, sorted by created_at.
@@ -87,9 +105,23 @@ pub fn save_provider(provider: &Provider) -> Result<(), AppError> {
 
 /// Save a provider to a specific directory.
 pub fn save_provider_to(dir: &Path, provider: &Provider) -> Result<(), AppError> {
-    let path = provider_file_path_in(dir, &provider.id);
-    let json = serde_json::to_string_pretty(provider)?;
-    atomic_write(&path, json.as_bytes())
+    let path = provider_file_path_in(dir, &provider.id)?;
+    write_provider_to_path(&path, provider)
+}
+
+/// Save an existing provider to a specific directory.
+pub fn save_existing_provider_to(dir: &Path, provider: &Provider) -> Result<(), AppError> {
+    let path = provider_file_path_in(dir, &provider.id)?;
+    if !path.exists() {
+        return Err(AppError::NotFound(provider.id.clone()));
+    }
+    write_provider_to_path(&path, provider)
+}
+
+/// Save an existing provider to the iCloud directory.
+pub fn save_existing_provider(provider: &Provider) -> Result<(), AppError> {
+    let dir = get_icloud_providers_dir()?;
+    save_existing_provider_to(&dir, provider)
 }
 
 /// Get a specific provider by ID.
@@ -100,7 +132,7 @@ pub fn get_provider(id: &str) -> Result<Provider, AppError> {
 
 /// Get a specific provider from a specific directory.
 pub fn get_provider_in(dir: &Path, id: &str) -> Result<Provider, AppError> {
-    let path = provider_file_path_in(dir, id);
+    let path = provider_file_path_in(dir, id)?;
     if !path.exists() {
         return Err(AppError::NotFound(id.to_string()));
     }
@@ -120,7 +152,7 @@ pub fn delete_provider(id: &str) -> Result<(), AppError> {
 
 /// Delete a provider from a specific directory.
 pub fn delete_provider_in(dir: &Path, id: &str) -> Result<(), AppError> {
-    let path = provider_file_path_in(dir, id);
+    let path = provider_file_path_in(dir, id)?;
     if path.exists() {
         fs::remove_file(&path).map_err(|e| AppError::Io {
             path: path.display().to_string(),
@@ -286,5 +318,38 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let providers = list_providers_in(tmp.path()).unwrap();
         assert!(providers.is_empty());
+    }
+
+    #[test]
+    fn test_rejects_unsafe_provider_ids() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path();
+
+        for id in ["../escape", "/tmp/escape", "nested/provider", r"..\\escape"] {
+            let provider = make_test_provider(id, "Unsafe", 1710000000000);
+
+            assert!(matches!(
+                save_provider_to(dir, &provider),
+                Err(AppError::InvalidProviderId(ref invalid)) if invalid == id
+            ));
+            assert!(matches!(
+                get_provider_in(dir, id),
+                Err(AppError::InvalidProviderId(ref invalid)) if invalid == id
+            ));
+            assert!(matches!(
+                delete_provider_in(dir, id),
+                Err(AppError::InvalidProviderId(ref invalid)) if invalid == id
+            ));
+        }
+    }
+
+    #[test]
+    fn test_save_existing_provider_requires_existing_file() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path();
+        let provider = make_test_provider("missing-update-id", "Missing", 1710000000000);
+
+        let result = save_existing_provider_to(dir, &provider);
+        assert!(matches!(result, Err(AppError::NotFound(ref id)) if id == "missing-update-id"));
     }
 }

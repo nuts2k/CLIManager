@@ -1,49 +1,53 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
 
+const backendCommands = [
+  "list_providers",
+  "get_provider",
+  "create_provider",
+  "update_provider",
+  "delete_provider",
+  "get_local_settings",
+  "set_active_provider",
+];
+
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
-
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }
-
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
+    <main className="app-shell">
+      <section className="hero-card">
+        <p className="eyebrow">Tauri Desktop</p>
+        <h1>CLIManager</h1>
+        <p className="lead">
+          Provider CRUD and local settings commands are already registered in the
+          Rust backend. This placeholder removes the dead scaffold action and
+          keeps the window stable until the real management UI is wired in.
+        </p>
 
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
+        <div className="status-row">
+          <div className="status-pill">
+            <span className="status-label">Frontend</span>
+            <strong>No dead command calls</strong>
+          </div>
+          <div className="status-pill">
+            <span className="status-label">Backend</span>
+            <strong>Provider commands available</strong>
+          </div>
+        </div>
+      </section>
 
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
+      <section className="command-panel" aria-labelledby="command-list-title">
+        <div className="panel-header">
+          <p className="eyebrow">Registered Commands</p>
+          <h2 id="command-list-title">Ready for the provider UI</h2>
+        </div>
+
+        <div className="command-grid">
+          {backendCommands.map((command) => (
+            <article className="command-card" key={command}>
+              <code>{command}</code>
+            </article>
+          ))}
+        </div>
+      </section>
     </main>
   );
 }

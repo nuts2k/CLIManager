@@ -28,7 +28,7 @@ pub fn create_provider(
 #[tauri::command]
 pub fn update_provider(mut provider: Provider) -> Result<Provider, AppError> {
     provider.updated_at = chrono::Utc::now().timestamp_millis();
-    crate::storage::icloud::save_provider(&provider)?;
+    crate::storage::icloud::save_existing_provider(&provider)?;
     Ok(provider)
 }
 
