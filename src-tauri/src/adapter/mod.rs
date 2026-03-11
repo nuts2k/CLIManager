@@ -6,6 +6,7 @@ use std::fs;
 use std::path::Path;
 
 /// Result of a patch operation.
+#[derive(Debug)]
 pub struct PatchResult {
     pub files_written: Vec<String>,
     pub backups_created: Vec<String>,
