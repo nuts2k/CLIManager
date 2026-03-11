@@ -1,0 +1,75 @@
+{
+  "app": {
+    "title": "CLIManager"
+  },
+  "tabs": {
+    "claude": "Claude Code",
+    "codex": "Codex"
+  },
+  "provider": {
+    "name": "\u540d\u79f0",
+    "apiKey": "API Key",
+    "baseUrl": "Base URL",
+    "model": "\u6a21\u578b",
+    "protocolType": "\u534f\u8bae\u7c7b\u578b",
+    "notes": "\u5907\u6ce8",
+    "modelConfig": "\u6a21\u578b\u914d\u7f6e",
+    "advanced": "\u9ad8\u7ea7\u9009\u9879"
+  },
+  "actions": {
+    "create": "\u65b0\u5efa Provider",
+    "edit": "\u7f16\u8f91",
+    "delete": "\u5220\u9664",
+    "switch": "\u5207\u6362",
+    "copy": "\u590d\u5236",
+    "copyTo": "\u590d\u5236\u5230...",
+    "test": "\u6d4b\u8bd5",
+    "save": "\u4fdd\u5b58",
+    "cancel": "\u53d6\u6d88",
+    "confirm": "\u786e\u8ba4"
+  },
+  "dialog": {
+    "createTitle": "\u65b0\u5efa Provider",
+    "editTitle": "\u7f16\u8f91 Provider",
+    "deleteTitle": "\u786e\u8ba4\u5220\u9664",
+    "deleteMessage": "\u786e\u5b9a\u8981\u5220\u9664 Provider \"{{name}}\" \u5417\uff1f\u6b64\u64cd\u4f5c\u4e0d\u53ef\u64a4\u9500\u3002",
+    "copyToTitle": "\u590d\u5236\u5230\u5176\u4ed6 CLI",
+    "copyToSelect": "\u9009\u62e9\u76ee\u6807 CLI"
+  },
+  "status": {
+    "active": "\u5f53\u524d\u6d3b\u8dc3",
+    "switchSuccess": "\u5df2\u5207\u6362\u5230 {{name}}",
+    "switchError": "\u5207\u6362\u5931\u8d25: {{error}}",
+    "deleteSuccess": "\u5df2\u5220\u9664 {{name}}",
+    "createSuccess": "\u5df2\u521b\u5efa {{name}}",
+    "updateSuccess": "\u5df2\u66f4\u65b0 {{name}}",
+    "testSuccess": "\u8fde\u63a5\u6b63\u5e38 ({{time}}ms)",
+    "testError": "\u8fde\u63a5\u5931\u8d25: {{error}}",
+    "copySuccess": "\u5df2\u590d\u5236 {{name}}"
+  },
+  "empty": {
+    "title": "\u6682\u65e0 Provider",
+    "description": "\u70b9\u51fb\u4e0b\u65b9\u6309\u94ae\u521b\u5efa\u4f60\u7684\u7b2c\u4e00\u4e2a Provider"
+  },
+  "settings": {
+    "title": "\u8bbe\u7f6e",
+    "language": "\u8bed\u8a00",
+    "languageZh": "\u4e2d\u6587",
+    "languageEn": "English",
+    "testConfig": "\u6d4b\u8bd5\u914d\u7f6e",
+    "timeout": "\u8d85\u65f6\u65f6\u95f4 (\u79d2)",
+    "testModel": "\u6d4b\u8bd5\u7528\u6a21\u578b",
+    "about": "\u5173\u4e8e",
+    "version": "\u7248\u672c"
+  },
+  "protocol": {
+    "anthropic": "Anthropic",
+    "openAiCompatible": "OpenAI \u517c\u5bb9"
+  },
+  "validation": {
+    "required": "\u6b64\u5b57\u6bb5\u4e3a\u5fc5\u586b",
+    "nameRequired": "\u8bf7\u8f93\u5165\u540d\u79f0",
+    "apiKeyRequired": "\u8bf7\u8f93\u5165 API Key",
+    "baseUrlRequired": "\u8bf7\u8f93\u5165 Base URL"
+  }
+}

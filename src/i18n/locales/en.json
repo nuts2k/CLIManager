@@ -1,0 +1,75 @@
+{
+  "app": {
+    "title": "CLIManager"
+  },
+  "tabs": {
+    "claude": "Claude Code",
+    "codex": "Codex"
+  },
+  "provider": {
+    "name": "Name",
+    "apiKey": "API Key",
+    "baseUrl": "Base URL",
+    "model": "Model",
+    "protocolType": "Protocol Type",
+    "notes": "Notes",
+    "modelConfig": "Model Config",
+    "advanced": "Advanced Options"
+  },
+  "actions": {
+    "create": "New Provider",
+    "edit": "Edit",
+    "delete": "Delete",
+    "switch": "Switch",
+    "copy": "Copy",
+    "copyTo": "Copy to...",
+    "test": "Test",
+    "save": "Save",
+    "cancel": "Cancel",
+    "confirm": "Confirm"
+  },
+  "dialog": {
+    "createTitle": "New Provider",
+    "editTitle": "Edit Provider",
+    "deleteTitle": "Confirm Delete",
+    "deleteMessage": "Are you sure you want to delete provider \"{{name}}\"? This action cannot be undone.",
+    "copyToTitle": "Copy to Other CLI",
+    "copyToSelect": "Select Target CLI"
+  },
+  "status": {
+    "active": "Active",
+    "switchSuccess": "Switched to {{name}}",
+    "switchError": "Switch failed: {{error}}",
+    "deleteSuccess": "Deleted {{name}}",
+    "createSuccess": "Created {{name}}",
+    "updateSuccess": "Updated {{name}}",
+    "testSuccess": "Connection OK ({{time}}ms)",
+    "testError": "Connection failed: {{error}}",
+    "copySuccess": "Copied {{name}}"
+  },
+  "empty": {
+    "title": "No Providers",
+    "description": "Click the button below to create your first provider"
+  },
+  "settings": {
+    "title": "Settings",
+    "language": "Language",
+    "languageZh": "Chinese",
+    "languageEn": "English",
+    "testConfig": "Test Config",
+    "timeout": "Timeout (seconds)",
+    "testModel": "Test Model",
+    "about": "About",
+    "version": "Version"
+  },
+  "protocol": {
+    "anthropic": "Anthropic",
+    "openAiCompatible": "OpenAI Compatible"
+  },
+  "validation": {
+    "required": "This field is required",
+    "nameRequired": "Name is required",
+    "apiKeyRequired": "API Key is required",
+    "baseUrlRequired": "Base URL is required"
+  }
+}
