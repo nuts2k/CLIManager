@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Storage and Data Model** - Two-layer storage (iCloud + local) and protocol-based provider data model
 - [x] **Phase 2: Surgical Patch Engine** - Read-Modify-Write CLI adapters that patch config files without destroying other content (completed 2026-03-11)
-- [ ] **Phase 3: Provider Management UI** - Full provider CRUD interface with one-click switching and i18n
+- [x] **Phase 3: Provider Management UI** - Full provider CRUD interface with one-click switching and i18n (completed 2026-03-11)
 - [ ] **Phase 4: iCloud Sync and File Watching** - FSEvents-based live sync with reactive UI refresh and active provider linkage
 - [ ] **Phase 5: Onboarding** - First-launch auto-import from existing CLI configs
 
@@ -61,7 +61,7 @@ Plans:
   3. User can edit and delete existing providers
   4. User can switch the active provider with one click and the switch completes in under 1 second
   5. UI displays in Chinese by default, user can switch to English in settings, and all visible text is localized
-**Plans:** 2/4 plans executed
+**Plans:** 4/4 plans complete
 
 Plans:
 - [ ] 03-01-PLAN.md — Backend extensions: cli_id on Provider, per-CLI active_providers, switch+patch, delete+auto-switch, test_provider
@@ -104,6 +104,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 |-------|----------------|--------|-----------|
 | 1. Storage and Data Model | 2/2 | Complete | 2026-03-10 |
 | 2. Surgical Patch Engine | 2/2 | Complete   | 2026-03-11 |
-| 3. Provider Management UI | 2/4 | In Progress|  |
+| 3. Provider Management UI | 4/4 | Complete   | 2026-03-11 |
 | 4. iCloud Sync and File Watching | 0/TBD | Not started | - |
 | 5. Onboarding | 0/TBD | Not started | - |

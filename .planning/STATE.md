@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-03-PLAN.md
-last_updated: "2026-03-11T06:49:08.809Z"
-last_activity: 2026-03-11 -- Completed plan 03-03 (Provider Management UI)
+stopped_at: Completed 03-04-PLAN.md
+last_updated: "2026-03-11T07:56:36.773Z"
+last_activity: 2026-03-11 -- Completed plan 03-04 (Settings page and end-to-end verification)
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 8
-  completed_plans: 7
-  percent: 63
+  completed_plans: 8
+  percent: 100
 ---
 
 # Project State
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-10)
 
 **Core value:** Surgical patch -- switch Provider only modifies credential and model fields, never rewrites other config content
-**Current focus:** Phase 3: Provider Management UI
+**Current focus:** Phase 4: iCloud Sync and File Watching
 
 ## Current Position
 
-Phase: 3 of 5 (Provider Management UI) -- IN PROGRESS
-Plan: 3 of 4 in current phase -- COMPLETE
-Status: Executing Phase 3
-Last activity: 2026-03-11 -- Completed plan 03-03 (Provider Management UI)
+Phase: 3 of 5 (Provider Management UI) -- COMPLETE
+Plan: 4 of 4 in current phase -- COMPLETE
+Status: Phase 3 complete, ready for Phase 4
+Last activity: 2026-03-11 -- Completed plan 03-04 (Settings page and end-to-end verification)
 
-Progress: [██████░░░░] 63%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
-- Average duration: 5min
-- Total execution time: 0.53 hours
+- Total plans completed: 8
+- Average duration: 6min
+- Total execution time: 0.78 hours
 
 **By Phase:**
 
@@ -45,7 +45,7 @@ Progress: [██████░░░░] 63%
 |-------|-------|-------|----------|
 | 1 - Storage | 2/2 | 12min | 6min |
 | 2 - Patch Engine | 2/2 | 7min | 3.5min |
-| 3 - Provider UI | 2/4 | 13min | 6.5min |
+| 3 - Provider UI | 4/4 | 28min | 7min |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -53,6 +53,7 @@ Progress: [██████░░░░] 63%
 
 *Updated after each plan completion*
 | Phase 03 P03 | 4min | 2 tasks | 11 files |
+| Phase 03 P04 | 15min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -88,6 +89,9 @@ Recent decisions affecting current work:
 - [Phase 03]: useProviders hook accepts refreshSettings callback to sync settings after switch/delete
 - [Phase 03]: Model config and notes set via updateProvider after createProvider since CreateProviderInput lacks those fields
 
+- 03-04: Language change calls i18n.changeLanguage() for immediate effect AND updateSettings() for persistence
+- 03-04: Startup sync reads persisted language from LocalSettings and applies via i18n.changeLanguage()
+
 ### Pending Todos
 
 None yet.
@@ -99,6 +103,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-11T06:49:08.807Z
-Stopped at: Completed 03-03-PLAN.md
+Last session: 2026-03-11T07:56:36Z
+Stopped at: Completed 03-04-PLAN.md (Phase 3 complete)
 Resume file: None
