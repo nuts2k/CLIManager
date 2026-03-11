@@ -1,8 +1,12 @@
+import { AppShell } from "@/components/layout/AppShell";
+import { Toaster } from "@/components/ui/sonner";
+
 function App() {
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <p>CLIManager</p>
-    </div>
+    <>
+      <AppShell />
+      <Toaster position="bottom-right" theme="dark" />
+    </>
   );
 }
 
