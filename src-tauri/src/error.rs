@@ -14,6 +14,10 @@ pub enum AppError {
     NotFound(String),
     #[error("iCloud directory not available")]
     ICloudUnavailable,
+    #[error("TOML error: {0}")]
+    Toml(String),
+    #[error("Validation failed: {0}")]
+    Validation(String),
 }
 
 impl serde::Serialize for AppError {
