@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in-progress
-stopped_at: Completed 04-01 (File watcher backend)
-last_updated: "2026-03-11T12:02:03.000Z"
-last_activity: 2026-03-11 -- Completed plan 04-01 (File watcher backend)
+stopped_at: Completed 04-02 (Frontend sync listener)
+last_updated: "2026-03-11T13:24:00.000Z"
+last_activity: 2026-03-11 -- Completed plan 04-02 (Frontend sync listener)
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 10
-  completed_plans: 9
-  percent: 90
+  completed_plans: 10
+  percent: 95
 ---
 
 # Project State
@@ -25,19 +25,19 @@ See: .planning/PROJECT.md (updated 2026-03-10)
 
 ## Current Position
 
-Phase: 4 of 5 (iCloud Sync and File Watching) -- IN PROGRESS
-Plan: 1 of 2 in current phase -- COMPLETE
-Status: Plan 04-01 complete, ready for 04-02
-Last activity: 2026-03-11 -- Completed plan 04-01 (File watcher backend)
+Phase: 4 of 5 (iCloud Sync and File Watching) -- COMPLETE
+Plan: 2 of 2 in current phase -- COMPLETE
+Status: Phase 04 complete, ready for Phase 05
+Last activity: 2026-03-11 -- Completed plan 04-02 (Frontend sync listener)
 
-Progress: [█████████░] 90%
+Progress: [█████████▌] 95%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
+- Total plans completed: 10
 - Average duration: 6min
-- Total execution time: 0.86 hours
+- Total execution time: 0.90 hours
 
 **By Phase:**
 
@@ -46,6 +46,7 @@ Progress: [█████████░] 90%
 | 1 - Storage | 2/2 | 12min | 6min |
 | 2 - Patch Engine | 2/2 | 7min | 3.5min |
 | 3 - Provider UI | 4/4 | 28min | 7min |
+| 4 - iCloud Sync | 2/2 | 22min | 11min |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -55,6 +56,7 @@ Progress: [█████████░] 90%
 | Phase 03 P03 | 4min | 2 tasks | 11 files |
 | Phase 03 P04 | 15min | 2 tasks | 9 files |
 | Phase 04 P01 | 5min | 2 tasks | 5 files |
+| Phase 04 P02 | 17min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -98,6 +100,12 @@ Recent decisions affecting current work:
 - 04-01: Extracted filter_and_dedup_events as pure function with closure for testability
 - 04-01: std::mem::forget(debouncer) to keep watcher alive for app lifetime
 
+- 04-02: Self-write record_write must be called BEFORE file operation to avoid race with watcher
+- 04-02: 5-second self-write expiry window for iCloud Drive delayed FSEvents (~2.5s after write)
+- 04-02: list_providers_in skips malformed files with log::warn instead of failing entire listing
+- 04-02: Provider file validation: id/filename match, required fields non-empty, base_url http(s)://
+- 04-02: refreshTrigger prop pattern for cross-component refresh coordination
+
 ### Pending Todos
 
 None yet.
@@ -109,6 +117,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-11T12:02:03.000Z
-Stopped at: Completed 04-01 (File watcher backend)
-Resume file: .planning/phases/04-icloud-sync-and-file-watching/04-01-SUMMARY.md
+Last session: 2026-03-11T13:24:00.000Z
+Stopped at: Completed 04-02 (Frontend sync listener)
+Resume file: .planning/phases/04-icloud-sync-and-file-watching/04-02-SUMMARY.md

@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Storage and Data Model** - Two-layer storage (iCloud + local) and protocol-based provider data model
 - [x] **Phase 2: Surgical Patch Engine** - Read-Modify-Write CLI adapters that patch config files without destroying other content (completed 2026-03-11)
 - [x] **Phase 3: Provider Management UI** - Full provider CRUD interface with one-click switching and i18n (completed 2026-03-11)
-- [ ] **Phase 4: iCloud Sync and File Watching** - FSEvents-based live sync with reactive UI refresh and active provider linkage
+- [x] **Phase 4: iCloud Sync and File Watching** - FSEvents-based live sync with reactive UI refresh and active provider linkage (completed 2026-03-11)
 - [ ] **Phase 5: Onboarding** - First-launch auto-import from existing CLI configs
 
 ## Phase Details
@@ -77,11 +77,11 @@ Plans:
   1. When a provider JSON file is added, modified, or deleted in the iCloud sync directory by another device, the UI refreshes to show the updated state without user action
   2. When the currently active provider's data is modified via sync, CLI config files are automatically re-patched with the updated values
   3. File watcher handles iCloud event storms gracefully (debounced, no infinite loops from self-writes)
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans executed
 
 Plans:
-- [ ] 04-01-PLAN.md — FSEvents watcher module with notify/debouncer, self-write tracker, and auto re-patch integration
-- [ ] 04-02-PLAN.md — Frontend sync event listener hook with toast notifications and AppShell integration
+- [x] 04-01-PLAN.md — FSEvents watcher module with notify/debouncer, self-write tracker, and auto re-patch integration
+- [x] 04-02-PLAN.md — Frontend sync event listener hook with toast notifications and AppShell integration
 
 ### Phase 5: Onboarding
 **Goal**: New users get started instantly by importing their existing CLI configurations
@@ -105,5 +105,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 1. Storage and Data Model | 2/2 | Complete | 2026-03-10 |
 | 2. Surgical Patch Engine | 2/2 | Complete   | 2026-03-11 |
 | 3. Provider Management UI | 4/4 | Complete   | 2026-03-11 |
-| 4. iCloud Sync and File Watching | 1/2 | In Progress|  |
+| 4. iCloud Sync and File Watching | 2/2 | Complete | 2026-03-11 |
 | 5. Onboarding | 0/TBD | Not started | - |
