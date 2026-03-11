@@ -26,7 +26,7 @@ Requirements for initial release. Each maps to roadmap phases.
 ### CLI Adapters
 
 - [x] **ADPT-01**: Claude Code adapter reads and patches `~/.claude/settings.json` (credential + model fields only)
-- [ ] **ADPT-02**: Codex adapter reads and patches `~/.codex/auth.json` + `config.toml` with two-phase write and rollback
+- [x] **ADPT-02**: Codex adapter reads and patches `~/.codex/auth.json` + `config.toml` with two-phase write and rollback
 - [x] **ADPT-03**: Provider data model uses protocol type (Anthropic, OpenAI-compatible, etc.) for future CLI reuse
 
 ### iCloud Sync
@@ -108,7 +108,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PTCH-03 | Phase 2 | Complete |
 | PTCH-04 | Phase 2 | Complete |
 | ADPT-01 | Phase 2 | Complete |
-| ADPT-02 | Phase 2 | Pending |
+| ADPT-02 | Phase 2 | Complete |
 | ADPT-03 | Phase 1 | Complete |
 | SYNC-01 | Phase 1 | Complete |
 | SYNC-02 | Phase 1 | Complete |

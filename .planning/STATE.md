@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-stopped_at: Completed 02-01 (CliAdapter Trait and Claude Adapter)
-last_updated: "2026-03-11T03:56:05.000Z"
-last_activity: 2026-03-11 -- Completed plan 02-01 (CliAdapter Trait and Claude Adapter)
+stopped_at: Completed 02-02 (CodexAdapter with Two-Phase Write)
+last_updated: "2026-03-11T04:02:00.000Z"
+last_activity: 2026-03-11 -- Completed plan 02-02 (CodexAdapter with Two-Phase Write)
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 4
-  completed_plans: 3
-  percent: 30
+  completed_plans: 4
+  percent: 40
 ---
 
 # Project State
@@ -25,26 +25,26 @@ See: .planning/PROJECT.md (updated 2026-03-10)
 
 ## Current Position
 
-Phase: 2 of 5 (Surgical Patch Engine)
-Plan: 1 of 2 in current phase -- COMPLETE
-Status: In Progress
-Last activity: 2026-03-11 -- Completed plan 02-01 (CliAdapter Trait and Claude Adapter)
+Phase: 2 of 5 (Surgical Patch Engine) -- COMPLETE
+Plan: 2 of 2 in current phase -- COMPLETE
+Status: Phase 2 Complete
+Last activity: 2026-03-11 -- Completed plan 02-02 (CodexAdapter with Two-Phase Write)
 
-Progress: [███░░░░░░░] 30%
+Progress: [████░░░░░░] 40%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
+- Total plans completed: 4
 - Average duration: 5min
-- Total execution time: 0.27 hours
+- Total execution time: 0.32 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1 - Storage | 2/2 | 12min | 6min |
-| 2 - Patch Engine | 1/2 | 4min | 4min |
+| 2 - Patch Engine | 2/2 | 7min | 3.5min |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -70,6 +70,10 @@ Recent decisions affecting current work:
 - 02-01: CliAdapter trait keeps backup/validate as internal details of each adapter's patch() method
 - 02-01: ClaudeAdapter uses new_with_paths() constructor for test isolation (consistent with _in/_to pattern)
 
+- 02-02: Used toml_edit::DocumentMut for format-preserving TOML editing (comments survive patching)
+- 02-02: Two-phase write order: auth.json first, config.toml second; rollback auth.json from backup if config.toml fails
+- 02-02: restore_from_backup selects newest backup by reverse filename sort
+
 ### Pending Todos
 
 None yet.
@@ -81,6 +85,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-11T03:56:05.000Z
-Stopped at: Completed 02-01 (CliAdapter Trait and Claude Adapter)
-Resume file: .planning/phases/02-surgical-patch-engine/02-01-SUMMARY.md
+Last session: 2026-03-11T04:02:00.000Z
+Stopped at: Completed 02-02 (CodexAdapter with Two-Phase Write)
+Resume file: .planning/phases/02-surgical-patch-engine/02-02-SUMMARY.md

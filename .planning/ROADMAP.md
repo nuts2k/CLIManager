@@ -13,7 +13,7 @@ CLIManager delivers a desktop app for managing AI CLI provider configurations wi
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Storage and Data Model** - Two-layer storage (iCloud + local) and protocol-based provider data model
-- [ ] **Phase 2: Surgical Patch Engine** - Read-Modify-Write CLI adapters that patch config files without destroying other content
+- [x] **Phase 2: Surgical Patch Engine** - Read-Modify-Write CLI adapters that patch config files without destroying other content (completed 2026-03-11)
 - [ ] **Phase 3: Provider Management UI** - Full provider CRUD interface with one-click switching and i18n
 - [ ] **Phase 4: iCloud Sync and File Watching** - FSEvents-based live sync with reactive UI refresh and active provider linkage
 - [ ] **Phase 5: Onboarding** - First-launch auto-import from existing CLI configs
@@ -45,7 +45,7 @@ Plans:
   3. If a Codex two-file write partially fails, the already-written file is rolled back to its pre-write state
   4. Config files are validated before and after patching; invalid state is never written
   5. A backup of each CLI config file is created before the first write
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 02-01-PLAN.md — CliAdapter trait, shared backup/rotate utilities, and Claude Code adapter with surgical JSON patching
@@ -102,7 +102,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Storage and Data Model | 2/2 | Complete | 2026-03-10 |
-| 2. Surgical Patch Engine | 0/2 | Not started | - |
+| 2. Surgical Patch Engine | 2/2 | Complete   | 2026-03-11 |
 | 3. Provider Management UI | 0/TBD | Not started | - |
 | 4. iCloud Sync and File Watching | 0/TBD | Not started | - |
 | 5. Onboarding | 0/TBD | Not started | - |
