@@ -18,6 +18,8 @@ pub enum AppError {
     Toml(String),
     #[error("Validation failed: {0}")]
     Validation(String),
+    #[error("HTTP error: {0}")]
+    Http(String),
 }
 
 impl serde::Serialize for AppError {

@@ -16,6 +16,8 @@ pub fn run() {
             commands::provider::delete_provider,
             commands::provider::get_local_settings,
             commands::provider::set_active_provider,
+            commands::provider::update_local_settings,
+            commands::provider::test_provider,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
