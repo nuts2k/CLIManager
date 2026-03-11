@@ -1,4 +1,5 @@
 pub mod claude;
+pub mod codex;
 
 use crate::error::AppError;
 use crate::provider::Provider;
@@ -68,6 +69,42 @@ pub fn rotate_backups(backup_dir: &Path, max_count: usize) -> Result<(), AppErro
         let oldest = backups.remove(0);
         let _ = fs::remove_file(oldest.path()); // best-effort
     }
+
+    Ok(())
+}
+
+/// Restore a file from its most recent backup in `backup_dir`.
+/// Finds .bak files whose name starts with the target filename, sorts descending, copies the newest.
+pub fn restore_from_backup(target: &Path, backup_dir: &Path) -> Result<(), AppError> {
+    let target_filename = target
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+
+    let entries = fs::read_dir(backup_dir).map_err(|e| AppError::Io {
+        path: backup_dir.display().to_string(),
+        source: e,
+    })?;
+
+    let mut backups: Vec<_> = entries
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            name.starts_with(&target_filename) && name.ends_with(".bak")
+        })
+        .collect();
+
+    backups.sort_by(|a, b| b.file_name().cmp(&a.file_name())); // descending = newest first
+
+    let newest = backups
+        .first()
+        .ok_or_else(|| AppError::Validation("No backup found for rollback".to_string()))?;
+
+    fs::copy(newest.path(), target).map_err(|e| AppError::Io {
+        path: target.display().to_string(),
+        source: e,
+    })?;
 
     Ok(())
 }
