@@ -2,6 +2,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use serde::Serialize;
+use tauri::Manager;
 
 use crate::adapter::claude::ClaudeAdapter;
 use crate::adapter::codex::CodexAdapter;
@@ -193,6 +194,7 @@ pub fn get_provider(id: String) -> Result<Provider, AppError> {
 
 #[tauri::command]
 pub fn create_provider(
+    app_handle: tauri::AppHandle,
     name: String,
     protocol_type: ProtocolType,
     api_key: String,
@@ -202,20 +204,37 @@ pub fn create_provider(
 ) -> Result<Provider, AppError> {
     let provider = Provider::new(name, protocol_type, api_key, base_url, model, cli_id);
     crate::storage::icloud::save_provider(&provider)?;
+
+    // Record self-write so the file watcher ignores this change
+    let dir = crate::storage::icloud::get_icloud_providers_dir()?;
+    let tracker = app_handle.state::<crate::watcher::SelfWriteTracker>();
+    tracker.record_write(dir.join(format!("{}.json", provider.id)));
+
     Ok(provider)
 }
 
 #[tauri::command]
-pub fn update_provider(provider: Provider) -> Result<Provider, AppError> {
+pub fn update_provider(app_handle: tauri::AppHandle, provider: Provider) -> Result<Provider, AppError> {
     let dir = crate::storage::icloud::get_icloud_providers_dir()?;
     let settings_path = crate::storage::local::get_local_settings_path();
-    _update_provider_in(&dir, &settings_path, provider, None)
+    let result = _update_provider_in(&dir, &settings_path, provider, None)?;
+
+    // Record self-write so the file watcher ignores this change
+    let tracker = app_handle.state::<crate::watcher::SelfWriteTracker>();
+    tracker.record_write(dir.join(format!("{}.json", result.id)));
+
+    Ok(result)
 }
 
 #[tauri::command]
-pub fn delete_provider(id: String) -> Result<(), AppError> {
+pub fn delete_provider(app_handle: tauri::AppHandle, id: String) -> Result<(), AppError> {
     let dir = crate::storage::icloud::get_icloud_providers_dir()?;
     let settings_path = crate::storage::local::get_local_settings_path();
+
+    // Record self-write before deletion so the file watcher ignores this change
+    let tracker = app_handle.state::<crate::watcher::SelfWriteTracker>();
+    tracker.record_write(dir.join(format!("{}.json", id)));
+
     _delete_provider_in(&dir, &settings_path, id, None)
 }
 

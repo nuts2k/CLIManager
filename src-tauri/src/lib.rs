@@ -9,6 +9,7 @@ mod watcher;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .manage(watcher::SelfWriteTracker::new())
         .invoke_handler(tauri::generate_handler![
             commands::provider::list_providers,
             commands::provider::get_provider,
@@ -21,6 +22,10 @@ pub fn run() {
             commands::provider::sync_active_providers,
             commands::provider::test_provider,
         ])
+        .setup(|app| {
+            let handle = app.handle().clone();
+            watcher::start_file_watcher(handle).map_err(|e| e.into())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
