@@ -136,6 +136,7 @@ mod tests {
     fn test_provider() -> Provider {
         Provider {
             id: "test-id".to_string(),
+            cli_id: "claude".to_string(),
             name: "Test Provider".to_string(),
             protocol_type: ProtocolType::Anthropic,
             api_key: "sk-ant-new-key-123".to_string(),

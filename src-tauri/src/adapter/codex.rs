@@ -218,6 +218,7 @@ mod tests {
     fn test_provider() -> Provider {
         Provider {
             id: "test-id".to_string(),
+            cli_id: "codex".to_string(),
             name: "Test Provider".to_string(),
             protocol_type: ProtocolType::OpenAiCompatible,
             api_key: "sk-openai-new-key-456".to_string(),

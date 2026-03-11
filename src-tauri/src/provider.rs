@@ -22,6 +22,8 @@ pub struct ModelConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Provider {
     pub id: String,
+    #[serde(default = "default_cli_id")]
+    pub cli_id: String,
     pub name: String,
     pub protocol_type: ProtocolType,
     pub api_key: String,
@@ -37,15 +39,20 @@ pub struct Provider {
     pub schema_version: u32,
 }
 
+fn default_cli_id() -> String {
+    "claude".to_string()
+}
+
 fn default_schema_version() -> u32 {
     1
 }
 
 impl Provider {
-    pub fn new(name: String, protocol_type: ProtocolType, api_key: String, base_url: String, model: String) -> Self {
+    pub fn new(name: String, protocol_type: ProtocolType, api_key: String, base_url: String, model: String, cli_id: String) -> Self {
         let now = chrono::Utc::now().timestamp_millis();
         Self {
             id: uuid::Uuid::new_v4().to_string(),
+            cli_id,
             name,
             protocol_type,
             api_key,
@@ -67,6 +74,7 @@ mod tests {
     fn sample_provider() -> Provider {
         Provider {
             id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
+            cli_id: "claude".to_string(),
             name: "My Anthropic Direct".to_string(),
             protocol_type: ProtocolType::Anthropic,
             api_key: "sk-ant-test123".to_string(),
@@ -151,5 +159,45 @@ mod tests {
         }"#;
         let provider: Provider = serde_json::from_str(json).unwrap();
         assert_eq!(provider.schema_version, 1);
+    }
+
+    #[test]
+    fn test_provider_cli_id_serializes_deserializes() {
+        let mut provider = sample_provider();
+        provider.cli_id = "codex".to_string();
+        let json = serde_json::to_string_pretty(&provider).unwrap();
+        assert!(json.contains("\"cli_id\""));
+        let deserialized: Provider = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.cli_id, "codex");
+    }
+
+    #[test]
+    fn test_provider_without_cli_id_defaults_to_claude() {
+        // JSON without cli_id field should deserialize with default "claude"
+        let json = r#"{
+            "id": "test-id",
+            "name": "Test",
+            "protocol_type": "anthropic",
+            "api_key": "sk-test",
+            "base_url": "https://api.example.com",
+            "model": "test-model",
+            "created_at": 1710000000000,
+            "updated_at": 1710000000000
+        }"#;
+        let provider: Provider = serde_json::from_str(json).unwrap();
+        assert_eq!(provider.cli_id, "claude");
+    }
+
+    #[test]
+    fn test_provider_new_accepts_cli_id() {
+        let provider = Provider::new(
+            "Test".to_string(),
+            ProtocolType::Anthropic,
+            "sk-test".to_string(),
+            "https://api.anthropic.com".to_string(),
+            "claude-sonnet-4-20250514".to_string(),
+            "codex".to_string(),
+        );
+        assert_eq!(provider.cli_id, "codex");
     }
 }

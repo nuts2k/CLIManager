@@ -305,6 +305,7 @@ mod tests {
 
         let provider = Provider {
             id: "test-id".to_string(),
+            cli_id: "claude".to_string(),
             name: "Test Provider".to_string(),
             protocol_type: ProtocolType::OpenAiCompatible,
             api_key: "sk-integration-test-key".to_string(),

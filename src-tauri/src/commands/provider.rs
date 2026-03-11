@@ -19,8 +19,9 @@ pub fn create_provider(
     api_key: String,
     base_url: String,
     model: String,
+    cli_id: String,
 ) -> Result<Provider, AppError> {
-    let provider = Provider::new(name, protocol_type, api_key, base_url, model);
+    let provider = Provider::new(name, protocol_type, api_key, base_url, model, cli_id);
     crate::storage::icloud::save_provider(&provider)?;
     Ok(provider)
 }

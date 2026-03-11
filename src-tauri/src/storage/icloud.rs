@@ -171,6 +171,7 @@ mod tests {
     fn make_test_provider(id: &str, name: &str, created_at: i64) -> Provider {
         Provider {
             id: id.to_string(),
+            cli_id: "claude".to_string(),
             name: name.to_string(),
             protocol_type: ProtocolType::Anthropic,
             api_key: "sk-ant-test".to_string(),
