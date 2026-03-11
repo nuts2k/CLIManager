@@ -48,7 +48,14 @@ fn default_schema_version() -> u32 {
 }
 
 impl Provider {
-    pub fn new(name: String, protocol_type: ProtocolType, api_key: String, base_url: String, model: String, cli_id: String) -> Self {
+    pub fn new(
+        name: String,
+        protocol_type: ProtocolType,
+        api_key: String,
+        base_url: String,
+        model: String,
+        cli_id: String,
+    ) -> Self {
         let now = chrono::Utc::now().timestamp_millis();
         Self {
             id: uuid::Uuid::new_v4().to_string(),

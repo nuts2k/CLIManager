@@ -20,6 +20,9 @@ pub trait CliAdapter {
 
     /// Patch CLI config files with the given provider's credentials.
     fn patch(&self, provider: &Provider) -> Result<PatchResult, AppError>;
+
+    /// Remove credentials managed by this app from CLI config files.
+    fn clear(&self) -> Result<PatchResult, AppError>;
 }
 
 /// Create a timestamped backup of `source` in `backup_dir`.

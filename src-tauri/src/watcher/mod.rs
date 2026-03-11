@@ -24,11 +24,9 @@ pub fn start_file_watcher(app_handle: AppHandle) -> Result<(), Box<dyn std::erro
 
     let mut debouncer = notify_debouncer_mini::new_debouncer(
         std::time::Duration::from_millis(500),
-        move |result: Result<Vec<DebouncedEvent>, notify::Error>| {
-            match result {
-                Ok(events) => process_events(events, &handle),
-                Err(e) => log::error!("File watcher error: {:?}", e),
-            }
+        move |result: Result<Vec<DebouncedEvent>, notify::Error>| match result {
+            Ok(events) => process_events(events, &handle),
+            Err(e) => log::error!("File watcher error: {:?}", e),
         },
     )?;
 
@@ -54,8 +52,8 @@ fn process_events(events: Vec<DebouncedEvent>, app_handle: &AppHandle) {
     }
 
     // Auto re-patch CLI configs
-    let repatched = match crate::commands::provider::sync_active_providers() {
-        Ok(()) => true,
+    let repatched = match crate::commands::provider::sync_changed_active_providers(&changed_files) {
+        Ok(repatched) => repatched,
         Err(e) => {
             log::error!("Failed to re-patch CLI configs after sync: {:?}", e);
             let _ = app_handle.emit("sync-repatch-failed", e.to_string());
@@ -86,9 +84,7 @@ where
         let path = &event.path;
 
         // Only .json files
-        let is_json = path
-            .extension()
-            .is_some_and(|ext| ext == "json");
+        let is_json = path.extension().is_some_and(|ext| ext == "json");
 
         if !is_json {
             continue;
@@ -183,9 +179,9 @@ mod tests {
         let self_written = PathBuf::from("/providers/self.json");
         let events = vec![
             make_event("/providers/abc.json"),
-            make_event("/providers/self.json"),      // self-write
-            make_event("/providers/abc.json"),        // duplicate
-            make_event("/providers/def.icloud"),      // non-json
+            make_event("/providers/self.json"),  // self-write
+            make_event("/providers/abc.json"),   // duplicate
+            make_event("/providers/def.icloud"), // non-json
             make_event("/providers/ghi.json"),
         ];
 

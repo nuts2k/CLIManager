@@ -74,9 +74,8 @@ impl CliAdapter for ClaudeAdapter {
         let patched = patch_claude_json(&existing, &provider.api_key, &provider.base_url)?;
 
         // Post-validation: patched result must be valid JSON
-        serde_json::from_str::<Value>(&patched).map_err(|_| {
-            AppError::Validation("patched JSON is not valid".to_string())
-        })?;
+        serde_json::from_str::<Value>(&patched)
+            .map_err(|_| AppError::Validation("patched JSON is not valid".to_string()))?;
 
         // Ensure config dir exists for new file creation
         fs::create_dir_all(&self.config_dir).map_err(|e| AppError::Io {
@@ -92,15 +91,50 @@ impl CliAdapter for ClaudeAdapter {
             backups_created,
         })
     }
+
+    fn clear(&self) -> Result<PatchResult, AppError> {
+        let settings_path = self.config_dir.join("settings.json");
+
+        if !settings_path.exists() {
+            return Ok(PatchResult {
+                files_written: vec![],
+                backups_created: vec![],
+            });
+        }
+
+        let content = fs::read_to_string(&settings_path).map_err(|e| AppError::Io {
+            path: settings_path.display().to_string(),
+            source: e,
+        })?;
+        serde_json::from_str::<Value>(&content).map_err(|_| {
+            AppError::Validation(format!(
+                "existing {} is not valid JSON",
+                settings_path.display()
+            ))
+        })?;
+
+        let backup_path = create_backup(&settings_path, &self.backup_dir)?;
+        rotate_backups(&self.backup_dir, MAX_BACKUPS)?;
+
+        let cleared = clear_claude_json(&content)?;
+        serde_json::from_str::<Value>(&cleared)
+            .map_err(|_| AppError::Validation("cleared JSON is not valid".to_string()))?;
+
+        atomic_write(&settings_path, cleared.as_bytes())?;
+
+        Ok(PatchResult {
+            files_written: vec![settings_path.display().to_string()],
+            backups_created: vec![backup_path],
+        })
+    }
 }
 
 /// Surgically patch Claude Code settings JSON.
 /// Only modifies `env.ANTHROPIC_AUTH_TOKEN` and `env.ANTHROPIC_BASE_URL`.
 /// All other keys, nesting, and ordering survive intact.
 fn patch_claude_json(existing: &str, api_key: &str, base_url: &str) -> Result<String, AppError> {
-    let mut root: Value = serde_json::from_str(existing).map_err(|_| {
-        AppError::Validation("failed to parse settings JSON".to_string())
-    })?;
+    let mut root: Value = serde_json::from_str(existing)
+        .map_err(|_| AppError::Validation("failed to parse settings JSON".to_string()))?;
 
     let root_obj = root.as_object_mut().ok_or_else(|| {
         AppError::Validation("settings.json root is not a JSON object".to_string())
@@ -123,6 +157,33 @@ fn patch_claude_json(existing: &str, api_key: &str, base_url: &str) -> Result<St
         "ANTHROPIC_BASE_URL".to_string(),
         Value::String(base_url.to_string()),
     );
+
+    serde_json::to_string_pretty(&root).map_err(|e| AppError::Json(e))
+}
+
+fn clear_claude_json(existing: &str) -> Result<String, AppError> {
+    let mut root: Value = serde_json::from_str(existing)
+        .map_err(|_| AppError::Validation("failed to parse settings JSON".to_string()))?;
+
+    let root_obj = root.as_object_mut().ok_or_else(|| {
+        AppError::Validation("settings.json root is not a JSON object".to_string())
+    })?;
+
+    let remove_env = if let Some(env) = root_obj.get_mut("env") {
+        let env_obj = env.as_object_mut().ok_or_else(|| {
+            AppError::Validation("settings.json env field is not an object".to_string())
+        })?;
+
+        env_obj.remove("ANTHROPIC_AUTH_TOKEN");
+        env_obj.remove("ANTHROPIC_BASE_URL");
+        env_obj.is_empty()
+    } else {
+        false
+    };
+
+    if remove_env {
+        root_obj.remove("env");
+    }
 
     serde_json::to_string_pretty(&root).map_err(|e| AppError::Json(e))
 }
@@ -181,10 +242,7 @@ mod tests {
                 .unwrap();
 
         // Target fields updated
-        assert_eq!(
-            patched["env"]["ANTHROPIC_AUTH_TOKEN"],
-            "sk-ant-new-key-123"
-        );
+        assert_eq!(patched["env"]["ANTHROPIC_AUTH_TOKEN"], "sk-ant-new-key-123");
         assert_eq!(
             patched["env"]["ANTHROPIC_BASE_URL"],
             "https://proxy.example.com"
@@ -282,10 +340,7 @@ mod tests {
                 .unwrap();
 
         assert!(patched["env"].is_object());
-        assert_eq!(
-            patched["env"]["ANTHROPIC_AUTH_TOKEN"],
-            "sk-ant-new-key-123"
-        );
+        assert_eq!(patched["env"]["ANTHROPIC_AUTH_TOKEN"], "sk-ant-new-key-123");
         assert_eq!(
             patched["env"]["ANTHROPIC_BASE_URL"],
             "https://proxy.example.com"
@@ -311,10 +366,7 @@ mod tests {
             serde_json::from_str(&fs::read_to_string(config_dir.join("settings.json")).unwrap())
                 .unwrap();
 
-        assert_eq!(
-            patched["env"]["ANTHROPIC_AUTH_TOKEN"],
-            "sk-ant-new-key-123"
-        );
+        assert_eq!(patched["env"]["ANTHROPIC_AUTH_TOKEN"], "sk-ant-new-key-123");
         assert_eq!(
             patched["env"]["ANTHROPIC_BASE_URL"],
             "https://proxy.example.com"
@@ -388,5 +440,40 @@ mod tests {
         assert_eq!(result.backups_created.len(), 1);
         assert!(result.backups_created[0].contains("settings.json"));
         assert!(result.backups_created[0].ends_with(".bak"));
+    }
+
+    #[test]
+    fn test_clear_removes_managed_env_fields_only() {
+        let tmp = TempDir::new().unwrap();
+        let config_dir = tmp.path().join("config");
+        let backup_dir = tmp.path().join("backups");
+        fs::create_dir_all(&config_dir).unwrap();
+        fs::write(
+            config_dir.join("settings.json"),
+            r#"{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "old-key",
+    "ANTHROPIC_BASE_URL": "https://old.example.com",
+    "CUSTOM_VAR": "keep-me"
+  },
+  "other_setting": true
+}"#,
+        )
+        .unwrap();
+
+        let adapter = ClaudeAdapter::new_with_paths(config_dir.clone(), backup_dir.clone());
+        let result = adapter.clear().unwrap();
+
+        assert_eq!(result.files_written.len(), 1);
+        assert_eq!(result.backups_created.len(), 1);
+        assert!(std::path::Path::new(&result.backups_created[0]).exists());
+
+        let cleared: Value =
+            serde_json::from_str(&fs::read_to_string(config_dir.join("settings.json")).unwrap())
+                .unwrap();
+        assert!(cleared["env"]["ANTHROPIC_AUTH_TOKEN"].is_null());
+        assert!(cleared["env"]["ANTHROPIC_BASE_URL"].is_null());
+        assert_eq!(cleared["env"]["CUSTOM_VAR"], "keep-me");
+        assert_eq!(cleared["other_setting"], true);
     }
 }

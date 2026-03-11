@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::Path;
 use std::time::Instant;
 
@@ -63,17 +64,76 @@ fn _list_providers_in(
     }
 }
 
+fn normalize_provider_fields(provider: &mut Provider) {
+    provider.name = provider.name.trim().to_string();
+    provider.api_key = provider.api_key.trim().to_string();
+    provider.base_url = provider.base_url.trim().to_string();
+    provider.model = provider.model.trim().to_string();
+    provider.cli_id = provider.cli_id.trim().to_string();
+}
+
+fn validate_provider(provider: &Provider) -> Result<(), AppError> {
+    if provider.name.is_empty() {
+        return Err(AppError::Validation(
+            "Provider name cannot be empty".to_string(),
+        ));
+    }
+
+    if provider.api_key.is_empty() {
+        return Err(AppError::Validation(
+            "Provider API key cannot be empty".to_string(),
+        ));
+    }
+
+    if provider.base_url.is_empty() {
+        return Err(AppError::Validation(
+            "Provider base URL cannot be empty".to_string(),
+        ));
+    }
+
+    if !provider.base_url.starts_with("http://") && !provider.base_url.starts_with("https://") {
+        return Err(AppError::Validation(
+            "Provider base URL must start with http:// or https://".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
+fn normalize_and_validate_provider(mut provider: Provider) -> Result<Provider, AppError> {
+    normalize_provider_fields(&mut provider);
+    validate_provider(&provider)?;
+    Ok(provider)
+}
+
 fn patch_provider_for_cli(
     cli_id: &str,
     settings: &LocalSettings,
     provider: &Provider,
     adapter: Option<Box<dyn CliAdapter>>,
 ) -> Result<(), AppError> {
+    let provider = normalize_and_validate_provider(provider.clone())?;
+
     if let Some(adapter) = adapter {
-        adapter.patch(provider)?;
+        adapter.patch(&provider)?;
     } else {
         let real_adapter = get_adapter_for_cli(cli_id, settings)?;
-        real_adapter.patch(provider)?;
+        real_adapter.patch(&provider)?;
+    }
+
+    Ok(())
+}
+
+fn clear_provider_for_cli(
+    cli_id: &str,
+    settings: &LocalSettings,
+    adapter: Option<Box<dyn CliAdapter>>,
+) -> Result<(), AppError> {
+    if let Some(adapter) = adapter {
+        adapter.clear()?;
+    } else {
+        let real_adapter = get_adapter_for_cli(cli_id, settings)?;
+        real_adapter.clear()?;
     }
 
     Ok(())
@@ -100,6 +160,114 @@ fn _set_active_provider_in(
     crate::storage::local::write_local_settings_to(local_settings_path, &settings)?;
 
     Ok(settings)
+}
+
+fn _clear_active_provider_in(
+    local_settings_path: &Path,
+    cli_id: String,
+    adapter: Option<Box<dyn CliAdapter>>,
+) -> Result<LocalSettings, AppError> {
+    let mut settings = crate::storage::local::read_local_settings_from(local_settings_path)?;
+
+    clear_provider_for_cli(&cli_id, &settings, adapter)?;
+
+    settings.active_providers.insert(cli_id, None);
+    crate::storage::local::write_local_settings_to(local_settings_path, &settings)?;
+
+    Ok(settings)
+}
+
+fn _reconcile_missing_active_provider_in(
+    providers_dir: &Path,
+    local_settings_path: &Path,
+    cli_id: String,
+    missing_provider_id: String,
+    adapter: Option<Box<dyn CliAdapter>>,
+) -> Result<(), AppError> {
+    let remaining: Vec<Provider> = crate::storage::icloud::list_providers_in(providers_dir)?
+        .into_iter()
+        .filter(|provider| provider.cli_id == cli_id && provider.id != missing_provider_id)
+        .collect();
+
+    if let Some(next) = remaining.first() {
+        _set_active_provider_in(
+            providers_dir,
+            local_settings_path,
+            cli_id,
+            Some(next.id.clone()),
+            adapter,
+        )?;
+    } else {
+        _clear_active_provider_in(local_settings_path, cli_id, adapter)?;
+    }
+
+    Ok(())
+}
+
+fn _reconcile_active_providers_in_with_adapter(
+    providers_dir: &Path,
+    local_settings_path: &Path,
+    changed_provider_ids: Option<&[String]>,
+    mut adapter: Option<Box<dyn CliAdapter>>,
+) -> Result<bool, AppError> {
+    let changed: Option<HashSet<&str>> =
+        changed_provider_ids.map(|ids| ids.iter().map(String::as_str).collect());
+    let settings = crate::storage::local::read_local_settings_from(local_settings_path)?;
+
+    let active_targets: Vec<(String, String)> = settings
+        .active_providers
+        .iter()
+        .filter_map(|(cli_id, provider_id)| {
+            let provider_id = provider_id.as_deref()?;
+            if changed
+                .as_ref()
+                .is_some_and(|changed| !changed.contains(provider_id))
+            {
+                return None;
+            }
+
+            Some((cli_id.clone(), provider_id.to_string()))
+        })
+        .collect();
+
+    if active_targets.is_empty() {
+        return Ok(false);
+    }
+
+    for (cli_id, provider_id) in &active_targets {
+        match crate::storage::icloud::get_provider_in(providers_dir, provider_id) {
+            Ok(provider) => {
+                let settings =
+                    crate::storage::local::read_local_settings_from(local_settings_path)?;
+                patch_provider_for_cli(cli_id, &settings, &provider, adapter.take())?;
+            }
+            Err(AppError::NotFound(_)) | Err(AppError::Json(_)) => {
+                _reconcile_missing_active_provider_in(
+                    providers_dir,
+                    local_settings_path,
+                    cli_id.clone(),
+                    provider_id.clone(),
+                    adapter.take(),
+                )?;
+            }
+            Err(err) => return Err(err),
+        }
+    }
+
+    Ok(true)
+}
+
+fn _reconcile_active_providers_in(
+    providers_dir: &Path,
+    local_settings_path: &Path,
+    changed_provider_ids: Option<&[String]>,
+) -> Result<bool, AppError> {
+    _reconcile_active_providers_in_with_adapter(
+        providers_dir,
+        local_settings_path,
+        changed_provider_ids,
+        None,
+    )
 }
 
 /// Internal: delete provider with auto-switch logic
@@ -157,6 +325,7 @@ fn _update_provider_in(
     mut provider: Provider,
     adapter: Option<Box<dyn CliAdapter>>,
 ) -> Result<Provider, AppError> {
+    provider = normalize_and_validate_provider(provider)?;
     let existing = crate::storage::icloud::get_provider_in(providers_dir, &provider.id)?;
     let settings = crate::storage::local::read_local_settings_from(local_settings_path)?;
     let is_active = settings
@@ -202,7 +371,14 @@ pub fn create_provider(
     model: String,
     cli_id: String,
 ) -> Result<Provider, AppError> {
-    let provider = Provider::new(name, protocol_type, api_key, base_url, model, cli_id);
+    let provider = normalize_and_validate_provider(Provider::new(
+        name,
+        protocol_type,
+        api_key,
+        base_url,
+        model,
+        cli_id,
+    ))?;
 
     // Record self-write BEFORE the file operation so the watcher ignores this change
     let dir = crate::storage::icloud::get_icloud_providers_dir()?;
@@ -214,7 +390,11 @@ pub fn create_provider(
 }
 
 #[tauri::command]
-pub fn update_provider(app_handle: tauri::AppHandle, provider: Provider) -> Result<Provider, AppError> {
+pub fn update_provider(
+    app_handle: tauri::AppHandle,
+    provider: Provider,
+) -> Result<Provider, AppError> {
+    let provider = normalize_and_validate_provider(provider)?;
     let dir = crate::storage::icloud::get_icloud_providers_dir()?;
     let settings_path = crate::storage::local::get_local_settings_path();
 
@@ -253,21 +433,17 @@ pub fn set_active_provider(
     _set_active_provider_in(&dir, &settings_path, cli_id, provider_id, None)
 }
 
+pub fn sync_changed_active_providers(changed_provider_ids: &[String]) -> Result<bool, AppError> {
+    let dir = crate::storage::icloud::get_icloud_providers_dir()?;
+    let settings_path = crate::storage::local::get_local_settings_path();
+    _reconcile_active_providers_in(&dir, &settings_path, Some(changed_provider_ids))
+}
+
 #[tauri::command]
 pub fn sync_active_providers() -> Result<(), AppError> {
-    let settings = read_local_settings()?;
     let dir = crate::storage::icloud::get_icloud_providers_dir()?;
-
-    for (cli_id, provider_id) in &settings.active_providers {
-        if let Some(pid) = provider_id {
-            if let Ok(provider) = crate::storage::icloud::get_provider_in(&dir, pid) {
-                if let Ok(adapter) = get_adapter_for_cli(cli_id, &settings) {
-                    let _ = adapter.patch(&provider);
-                }
-            }
-        }
-    }
-
+    let settings_path = crate::storage::local::get_local_settings_path();
+    _reconcile_active_providers_in(&dir, &settings_path, None)?;
     Ok(())
 }
 
@@ -374,7 +550,7 @@ mod tests {
     use crate::adapter::PatchResult;
     use crate::provider::ProtocolType;
     use crate::storage::icloud::{get_provider_in, save_provider_to};
-    use crate::storage::local::{read_local_settings_from, write_local_settings_to};
+    use crate::storage::local::{read_local_settings_from, write_local_settings_to, CliPaths};
     use tempfile::TempDir;
 
     struct FailingAdapter;
@@ -385,6 +561,10 @@ mod tests {
         }
 
         fn patch(&self, _provider: &Provider) -> Result<PatchResult, AppError> {
+            Err(AppError::Validation("patch failed".to_string()))
+        }
+
+        fn clear(&self) -> Result<PatchResult, AppError> {
             Err(AppError::Validation("patch failed".to_string()))
         }
     }
@@ -404,6 +584,60 @@ mod tests {
             updated_at: 1710000000000,
             schema_version: 1,
         }
+    }
+
+    fn write_claude_local_settings(
+        settings_path: &Path,
+        active_provider_id: Option<&str>,
+        config_dir: &Path,
+    ) {
+        let mut settings = LocalSettings {
+            cli_paths: CliPaths {
+                claude_config_dir: Some(config_dir.display().to_string()),
+                codex_config_dir: None,
+            },
+            ..LocalSettings::default()
+        };
+        settings.active_providers.insert(
+            "claude".to_string(),
+            active_provider_id.map(|id| id.to_string()),
+        );
+        write_local_settings_to(settings_path, &settings).unwrap();
+    }
+
+    #[test]
+    fn test_normalize_and_validate_provider_trims_fields() {
+        let provider = Provider {
+            name: "  Test Provider  ".to_string(),
+            api_key: "  sk-ant-test  ".to_string(),
+            base_url: "  https://api.anthropic.com  ".to_string(),
+            model: "  claude-sonnet-4-20250514  ".to_string(),
+            cli_id: "  claude  ".to_string(),
+            ..make_provider("p1", "ignored", "ignored")
+        };
+
+        let normalized = normalize_and_validate_provider(provider).unwrap();
+
+        assert_eq!(normalized.name, "Test Provider");
+        assert_eq!(normalized.api_key, "sk-ant-test");
+        assert_eq!(normalized.base_url, "https://api.anthropic.com");
+        assert_eq!(normalized.model, "claude-sonnet-4-20250514");
+        assert_eq!(normalized.cli_id, "claude");
+    }
+
+    #[test]
+    fn test_normalize_and_validate_provider_rejects_base_url_without_scheme() {
+        let provider = Provider {
+            base_url: "localhost:8080".to_string(),
+            ..make_provider("p1", "Test Provider", "claude")
+        };
+
+        let err = normalize_and_validate_provider(provider).unwrap_err();
+        assert!(matches!(
+            err,
+            AppError::Validation(ref message)
+                if message == "Provider base URL must start with http:// or https://"
+        ));
     }
 
     #[test]
@@ -717,6 +951,203 @@ mod tests {
 
         let stored = get_provider_in(&providers_dir, "p1").unwrap();
         assert_eq!(stored.api_key, provider.api_key);
+    }
+
+    #[test]
+    fn test_update_provider_normalizes_base_url_before_save() {
+        let tmp = TempDir::new().unwrap();
+        let providers_dir = tmp.path().join("providers");
+        let settings_path = tmp.path().join("local.json");
+        std::fs::create_dir_all(&providers_dir).unwrap();
+
+        let provider = make_provider("p1", "Test Provider", "claude");
+        save_provider_to(&providers_dir, &provider).unwrap();
+
+        let mut updated = provider.clone();
+        updated.base_url = "  https://proxy.example.com  ".to_string();
+
+        let stored = _update_provider_in(&providers_dir, &settings_path, updated, None).unwrap();
+
+        assert_eq!(stored.base_url, "https://proxy.example.com");
+        assert_eq!(
+            get_provider_in(&providers_dir, "p1").unwrap().base_url,
+            "https://proxy.example.com"
+        );
+    }
+
+    #[test]
+    fn test_update_provider_rejects_invalid_base_url_without_overwriting_file() {
+        let tmp = TempDir::new().unwrap();
+        let providers_dir = tmp.path().join("providers");
+        let settings_path = tmp.path().join("local.json");
+        std::fs::create_dir_all(&providers_dir).unwrap();
+
+        let provider = make_provider("p1", "Test Provider", "claude");
+        save_provider_to(&providers_dir, &provider).unwrap();
+
+        let mut updated = provider.clone();
+        updated.base_url = "localhost:8080".to_string();
+
+        let err = _update_provider_in(&providers_dir, &settings_path, updated, None).unwrap_err();
+        assert!(matches!(
+            err,
+            AppError::Validation(ref message)
+                if message == "Provider base URL must start with http:// or https://"
+        ));
+        assert_eq!(
+            get_provider_in(&providers_dir, "p1").unwrap().base_url,
+            provider.base_url
+        );
+    }
+
+    #[test]
+    fn test_reconcile_active_providers_skips_non_active_changes() {
+        let tmp = TempDir::new().unwrap();
+        let providers_dir = tmp.path().join("providers");
+        let settings_path = tmp.path().join("local.json");
+        let config_dir = tmp.path().join("claude-config");
+        let backup_dir = tmp.path().join("claude-backup");
+        std::fs::create_dir_all(&providers_dir).unwrap();
+        std::fs::create_dir_all(&config_dir).unwrap();
+
+        save_provider_to(&providers_dir, &make_provider("p1", "Active", "claude")).unwrap();
+        save_provider_to(&providers_dir, &make_provider("p2", "Other", "claude")).unwrap();
+        write_claude_local_settings(&settings_path, Some("p1"), &config_dir);
+        std::fs::write(
+            config_dir.join("settings.json"),
+            r#"{"env":{"ANTHROPIC_AUTH_TOKEN":"old-key","ANTHROPIC_BASE_URL":"https://old.example.com"}}"#,
+        )
+        .unwrap();
+
+        let repatched = _reconcile_active_providers_in_with_adapter(
+            &providers_dir,
+            &settings_path,
+            Some(&["p2".to_string()]),
+            Some(Box::new(ClaudeAdapter::new_with_paths(
+                config_dir.clone(),
+                backup_dir.clone(),
+            ))),
+        )
+        .unwrap();
+
+        assert!(!repatched);
+        let patched: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(config_dir.join("settings.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(patched["env"]["ANTHROPIC_AUTH_TOKEN"], "old-key");
+        assert_eq!(
+            read_local_settings_from(&settings_path)
+                .unwrap()
+                .active_providers
+                .get("claude"),
+            Some(&Some("p1".to_string()))
+        );
+        assert!(!backup_dir.exists());
+    }
+
+    #[test]
+    fn test_reconcile_active_providers_switches_missing_active_provider() {
+        let tmp = TempDir::new().unwrap();
+        let providers_dir = tmp.path().join("providers");
+        let settings_path = tmp.path().join("local.json");
+        let config_dir = tmp.path().join("claude-config");
+        let backup_dir = tmp.path().join("claude-backup");
+        std::fs::create_dir_all(&providers_dir).unwrap();
+        std::fs::create_dir_all(&config_dir).unwrap();
+
+        let p1 = make_provider("p1", "Active", "claude");
+        let mut p2 = make_provider("p2", "Fallback", "claude");
+        p2.api_key = "sk-ant-fallback".to_string();
+        p2.base_url = "https://fallback.example.com".to_string();
+        save_provider_to(&providers_dir, &p1).unwrap();
+        save_provider_to(&providers_dir, &p2).unwrap();
+        write_claude_local_settings(&settings_path, Some("p1"), &config_dir);
+        std::fs::write(config_dir.join("settings.json"), "{}").unwrap();
+        std::fs::remove_file(providers_dir.join("p1.json")).unwrap();
+
+        let repatched = _reconcile_active_providers_in_with_adapter(
+            &providers_dir,
+            &settings_path,
+            None,
+            Some(Box::new(ClaudeAdapter::new_with_paths(
+                config_dir.clone(),
+                backup_dir,
+            ))),
+        )
+        .unwrap();
+
+        assert!(repatched);
+        assert_eq!(
+            read_local_settings_from(&settings_path)
+                .unwrap()
+                .active_providers
+                .get("claude"),
+            Some(&Some("p2".to_string()))
+        );
+        let patched: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(config_dir.join("settings.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(patched["env"]["ANTHROPIC_AUTH_TOKEN"], "sk-ant-fallback");
+        assert_eq!(
+            patched["env"]["ANTHROPIC_BASE_URL"],
+            "https://fallback.example.com"
+        );
+    }
+
+    #[test]
+    fn test_reconcile_active_providers_clears_malformed_active_provider() {
+        let tmp = TempDir::new().unwrap();
+        let providers_dir = tmp.path().join("providers");
+        let settings_path = tmp.path().join("local.json");
+        let config_dir = tmp.path().join("claude-config");
+        let backup_dir = tmp.path().join("claude-backup");
+        std::fs::create_dir_all(&providers_dir).unwrap();
+        std::fs::create_dir_all(&config_dir).unwrap();
+
+        let p1 = make_provider("p1", "Active", "claude");
+        save_provider_to(&providers_dir, &p1).unwrap();
+        write_claude_local_settings(&settings_path, Some("p1"), &config_dir);
+        std::fs::write(
+            config_dir.join("settings.json"),
+            r#"{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "old-key",
+    "ANTHROPIC_BASE_URL": "https://old.example.com",
+    "CUSTOM_VAR": "keep-me"
+  }
+}"#,
+        )
+        .unwrap();
+        std::fs::write(providers_dir.join("p1.json"), "{ invalid json }").unwrap();
+
+        let repatched = _reconcile_active_providers_in_with_adapter(
+            &providers_dir,
+            &settings_path,
+            Some(&["p1".to_string()]),
+            Some(Box::new(ClaudeAdapter::new_with_paths(
+                config_dir.clone(),
+                backup_dir,
+            ))),
+        )
+        .unwrap();
+
+        assert!(repatched);
+        assert_eq!(
+            read_local_settings_from(&settings_path)
+                .unwrap()
+                .active_providers
+                .get("claude"),
+            Some(&None)
+        );
+        let patched: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(config_dir.join("settings.json")).unwrap(),
+        )
+        .unwrap();
+        assert!(patched["env"]["ANTHROPIC_AUTH_TOKEN"].is_null());
+        assert!(patched["env"]["ANTHROPIC_BASE_URL"].is_null());
+        assert_eq!(patched["env"]["CUSTOM_VAR"], "keep-me");
     }
 
     #[test]

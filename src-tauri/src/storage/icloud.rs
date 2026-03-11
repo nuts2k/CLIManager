@@ -1,9 +1,9 @@
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
+use super::atomic_write;
 use crate::error::AppError;
 use crate::provider::Provider;
-use super::atomic_write;
 
 /// Resolve the iCloud providers directory.
 /// Falls back to ~/.cli-manager/providers/ if iCloud Drive is unavailable.
@@ -87,7 +87,11 @@ pub fn list_providers_in(dir: &Path) -> Result<Vec<Provider>, AppError> {
             let content = match fs::read_to_string(&path) {
                 Ok(c) => c,
                 Err(e) => {
-                    log::warn!("Skipping unreadable provider file {}: {}", path.display(), e);
+                    log::warn!(
+                        "Skipping unreadable provider file {}: {}",
+                        path.display(),
+                        e
+                    );
                     continue;
                 }
             };
@@ -104,7 +108,9 @@ pub fn list_providers_in(dir: &Path) -> Result<Vec<Provider>, AppError> {
             if provider.id != expected_stem {
                 log::warn!(
                     "Skipping provider file {} — id mismatch: file stem '{}' != provider id '{}'",
-                    path.display(), expected_stem, provider.id
+                    path.display(),
+                    expected_stem,
+                    provider.id
                 );
                 continue;
             }
@@ -117,17 +123,6 @@ pub fn list_providers_in(dir: &Path) -> Result<Vec<Provider>, AppError> {
                 log::warn!(
                     "Skipping provider file {} — empty required field(s)",
                     path.display()
-                );
-                continue;
-            }
-
-            // Validate: base_url must be a valid HTTP(S) URL
-            if !provider.base_url.starts_with("http://")
-                && !provider.base_url.starts_with("https://")
-            {
-                log::warn!(
-                    "Skipping provider file {} — invalid base_url '{}'",
-                    path.display(), provider.base_url
                 );
                 continue;
             }
@@ -337,8 +332,11 @@ mod tests {
         for entry in fs::read_dir(dir).unwrap() {
             let path = entry.unwrap().path();
             let name = path.file_name().unwrap().to_string_lossy();
-            assert!(!name.starts_with('.') || !name.ends_with(".tmp"),
-                "Temp file should not remain: {}", name);
+            assert!(
+                !name.starts_with('.') || !name.ends_with(".tmp"),
+                "Temp file should not remain: {}",
+                name
+            );
         }
     }
 
@@ -463,26 +461,26 @@ mod tests {
     }
 
     #[test]
-    fn test_list_skips_invalid_base_url() {
+    fn test_list_keeps_non_empty_base_url_visible() {
         let tmp = TempDir::new().unwrap();
         let dir = tmp.path();
 
-        // base_url without http(s)://
+        // base_url without http(s):// should still stay visible in read-only listings
         let bad_url = r#"{"id":"bad-url","cli_id":"claude","name":"Test","protocol_type":"anthropic","api_key":"sk-test","base_url":"not-a-url","model":"test","created_at":1710000000000,"updated_at":1710000000000,"schema_version":1}"#;
         fs::write(dir.join("bad-url.json"), bad_url).unwrap();
 
-        // http:// is valid
-        let http_url = r#"{"id":"http-ok","cli_id":"claude","name":"Test","protocol_type":"anthropic","api_key":"sk-test","base_url":"http://localhost:8080","model":"test","created_at":1710000000000,"updated_at":1710000000000,"schema_version":1}"#;
-        fs::write(dir.join("http-ok.json"), http_url).unwrap();
+        // surrounding whitespace should not hide the provider either
+        let spaced_url = r#"{"id":"spaced-url","cli_id":"claude","name":"Test","protocol_type":"anthropic","api_key":"sk-test","base_url":" https://api.example.com ","model":"test","created_at":1710000000000,"updated_at":1710000000000,"schema_version":1}"#;
+        fs::write(dir.join("spaced-url.json"), spaced_url).unwrap();
 
-        // https:// is valid
         let good = make_test_provider("https-ok", "Good", 1710000000000);
         save_provider_to(dir, &good).unwrap();
 
         let providers = list_providers_in(dir).unwrap();
-        assert_eq!(providers.len(), 2);
+        assert_eq!(providers.len(), 3);
         let ids: Vec<&str> = providers.iter().map(|p| p.id.as_str()).collect();
-        assert!(ids.contains(&"http-ok"));
+        assert!(ids.contains(&"bad-url"));
+        assert!(ids.contains(&"spaced-url"));
         assert!(ids.contains(&"https-ok"));
     }
 }

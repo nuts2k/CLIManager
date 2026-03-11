@@ -148,6 +148,98 @@ impl CliAdapter for CodexAdapter {
             backups_created,
         })
     }
+
+    fn clear(&self) -> Result<PatchResult, AppError> {
+        let auth_path = self.config_dir.join("auth.json");
+        let config_path = self.config_dir.join("config.toml");
+        let auth_previously_existed = auth_path.exists();
+        let config_previously_existed = config_path.exists();
+
+        if !auth_previously_existed && !config_previously_existed {
+            return Ok(PatchResult {
+                files_written: vec![],
+                backups_created: vec![],
+            });
+        }
+
+        let mut backups_created = Vec::new();
+        let mut files_written = Vec::new();
+
+        let auth_existing = if auth_previously_existed {
+            let content = fs::read_to_string(&auth_path).map_err(|e| AppError::Io {
+                path: auth_path.display().to_string(),
+                source: e,
+            })?;
+            serde_json::from_str::<Value>(&content).map_err(|_| {
+                AppError::Validation(format!(
+                    "existing {} is not valid JSON",
+                    auth_path.display()
+                ))
+            })?;
+            content
+        } else {
+            String::new()
+        };
+
+        let config_existing = if config_previously_existed {
+            let content = fs::read_to_string(&config_path).map_err(|e| AppError::Io {
+                path: config_path.display().to_string(),
+                source: e,
+            })?;
+            content.parse::<DocumentMut>().map_err(|e| {
+                AppError::Toml(format!(
+                    "existing {} is not valid TOML: {}",
+                    config_path.display(),
+                    e
+                ))
+            })?;
+            content
+        } else {
+            String::new()
+        };
+
+        if auth_previously_existed {
+            let backup_path = create_backup(&auth_path, &self.backup_dir)?;
+            rotate_backups(&self.backup_dir, MAX_BACKUPS)?;
+            backups_created.push(backup_path);
+        }
+        if config_previously_existed {
+            let backup_path = create_backup(&config_path, &self.backup_dir)?;
+            rotate_backups(&self.backup_dir, MAX_BACKUPS)?;
+            backups_created.push(backup_path);
+        }
+
+        if auth_previously_existed {
+            let auth_cleared = clear_codex_auth_json(&auth_existing)?;
+            serde_json::from_str::<Value>(&auth_cleared).map_err(|_| {
+                AppError::Validation("cleared auth.json is not valid JSON".to_string())
+            })?;
+            atomic_write(&auth_path, auth_cleared.as_bytes())?;
+            files_written.push(auth_path.display().to_string());
+        }
+
+        if config_previously_existed {
+            let toml_cleared = clear_codex_toml(&config_existing)?;
+            toml_cleared.parse::<DocumentMut>().map_err(|e| {
+                AppError::Toml(format!("cleared config.toml is not valid TOML: {}", e))
+            })?;
+
+            match atomic_write(&config_path, toml_cleared.as_bytes()) {
+                Ok(()) => files_written.push(config_path.display().to_string()),
+                Err(e) => {
+                    if auth_previously_existed {
+                        rollback_auth_write(&auth_path, &self.backup_dir, true)?;
+                    }
+                    return Err(e);
+                }
+            }
+        }
+
+        Ok(PatchResult {
+            files_written,
+            backups_created,
+        })
+    }
 }
 
 /// Surgically patch Codex auth.json.
@@ -164,6 +256,19 @@ fn patch_codex_auth_json(existing: &str, api_key: &str) -> Result<String, AppErr
         "OPENAI_API_KEY".to_string(),
         Value::String(api_key.to_string()),
     );
+
+    serde_json::to_string_pretty(&root).map_err(|e| AppError::Json(e))
+}
+
+fn clear_codex_auth_json(existing: &str) -> Result<String, AppError> {
+    let mut root: Value = serde_json::from_str(existing)
+        .map_err(|_| AppError::Validation("failed to parse auth.json".to_string()))?;
+
+    let root_obj = root
+        .as_object_mut()
+        .ok_or_else(|| AppError::Validation("auth.json root is not a JSON object".to_string()))?;
+
+    root_obj.remove("OPENAI_API_KEY");
 
     serde_json::to_string_pretty(&root).map_err(|e| AppError::Json(e))
 }
@@ -185,6 +290,36 @@ fn patch_codex_toml(existing: &str, base_url: &str) -> Result<String, AppError> 
         doc["model_providers"][&active_provider]["base_url"] = toml_edit::value(base_url);
     } else {
         doc["base_url"] = toml_edit::value(base_url);
+    }
+
+    Ok(doc.to_string())
+}
+
+fn clear_codex_toml(existing: &str) -> Result<String, AppError> {
+    let mut doc: DocumentMut = existing.parse().map_err(|e: toml_edit::TomlError| {
+        AppError::Toml(format!("failed to parse config.toml: {}", e))
+    })?;
+
+    let active_provider = doc
+        .get("model_provider")
+        .and_then(|item| item.as_str())
+        .map(str::to_owned);
+
+    if let Some(active_provider) = active_provider {
+        if let Some(model_providers) = doc
+            .as_table_mut()
+            .get_mut("model_providers")
+            .and_then(|item| item.as_table_like_mut())
+        {
+            if let Some(provider_table) = model_providers
+                .get_mut(&active_provider)
+                .and_then(|item| item.as_table_like_mut())
+            {
+                provider_table.remove("base_url");
+            }
+        }
+    } else {
+        doc.as_table_mut().remove("base_url");
     }
 
     Ok(doc.to_string())
@@ -568,5 +703,68 @@ level = "info"
         assert_eq!(result.backups_created.len(), 2);
         assert!(result.backups_created[0].ends_with(".bak"));
         assert!(result.backups_created[1].ends_with(".bak"));
+    }
+
+    #[test]
+    fn test_clear_removes_managed_fields_only() {
+        let tmp = TempDir::new().unwrap();
+        let config_dir = tmp.path().join("config");
+        let backup_dir = tmp.path().join("backups");
+        fs::create_dir_all(&config_dir).unwrap();
+
+        fs::write(
+            config_dir.join("auth.json"),
+            r#"{
+  "OPENAI_API_KEY": "old-key",
+  "auth_mode": "api_key"
+}"#,
+        )
+        .unwrap();
+        fs::write(
+            config_dir.join("config.toml"),
+            r#"model_provider = "openai"
+
+[model_providers.openai]
+base_url = "https://old.example.com"
+model = "o4-mini"
+
+[model_providers.anthropic]
+base_url = "https://keep.example.com"
+"#,
+        )
+        .unwrap();
+
+        let adapter = CodexAdapter::new_with_paths(config_dir.clone(), backup_dir.clone());
+        let result = adapter.clear().unwrap();
+
+        assert_eq!(result.files_written.len(), 2);
+        assert_eq!(result.backups_created.len(), 2);
+        assert!(std::path::Path::new(&result.backups_created[0]).exists());
+        assert!(std::path::Path::new(&result.backups_created[1]).exists());
+
+        let auth: Value =
+            serde_json::from_str(&fs::read_to_string(config_dir.join("auth.json")).unwrap())
+                .unwrap();
+        assert!(auth["OPENAI_API_KEY"].is_null());
+        assert_eq!(auth["auth_mode"], "api_key");
+
+        let doc: DocumentMut = fs::read_to_string(config_dir.join("config.toml"))
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert!(doc["model_providers"]["openai"]
+            .as_table_like()
+            .and_then(|table| table.get("base_url"))
+            .is_none());
+        assert_eq!(
+            doc["model_providers"]["openai"]["model"].as_str().unwrap(),
+            "o4-mini"
+        );
+        assert_eq!(
+            doc["model_providers"]["anthropic"]["base_url"]
+                .as_str()
+                .unwrap(),
+            "https://keep.example.com"
+        );
     }
 }
