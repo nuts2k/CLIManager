@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::AppError;
 use super::atomic_write;
+use crate::error::AppError;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CliPaths {
@@ -81,6 +81,19 @@ impl Default for LocalSettings {
     }
 }
 
+impl LocalSettings {
+    fn migrate_legacy_active_provider(&mut self) {
+        if self.active_providers.contains_key("claude") {
+            return;
+        }
+
+        if let Some(active_provider_id) = self.active_provider_id.clone() {
+            self.active_providers
+                .insert("claude".to_string(), Some(active_provider_id));
+        }
+    }
+}
+
 /// Get the path to the local settings file: ~/.cli-manager/local.json
 pub fn get_local_settings_path() -> PathBuf {
     let home = dirs::home_dir().expect("Could not determine home directory");
@@ -104,7 +117,8 @@ pub fn read_local_settings_from(path: &Path) -> Result<LocalSettings, AppError> 
         path: path.display().to_string(),
         source: e,
     })?;
-    let settings: LocalSettings = serde_json::from_str(&content)?;
+    let mut settings: LocalSettings = serde_json::from_str(&content)?;
+    settings.migrate_legacy_active_provider();
     Ok(settings)
 }
 
@@ -202,20 +216,34 @@ mod tests {
         assert!(settings.active_providers.is_empty());
 
         // Set active provider per CLI
-        settings.active_providers.insert("claude".to_string(), Some("new-active-provider".to_string()));
+        settings.active_providers.insert(
+            "claude".to_string(),
+            Some("new-active-provider".to_string()),
+        );
         write_local_settings_to(&path, &settings).unwrap();
 
         // Read back and verify
         let loaded = read_local_settings_from(&path).unwrap();
-        assert_eq!(loaded.active_providers.get("claude"), Some(&Some("new-active-provider".to_string())));
+        assert_eq!(
+            loaded.active_providers.get("claude"),
+            Some(&Some("new-active-provider".to_string()))
+        );
     }
 
     #[test]
     fn test_local_settings_path_is_in_cli_manager_dir() {
         let path = get_local_settings_path();
         let path_str = path.to_string_lossy();
-        assert!(path_str.contains(".cli-manager"), "Path should contain .cli-manager: {}", path_str);
-        assert!(path_str.ends_with("local.json"), "Path should end with local.json: {}", path_str);
+        assert!(
+            path_str.contains(".cli-manager"),
+            "Path should contain .cli-manager: {}",
+            path_str
+        );
+        assert!(
+            path_str.ends_with("local.json"),
+            "Path should end with local.json: {}",
+            path_str
+        );
     }
 
     #[test]
@@ -243,8 +271,16 @@ mod tests {
         // Verify that local.rs path does NOT contain iCloud-related directories
         let path = get_local_settings_path();
         let path_str = path.to_string_lossy();
-        assert!(!path_str.contains("Mobile Documents"), "Local path must not reference iCloud: {}", path_str);
-        assert!(!path_str.contains("CloudDocs"), "Local path must not reference CloudDocs: {}", path_str);
+        assert!(
+            !path_str.contains("Mobile Documents"),
+            "Local path must not reference iCloud: {}",
+            path_str
+        );
+        assert!(
+            !path_str.contains("CloudDocs"),
+            "Local path must not reference CloudDocs: {}",
+            path_str
+        );
     }
 
     #[test]
@@ -261,8 +297,14 @@ mod tests {
         let json = serde_json::to_string_pretty(&settings).unwrap();
         assert!(json.contains("active_providers"));
         let deserialized: LocalSettings = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.active_providers.get("claude"), Some(&Some("provider-1".to_string())));
-        assert_eq!(deserialized.active_providers.get("codex"), Some(&Some("provider-2".to_string())));
+        assert_eq!(
+            deserialized.active_providers.get("claude"),
+            Some(&Some("provider-1".to_string()))
+        );
+        assert_eq!(
+            deserialized.active_providers.get("codex"),
+            Some(&Some("provider-2".to_string()))
+        );
     }
 
     #[test]
@@ -270,10 +312,35 @@ mod tests {
         // JSON with old active_provider_id field should still deserialize (backward compat)
         let json = r#"{"active_provider_id": "old-provider-123", "cli_paths": {}}"#;
         let settings: LocalSettings = serde_json::from_str(json).unwrap();
-        assert_eq!(settings.active_provider_id, Some("old-provider-123".to_string()));
+        assert_eq!(
+            settings.active_provider_id,
+            Some("old-provider-123".to_string())
+        );
         // But when we serialize, active_provider_id should NOT appear (skip_serializing)
         let re_serialized = serde_json::to_string_pretty(&settings).unwrap();
         assert!(!re_serialized.contains("active_provider_id"));
+    }
+
+    #[test]
+    fn test_read_local_settings_migrates_legacy_active_provider_id() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("local.json");
+        fs::write(
+            &path,
+            r#"{"active_provider_id":"old-provider-123","cli_paths":{}}"#,
+        )
+        .unwrap();
+
+        let settings = read_local_settings_from(&path).unwrap();
+        assert_eq!(
+            settings.active_providers.get("claude"),
+            Some(&Some("old-provider-123".to_string()))
+        );
+
+        write_local_settings_to(&path, &settings).unwrap();
+        let written = fs::read_to_string(&path).unwrap();
+        assert!(written.contains("active_providers"));
+        assert!(!written.contains("active_provider_id"));
     }
 
     #[test]

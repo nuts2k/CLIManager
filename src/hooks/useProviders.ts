@@ -7,6 +7,7 @@ import {
   deleteProvider,
   setActiveProvider,
   testProvider,
+  updateProvider,
 } from "@/lib/tauri";
 import type { Provider, CreateProviderInput } from "@/types/provider";
 
@@ -80,7 +81,14 @@ export function useProviders(cliId: string) {
           model: provider.model,
           cliId: provider.cli_id,
         };
-        await createProvider(input);
+        const created = await createProvider(input);
+        if (provider.notes != null || provider.model_config != null) {
+          await updateProvider({
+            ...created,
+            notes: provider.notes ?? null,
+            model_config: provider.model_config ?? null,
+          });
+        }
         await refresh();
         toast.success(t("status.copySuccess", { name: provider.name }));
       } catch (err) {
@@ -104,7 +112,17 @@ export function useProviders(cliId: string) {
           model: provider.model,
           cliId: targetCliId,
         };
-        await createProvider(input);
+        const created = await createProvider(input);
+        if (provider.notes != null || provider.model_config != null) {
+          await updateProvider({
+            ...created,
+            notes: provider.notes ?? null,
+            model_config: provider.model_config ?? null,
+          });
+        }
+        if (targetCliId === cliIdRef.current) {
+          await refresh();
+        }
         toast.success(t("status.copySuccess", { name: provider.name }));
       } catch (err) {
         toast.error(String(err));
@@ -112,7 +130,7 @@ export function useProviders(cliId: string) {
         setOperationLoading(null);
       }
     },
-    [t],
+    [refresh, t],
   );
 
   const testProviderConnection = useCallback(
