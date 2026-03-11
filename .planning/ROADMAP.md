@@ -61,12 +61,13 @@ Plans:
   3. User can edit and delete existing providers
   4. User can switch the active provider with one click and the switch completes in under 1 second
   5. UI displays in Chinese by default, user can switch to English in settings, and all visible text is localized
-**Plans**: TBD
+**Plans:** 4 plans
 
 Plans:
-- [ ] 03-01: TBD
-- [ ] 03-02: TBD
-- [ ] 03-03: TBD
+- [ ] 03-01-PLAN.md — Backend extensions: cli_id on Provider, per-CLI active_providers, switch+patch, delete+auto-switch, test_provider
+- [ ] 03-02-PLAN.md — Frontend infrastructure: shadcn/ui + Tailwind v4, i18n setup, TypeScript types, Tauri invoke wrappers
+- [ ] 03-03-PLAN.md — Core provider UI: app shell, CLI tabs, provider list/cards, create/edit/delete dialogs, all actions wired
+- [ ] 03-04-PLAN.md — Settings page with language switching and test config, plus end-to-end UI verification checkpoint
 
 ### Phase 4: iCloud Sync and File Watching
 **Goal**: Provider changes from other devices appear automatically and trigger CLI config re-patching when needed
@@ -103,6 +104,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 |-------|----------------|--------|-----------|
 | 1. Storage and Data Model | 2/2 | Complete | 2026-03-10 |
 | 2. Surgical Patch Engine | 2/2 | Complete   | 2026-03-11 |
-| 3. Provider Management UI | 0/TBD | Not started | - |
+| 3. Provider Management UI | 0/4 | Not started | - |
 | 4. iCloud Sync and File Watching | 0/TBD | Not started | - |
 | 5. Onboarding | 0/TBD | Not started | - |
