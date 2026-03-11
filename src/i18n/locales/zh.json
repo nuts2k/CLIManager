@@ -71,5 +71,11 @@
     "nameRequired": "\u8bf7\u8f93\u5165\u540d\u79f0",
     "apiKeyRequired": "\u8bf7\u8f93\u5165 API Key",
     "baseUrlRequired": "\u8bf7\u8f93\u5165 Base URL"
+  },
+  "sync": {
+    "providersUpdated": "\u5df2\u540c\u6b65\uff1a{{count}} \u4e2a Provider \u5df2\u66f4\u65b0",
+    "providerUpdated": "\u5df2\u540c\u6b65\uff1aProvider \"{{name}}\" \u5df2\u66f4\u65b0",
+    "repatchFailed": "\u540c\u6b65\u540e\u81ea\u52a8\u66f4\u65b0 CLI \u914d\u7f6e\u5931\u8d25",
+    "repatchSuccess": "CLI \u914d\u7f6e\u5df2\u81ea\u52a8\u66f4\u65b0"
   }
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
@@ -20,7 +20,11 @@ const CLI_TABS = [
   { id: "codex", labelKey: "tabs.codex" },
 ] as const;
 
-export function ProviderTabs() {
+interface ProviderTabsProps {
+  refreshTrigger?: number;
+}
+
+export function ProviderTabs({ refreshTrigger }: ProviderTabsProps) {
   const { t } = useTranslation();
   const [currentCliId, setCurrentCliId] = useState<string>("claude");
   const {
@@ -35,6 +39,17 @@ export function ProviderTabs() {
     testProviderConnection,
   } = useProviders(currentCliId);
   const { getActiveProviderId, refresh: refreshSettings } = useSettings();
+
+  // Re-fetch when sync trigger changes (skip initial render)
+  const isInitialMount = useRef(true);
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    refresh();
+    refreshSettings();
+  }, [refreshTrigger, refresh, refreshSettings]);
 
   // Dialog state
   const [dialogMode, setDialogMode] = useState<"create" | "edit" | null>(null);
