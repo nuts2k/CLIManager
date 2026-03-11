@@ -45,11 +45,11 @@ Plans:
   3. If a Codex two-file write partially fails, the already-written file is rolled back to its pre-write state
   4. Config files are validated before and after patching; invalid state is never written
   5. A backup of each CLI config file is created before the first write
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 02-01: TBD
-- [ ] 02-02: TBD
+- [ ] 02-01-PLAN.md — CliAdapter trait, shared backup/rotate utilities, and Claude Code adapter with surgical JSON patching
+- [ ] 02-02-PLAN.md — Codex adapter with two-phase write, rollback, and TOML comment preservation
 
 ### Phase 3: Provider Management UI
 **Goal**: Users can manage and switch providers through a complete desktop interface in Chinese or English
@@ -102,7 +102,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Storage and Data Model | 2/2 | Complete | 2026-03-10 |
-| 2. Surgical Patch Engine | 0/TBD | Not started | - |
+| 2. Surgical Patch Engine | 0/2 | Not started | - |
 | 3. Provider Management UI | 0/TBD | Not started | - |
 | 4. iCloud Sync and File Watching | 0/TBD | Not started | - |
 | 5. Onboarding | 0/TBD | Not started | - |
