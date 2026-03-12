@@ -3,6 +3,7 @@ use std::path::Path;
 use serde::Serialize;
 use tauri::Manager;
 
+use crate::commands::provider::{normalize_provider_fields, validate_provider};
 use crate::error::AppError;
 use crate::provider::{ProtocolType, Provider};
 
@@ -74,10 +75,12 @@ pub fn scan_codex_config_in(home_dir: &Path) -> Option<DetectedCliConfig> {
 
     // Extract API key from auth.json
     let mut api_key = String::new();
+    let mut auth_parsed = false;
     if auth_exists {
         match std::fs::read_to_string(&auth_path) {
             Ok(content) => match serde_json::from_str::<serde_json::Value>(&content) {
                 Ok(value) => {
+                    auth_parsed = true;
                     api_key = value
                         .get("OPENAI_API_KEY")
                         .and_then(|v| v.as_str())
@@ -96,10 +99,12 @@ pub fn scan_codex_config_in(home_dir: &Path) -> Option<DetectedCliConfig> {
 
     // Extract base_url from config.toml
     let mut base_url = String::new();
+    let mut config_parsed = false;
     if config_exists {
         match std::fs::read_to_string(&config_path) {
             Ok(content) => match content.parse::<toml_edit::DocumentMut>() {
                 Ok(doc) => {
+                    config_parsed = true;
                     // Check model_provider field -> model_providers.<active>.base_url -> top-level base_url
                     let provider_scoped = doc
                         .get("model_provider")
@@ -125,6 +130,10 @@ pub fn scan_codex_config_in(home_dir: &Path) -> Option<DetectedCliConfig> {
                 log::warn!("Failed to read Codex config.toml: {}", e);
             }
         }
+    }
+
+    if !auth_parsed && !config_parsed {
+        return None;
     }
 
     let has_api_key = !api_key.is_empty();
@@ -161,14 +170,6 @@ pub fn scan_cli_configs() -> Result<Vec<DetectedCliConfig>, AppError> {
 
 // --- import_provider internals ---
 
-fn normalize_import_fields(provider: &mut Provider) {
-    provider.name = provider.name.trim().to_string();
-    provider.api_key = provider.api_key.trim().to_string();
-    provider.base_url = provider.base_url.trim().to_string();
-    provider.model = provider.model.trim().to_string();
-    provider.cli_id = provider.cli_id.trim().to_string();
-}
-
 /// Internal import that writes to a specific directory (for testability).
 pub fn import_provider_to(
     dir: &Path,
@@ -187,13 +188,8 @@ pub fn import_provider_to(
         cli_id,
     );
 
-    normalize_import_fields(&mut provider);
-
-    if provider.name.is_empty() {
-        return Err(AppError::Validation(
-            "Provider name cannot be empty".to_string(),
-        ));
-    }
+    normalize_provider_fields(&mut provider);
+    validate_provider(&provider)?;
 
     crate::storage::icloud::save_provider_to(dir, &provider)?;
     Ok(provider)
@@ -219,13 +215,8 @@ pub fn import_provider(
         cli_id,
     );
 
-    normalize_import_fields(&mut provider);
-
-    if provider.name.is_empty() {
-        return Err(AppError::Validation(
-            "Provider name cannot be empty".to_string(),
-        ));
-    }
+    normalize_provider_fields(&mut provider);
+    validate_provider(&provider)?;
 
     // Record self-write BEFORE the file operation so the watcher ignores this change
     let tracker = app_handle.state::<crate::watcher::SelfWriteTracker>();
@@ -432,6 +423,29 @@ base_url = "https://azure.openai.com/v1"
     }
 
     #[test]
+    fn test_scan_codex_corrupted_auth_without_valid_config() {
+        let tmp = TempDir::new().unwrap();
+        let codex_dir = tmp.path().join(".codex");
+        fs::create_dir_all(&codex_dir).unwrap();
+        fs::write(codex_dir.join("auth.json"), "{ invalid json }").unwrap();
+
+        let result = scan_codex_config_in(tmp.path());
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_scan_codex_corrupted_auth_and_config() {
+        let tmp = TempDir::new().unwrap();
+        let codex_dir = tmp.path().join(".codex");
+        fs::create_dir_all(&codex_dir).unwrap();
+        fs::write(codex_dir.join("auth.json"), "{ invalid json }").unwrap();
+        fs::write(codex_dir.join("config.toml"), "not valid toml [[[").unwrap();
+
+        let result = scan_codex_config_in(tmp.path());
+        assert!(result.is_none());
+    }
+
+    #[test]
     fn test_scan_codex_missing_api_key() {
         let tmp = TempDir::new().unwrap();
         let codex_dir = tmp.path().join(".codex");
@@ -458,16 +472,7 @@ base_url = "https://azure.openai.com/v1"
             "https://api.anthropic.com".to_string(),
             "claude".to_string(),
         );
-        assert!(result.is_ok());
-        let provider = result.unwrap();
-        assert_eq!(provider.name, "Claude Import");
-        assert_eq!(provider.api_key, "");
-        assert_eq!(provider.base_url, "https://api.anthropic.com");
-        assert_eq!(provider.model, "");
-        assert_eq!(provider.cli_id, "claude");
-        // Verify file was saved
-        let file_path = tmp.path().join(format!("{}.json", provider.id));
-        assert!(file_path.exists());
+        assert!(matches!(result, Err(AppError::Validation(_))));
     }
 
     #[test]
@@ -481,11 +486,21 @@ base_url = "https://azure.openai.com/v1"
             "".to_string(),
             "codex".to_string(),
         );
-        assert!(result.is_ok());
-        let provider = result.unwrap();
-        assert_eq!(provider.name, "Codex Import");
-        assert_eq!(provider.api_key, "sk-test-key");
-        assert_eq!(provider.base_url, "");
+        assert!(matches!(result, Err(AppError::Validation(_))));
+    }
+
+    #[test]
+    fn test_import_provider_rejects_invalid_base_url_scheme() {
+        let tmp = TempDir::new().unwrap();
+        let result = import_provider_to(
+            tmp.path(),
+            "Codex Import".to_string(),
+            ProtocolType::OpenAiCompatible,
+            "sk-test-key".to_string(),
+            "example.com/v1".to_string(),
+            "codex".to_string(),
+        );
+        assert!(matches!(result, Err(AppError::Validation(_))));
     }
 
     #[test]

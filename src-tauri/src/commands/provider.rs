@@ -64,7 +64,7 @@ fn _list_providers_in(
     }
 }
 
-fn normalize_provider_fields(provider: &mut Provider) {
+pub(crate) fn normalize_provider_fields(provider: &mut Provider) {
     provider.name = provider.name.trim().to_string();
     provider.api_key = provider.api_key.trim().to_string();
     provider.base_url = provider.base_url.trim().to_string();
@@ -72,7 +72,7 @@ fn normalize_provider_fields(provider: &mut Provider) {
     provider.cli_id = provider.cli_id.trim().to_string();
 }
 
-fn validate_provider(provider: &Provider) -> Result<(), AppError> {
+pub(crate) fn validate_provider(provider: &Provider) -> Result<(), AppError> {
     if provider.name.is_empty() {
         return Err(AppError::Validation(
             "Provider name cannot be empty".to_string(),

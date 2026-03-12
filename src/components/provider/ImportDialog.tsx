@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { listProviders, importProvider } from "@/lib/tauri";
+import { cn } from "@/lib/utils";
 import type { DetectedCliConfig } from "@/types/provider";
 
 interface ImportDialogProps {
@@ -23,7 +24,7 @@ interface ImportDialogProps {
 
 /** Config is complete when all required fields are present */
 function isConfigComplete(config: DetectedCliConfig): boolean {
-  return config.has_api_key && config.base_url.length > 0;
+  return config.has_api_key && config.base_url.trim().length > 0;
 }
 
 function maskApiKey(key: string): string {
@@ -49,7 +50,8 @@ export function ImportDialog({
   const effectiveSelected = useMemo(() => {
     const result: Record<number, boolean> = {};
     configs.forEach((config, i) => {
-      result[i] = selected[i] ?? isConfigComplete(config);
+      const isComplete = isConfigComplete(config);
+      result[i] = isComplete && (selected[i] ?? true);
     });
     return result;
   }, [configs, selected]);
@@ -71,6 +73,7 @@ export function ImportDialog({
         if (!effectiveSelected[i]) continue;
 
         const config = configs[i];
+        if (!isConfigComplete(config)) continue;
 
         // Dedup check: skip if any existing provider has same api_key AND base_url
         const isDuplicate = existing.some(
@@ -122,44 +125,53 @@ export function ImportDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-3 py-2">
-          {configs.map((config, index) => (
-            <label
-              key={index}
-              className="flex items-center gap-3 rounded-md border border-border p-3 hover:bg-accent/50 cursor-pointer"
-            >
-              <Checkbox
-                checked={effectiveSelected[index]}
-                onCheckedChange={(checked) =>
-                  handleToggle(index, checked === true)
-                }
-                disabled={importing}
-              />
-              <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-                <span className="text-sm font-medium">{config.cli_name}</span>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  {config.has_api_key ? (
-                    <span className="font-mono truncate">
-                      {maskApiKey(config.api_key)}
-                    </span>
-                  ) : (
-                    <span className="text-yellow-500">
-                      {t("import.missingApiKey")}
-                    </span>
-                  )}
-                  <span className="text-border">|</span>
-                  {config.base_url ? (
-                    <span className="truncate">
-                      {config.base_url}
-                    </span>
-                  ) : (
-                    <span className="text-yellow-500">
-                      {t("import.missingBaseUrl")}
-                    </span>
-                  )}
+          {configs.map((config, index) => {
+            const isComplete = isConfigComplete(config);
+
+            return (
+              <label
+                key={index}
+                className={cn(
+                  "flex items-center gap-3 rounded-md border border-border p-3",
+                  isComplete
+                    ? "cursor-pointer hover:bg-accent/50"
+                    : "cursor-not-allowed opacity-60",
+                )}
+              >
+                <Checkbox
+                  checked={effectiveSelected[index]}
+                  onCheckedChange={(checked) =>
+                    handleToggle(index, checked === true)
+                  }
+                  disabled={importing || !isComplete}
+                />
+                <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                  <span className="text-sm font-medium">{config.cli_name}</span>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    {config.has_api_key ? (
+                      <span className="font-mono truncate">
+                        {maskApiKey(config.api_key)}
+                      </span>
+                    ) : (
+                      <span className="text-yellow-500">
+                        {t("import.missingApiKey")}
+                      </span>
+                    )}
+                    <span className="text-border">|</span>
+                    {config.base_url ? (
+                      <span className="truncate">
+                        {config.base_url}
+                      </span>
+                    ) : (
+                      <span className="text-yellow-500">
+                        {t("import.missingBaseUrl")}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </label>
-          ))}
+              </label>
+            );
+          })}
         </div>
 
         <DialogFooter>
