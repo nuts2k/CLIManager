@@ -17,9 +17,10 @@ import i18n from "@/i18n";
 
 interface SettingsPageProps {
   onBack: () => void;
+  onShowImport?: () => void;
 }
 
-export function SettingsPage({ onBack }: SettingsPageProps) {
+export function SettingsPage({ onBack, onShowImport }: SettingsPageProps) {
   const { t } = useTranslation();
   const { settings, updateSettings } = useSettings();
 
@@ -159,6 +160,21 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
             <p>CLIManager - CLI Provider Management Tool</p>
           </div>
         </section>
+
+        {/* Import from CLI Config Section */}
+        {onShowImport && (
+          <>
+            <Separator />
+            <section className="space-y-3">
+              <h3 className="text-sm font-medium text-foreground">
+                {t("import.settingsButton")}
+              </h3>
+              <Button variant="outline" onClick={onShowImport}>
+                {t("import.settingsButton")}
+              </Button>
+            </section>
+          </>
+        )}
       </div>
     </div>
   );
