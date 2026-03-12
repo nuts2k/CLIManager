@@ -1,311 +1,209 @@
 # Technology Stack
 
-**Project:** CLIManager
-**Researched:** 2026-03-10
-**Overall Confidence:** MEDIUM-HIGH (versions derived from reference project cc-switch v3.12.0 + training data; no live registry verification available during research)
+**Project:** CLIManager v1.1 System Tray
+**Researched:** 2026-03-12
 
-## Recommended Stack
+## Scope
 
-### Core Framework
+This document covers ONLY the incremental stack additions needed for system tray support in v1.1. The existing v1.0 stack (Tauri 2.10, React 19, Vite 7, shadcn/ui, Tailwind CSS v4, i18next, Rust backend with serde/toml_edit/notify/etc.) is validated and shipped -- it is NOT re-evaluated here.
 
-| Technology | Version | Purpose | Why | Confidence |
-|------------|---------|---------|-----|------------|
-| Tauri 2 | ^2.8 | Desktop app shell (Rust backend + WebView frontend) | PROJECT.md constraint. Proven in cc-switch. Native perf, small binary, macOS FSEvents access from Rust. | HIGH |
-| React | ^18.2 | Frontend UI framework | Stick with React 18, not 19. React 19's Server Components and use() hooks are irrelevant to Tauri (no SSR). React 18 is stable, battle-tested in cc-switch, and avoids the React 19 Concurrent Mode edge cases that can cause double-render issues in desktop apps. | HIGH |
-| TypeScript | ^5.6 | Type safety for frontend | cc-switch uses ^5.3. Bump to 5.6+ for satisfies keyword improvements and better type narrowing. | HIGH |
-| Rust | 1.85+ (edition 2021) | Backend logic, file I/O, config patching | PROJECT.md constraint via Tauri 2. Edition 2021 matches cc-switch. | HIGH |
+---
 
-### Build Tooling
+## Recommended Stack Additions
 
-| Technology | Version | Purpose | Why | Confidence |
-|------------|---------|---------|-----|------------|
-| Vite | ^6.0 or ^7.0 | Frontend bundler + dev server | cc-switch uses ^7.3.0. Use whatever `npm create tauri-app` scaffolds. Vite is the default Tauri 2 frontend bundler -- fast HMR, simple config. | HIGH |
-| @vitejs/plugin-react | ^4.2 | React JSX transform for Vite | Standard pairing. SWC-backed for speed. | HIGH |
-| @tauri-apps/cli | ^2.8 | Tauri CLI for dev/build | Must match @tauri-apps/api version. | HIGH |
-| pnpm | ^10 | Package manager | cc-switch uses pnpm. Faster installs, strict dependency isolation, works well with Tauri monorepo-ish structure. | HIGH |
+### Cargo Feature Flags (No New Crates)
 
-### Frontend Libraries
+| Feature | On Crate | Purpose | Why | Confidence |
+|---------|----------|---------|-----|------------|
+| `tray-icon` | `tauri` | Enables `TrayIconBuilder`, `TrayIconEvent`, tray menu APIs | Required for any system tray functionality in Tauri 2. This is the renamed `system-tray` feature from Tauri v1. Without it, `tauri::tray` module is not available. | HIGH |
+| `image-png` | `tauri` | Enables `Image::from_bytes()` for PNG parsing | Required to load custom tray icons from embedded PNG bytes via `include_bytes!`. Without it, runtime panics on PNG decode. | HIGH |
 
-| Library | Version | Purpose | Why | Confidence |
-|---------|---------|---------|-----|------------|
-| @tauri-apps/api | ^2.8 | Tauri IPC bridge (invoke, events, window) | Core Tauri integration. Version must match CLI/core. | HIGH |
-| @tanstack/react-query | ^5 | Server state management (IPC data fetching + cache) | Treats Rust backend as "server". Auto-refetch, cache invalidation, optimistic updates. Proven pattern in cc-switch for provider CRUD. | HIGH |
-| TailwindCSS | ^3.4 | Utility-first CSS | cc-switch uses 3.4 with shadcn/ui CSS variable pattern. TailwindCSS 4 (released 2025) has breaking changes in config format -- stick with v3 for stability and shadcn/ui compatibility. | MEDIUM |
-| shadcn/ui components | (copy-paste, not versioned) | UI component library | Not an npm dependency -- copy-paste Radix-based components. macOS-native feel with proper dark mode. cc-switch uses this exact pattern (Radix primitives + Tailwind). | HIGH |
-| Radix UI primitives | ^1.x-^2.x | Accessible headless UI components | Foundation for shadcn/ui. Dialog, Select, Switch, Tooltip, etc. Only install primitives you actually use. | HIGH |
-| lucide-react | ^0.540+ | Icon library | Clean, consistent icons. Used by cc-switch. Light tree-shakeable. | HIGH |
-| i18next | ^25 | i18n core | Mature, well-documented. cc-switch uses this exact setup with bundled JSON translation files. Simple for 2-language (zh+en) scope. | HIGH |
-| react-i18next | ^16 | React bindings for i18next | useTranslation hook pattern. Proven in cc-switch. | HIGH |
-| zod | ^3.23 or ^4 | Runtime schema validation | Validate provider configs, form inputs. cc-switch uses ^4.1 (Zod 4). Use ^3.23 for stability or ^4 if already stable at build time. | MEDIUM |
-| sonner | ^2.0 | Toast notifications | Lightweight, good DX. Used by cc-switch. Better than react-hot-toast for Tauri. | HIGH |
-| class-variance-authority | ^0.7 | Component variant management | Standard shadcn/ui companion. Pairs with clsx + tailwind-merge. | HIGH |
-| clsx | ^2.1 | Conditional className utility | Standard. Tiny. | HIGH |
-| tailwind-merge | ^3.3 | Tailwind class conflict resolution | Standard shadcn/ui companion. cn() = clsx + tailwind-merge. | HIGH |
-| framer-motion | ^12 | Animations | Smooth list transitions for provider cards. Optional but improves UX significantly for CRUD operations. | MEDIUM |
+**No new crate dependencies are needed.** Everything required for tray support is built into the `tauri` crate behind feature flags.
 
-### Rust Backend Crates
+### Cargo.toml Change (Single Line)
 
-| Crate | Version | Purpose | Why | Confidence |
-|-------|---------|---------|-----|------------|
-| tauri | ^2.8 | Core Tauri runtime | Must match frontend @tauri-apps/api. | HIGH |
-| tauri-build | ^2.4 | Build-time Tauri integration | Standard Tauri build dependency. | HIGH |
-| serde | 1.0 + derive | Serialization framework | Universal Rust serialization. Every struct needs it. | HIGH |
-| serde_json | 1.0 | JSON read/write | Provider JSON files, Claude Code settings.json, Codex auth.json. Core to surgical patch: deserialize, modify field, serialize. | HIGH |
-| toml_edit | 0.22 | **Surgical TOML editing** | CRITICAL choice. `toml` crate loses formatting/comments on round-trip. `toml_edit` preserves document structure -- parse to DocumentMut, modify specific keys, serialize back without touching other content. Exactly what cc-switch uses for Codex config.toml patching. | HIGH |
-| toml | 0.8 | TOML deserialization (read-only) | Use for typed deserialization when you need structured access. Use `toml_edit` for write-back. | HIGH |
-| notify | ^7.0 | Cross-platform file system watching | Uses FSEvents on macOS natively. Watches iCloud Drive directory for provider file changes. Debounced events via `notify-debouncer-full` or manual debounce. This is the standard Rust file watcher -- no viable alternative. | MEDIUM |
-| notify-debouncer-full | ^0.4 | Debounced file watcher | Wraps notify with configurable debounce. Prevents event storms from iCloud sync (multiple rapid writes). | MEDIUM |
-| tokio | 1 (macros, rt-multi-thread, sync, time) | Async runtime | Tauri 2 uses tokio internally. Needed for async file ops, debounced watchers, channels. | HIGH |
-| dirs | 5.0 | Platform-standard directories | `dirs::home_dir()` for `~/.claude/`, `~/.codex/`, etc. Cross-platform path resolution. | HIGH |
-| uuid | 1.11 (v4) | Unique IDs for providers | Each provider JSON file needs a unique identifier. UUIDv4 is simple and sufficient. | HIGH |
-| chrono | 0.4 (serde) | Timestamps | Provider created_at/updated_at fields. Serde integration for JSON serialization. | HIGH |
-| thiserror | 2.0 | Error types | Derive Error for structured error handling. cc-switch uses this. Cleaner than manual impl. | HIGH |
-| anyhow | 1.0 | Error propagation in commands | For Tauri command return types where you want ? chaining without custom error types. Use thiserror for library code, anyhow for command handlers. | HIGH |
-| indexmap | 2 (serde) | Order-preserving maps | Preserve key order in JSON config files during surgical patch. Important: serde_json's Map is insertion-ordered, but if you need explicit ordering guarantees, indexmap is safer. | MEDIUM |
-| log | 0.4 | Logging facade | Standard Rust logging. Pairs with tauri-plugin-log. | HIGH |
+```toml
+# Before (v1.0)
+tauri = { version = "2", features = [] }
 
-### Tauri Plugins
+# After (v1.1)
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+```
 
-| Plugin | Crate Version | Purpose | Why | Confidence |
-|--------|---------------|---------|-----|------------|
-| tauri-plugin-log | 2 | Logging | Route Rust logs to frontend console + log files. Essential for debugging. | HIGH |
-| tauri-plugin-dialog | 2 | Native dialogs | File picker for config import, confirmation dialogs. | HIGH |
-| tauri-plugin-process | 2 | Process management | App restart after settings changes. | MEDIUM |
-| tauri-plugin-store | 2 | Key-value storage | Device-local settings (current active provider, window position, language preference). NOT for provider data. | HIGH |
-| tauri-plugin-single-instance | 2 | Prevent multiple instances | Only one CLIManager should run at a time to avoid conflicting config writes. | HIGH |
+Confidence: **HIGH** -- verified against cc-switch's working `Cargo.toml` which uses `tauri = { version = "2.8.2", features = ["tray-icon", "protocol-asset", "image-png"] }`, and confirmed by the [official Tauri 2 system tray documentation](https://v2.tauri.app/learn/system-tray/).
 
-### Dev Dependencies (Frontend)
+### Frontend Changes: None
 
-| Library | Version | Purpose | Why | Confidence |
-|---------|---------|---------|-----|------------|
-| vitest | ^2.0 | Unit testing | Fast, Vite-native. cc-switch uses this. | HIGH |
-| @testing-library/react | ^16 | React component testing | Standard React testing. | HIGH |
-| prettier | ^3.6 | Code formatting | Consistent style. | HIGH |
+No new npm packages are needed. The existing `@tauri-apps/api` v2 package already includes `tray` and `menu` namespaces, but **all tray logic should be implemented in Rust** because:
 
-### Dev Dependencies (Rust)
+1. The tray must work when the window is hidden (no webview running JS).
+2. Provider switching triggers Rust-side file I/O (surgical patch via existing commands).
+3. cc-switch does it entirely in Rust -- this is the correct and proven pattern.
 
-| Crate | Version | Purpose | Why | Confidence |
-|-------|---------|---------|-----|------------|
-| tempfile | 3 | Temp dirs/files for testing | Test file watcher, config patching without touching real configs. | HIGH |
-| serial_test | 3 | Sequential test execution | File system tests that can't run in parallel. | HIGH |
+The frontend only needs to call a single new Tauri command (`update_tray_menu`) after provider data changes, to keep the tray menu in sync.
+
+### Icon Assets Needed
+
+| Asset | Spec | Purpose |
+|-------|------|---------|
+| `src-tauri/icons/tray/macos/statusbar_template.png` | 22x22px, monochrome black on transparent | macOS status bar icon (1x) |
+| `src-tauri/icons/tray/macos/statusbar_template@2x.png` | 44x44px, monochrome black on transparent | macOS status bar icon (2x Retina) |
+
+**Why template icons:** On macOS, menu bar icons must be "template images" (monochrome with alpha channel). Tauri 2 exposes `.icon_as_template(true)` on `TrayIconBuilder`, which tells AppKit to auto-tint for light/dark mode. Using a colored or full-resolution app icon would look wrong and violate macOS HIG.
+
+cc-switch stores these at `icons/tray/macos/statusbar_template_3x.png` and loads via `include_bytes!`.
+
+---
+
+## Key Tauri 2 APIs
+
+All APIs are from the `tauri` crate. No external plugins involved.
+
+### Tray Construction (`tauri::tray`)
+
+| API | Purpose |
+|-----|---------|
+| `TrayIconBuilder::with_id("main")` | Create named tray icon (ID used for `tray_by_id()` lookup later) |
+| `.icon(Image::from_bytes(include_bytes!(...))?)` | Set the tray icon from embedded PNG |
+| `.icon_as_template(true)` | macOS: treat as template image for auto light/dark tinting |
+| `.menu(&menu)` | Attach a `Menu` to the tray |
+| `.show_menu_on_left_click(true)` | Show menu on left click (macOS convention for utility apps) |
+| `.on_menu_event(\|app, event\| { ... })` | Handle menu item clicks by `event.id` |
+| `.on_tray_icon_event(\|tray, event\| { ... })` | Handle tray icon clicks/hover (optional) |
+| `.build(app)?` | Finalize and register the tray icon |
+
+### Menu Construction (`tauri::menu`)
+
+| API | Purpose |
+|-----|---------|
+| `MenuBuilder::new(app)` | Start building a menu |
+| `MenuItem::with_id(app, id, label, enabled, accel)` | Non-checkable item ("Show Window", "Quit", section headers) |
+| `CheckMenuItem::with_id(app, id, label, enabled, checked, accel)` | Checkable item (providers -- shows native checkmark for active provider) |
+| `.separator()` | Visual separator between menu sections |
+| `.item(&item)` | Add an item to the builder |
+| `.build()?` | Finalize the menu |
+
+### Dynamic Menu Updates
+
+| API | Purpose |
+|-----|---------|
+| `app.tray_by_id("main")` | Get existing tray icon by ID |
+| `tray.set_menu(Some(new_menu))` | Replace the entire menu |
+
+**Critical pattern:** Tauri 2 menus are immutable after `.build()`. You cannot add/remove/modify individual items. The correct approach is to rebuild the entire `Menu` and call `set_menu()`. This is exactly what cc-switch does in `create_tray_menu()` + `set_menu()`.
+
+### Window Lifecycle -- Close-to-Tray
+
+| API | Purpose |
+|-----|---------|
+| `Builder::on_window_event(\|window, event\| { ... })` | Intercept window events globally |
+| `WindowEvent::CloseRequested { api, .. }` | Fired when user clicks window close button |
+| `api.prevent_close()` | Prevent the window from actually being destroyed |
+| `window.hide()` | Hide the window (process stays alive, tray remains) |
+| `window.show()` | Restore hidden window |
+| `window.set_focus()` | Bring window to front |
+| `window.unminimize()` | Restore from minimized state |
+
+**The close-to-tray pattern:**
+
+```rust
+.on_window_event(|window, event| {
+    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+        api.prevent_close();
+        let _ = window.hide();
+        #[cfg(target_os = "macos")]
+        {
+            tray::apply_tray_policy(window.app_handle(), false);
+        }
+    }
+})
+```
+
+Confidence: **HIGH** -- this is the standard pattern documented by Tauri and used by cc-switch. The `api.prevent_close()` + `window.hide()` combination is the recommended approach per [community discussion](https://github.com/tauri-apps/tauri/discussions/2684) and official docs.
+
+### macOS Dock Visibility
+
+| API | Purpose |
+|-----|---------|
+| `app.set_activation_policy(ActivationPolicy::Accessory)` | Hide app from Dock (tray-only mode) |
+| `app.set_activation_policy(ActivationPolicy::Regular)` | Show app in Dock (normal mode) |
+| `app.set_dock_visibility(bool)` | Show/hide Dock icon |
+
+**Pattern:** When window hides, switch to `Accessory` to remove Dock icon. When window shows, switch to `Regular` to restore Dock presence. cc-switch wraps this in `tray::apply_tray_policy()` with error handling.
+
+**Note:** `ActivationPolicy` is macOS-only. Wrap with `#[cfg(target_os = "macos")]`.
+
+---
+
+## tauri.conf.json Changes
+
+**None required.** The `tray-icon` feature is a Cargo feature flag, not a Tauri capability/permission. The existing `tauri.conf.json` remains unchanged.
+
+---
+
+## What NOT to Do
+
+| Anti-Pattern | Why |
+|-------------|-----|
+| Use Tauri v1 `SystemTray` / `SystemTrayMenu` / `CustomMenuItem` | Removed in Tauri 2. Use `TrayIconBuilder` / `Menu` / `MenuItem`. |
+| Implement tray logic in JavaScript | Tray must work when webview is hidden. All tray logic belongs in Rust. |
+| Add any `tauri-plugin-*` for tray | No plugin needed. Tray is built into `tauri` core behind `tray-icon` feature. |
+| Mutate individual menu items after build | Tauri 2 menus are immutable. Rebuild entire menu + `set_menu()`. |
+| Use `Submenu` for provider grouping | CLIManager only has 2 CLI types (Claude Code, Codex). Flat menu with disabled `MenuItem` headers and `CheckMenuItem` providers is simpler and more accessible. |
+| Add `protocol-asset` feature | Only needed for `asset://` protocol. Not needed for tray. cc-switch uses it for other features. |
+| Skip `icon_as_template(true)` on macOS | Without template mode, icon won't adapt to light/dark menu bar. |
+| Use `app.default_window_icon()` as tray icon | App icons are colored and too large for menu bar. Use a dedicated 22x22 template icon. |
+
+---
 
 ## Alternatives Considered
 
 | Category | Recommended | Alternative | Why Not |
 |----------|-------------|-------------|---------|
-| Frontend framework | React 18 | React 19 | Server Components irrelevant in Tauri. use() hook not needed. Risk of double-render from Strict Mode in Concurrent features. Ecosystem (shadcn/ui, TanStack Query) most tested against React 18. |
-| Frontend framework | React | Solid.js / Svelte | PROJECT.md specifies React. cc-switch uses React. Largest ecosystem, easiest to hire/maintain. |
-| CSS framework | TailwindCSS 3 | TailwindCSS 4 | TW4 rewrites config format (CSS-based), breaking shadcn/ui v0 patterns. Migrate later when shadcn/ui v2 stabilizes on TW4. |
-| Component library | shadcn/ui (copy-paste) | Ant Design / MUI | shadcn/ui is lighter, more customizable, macOS-native feel. Ant/MUI are heavy, opinionated, hard to match macOS aesthetics. |
-| State management | TanStack Query | Zustand / Redux | TanStack Query handles "server state" (IPC calls) perfectly. No need for global client state manager -- React context + useReducer handles the minimal UI state. |
-| i18n | i18next | react-intl / LinguiJS | i18next is proven in cc-switch, largest ecosystem, simplest bundled-JSON setup for 2 languages. |
-| TOML editing | toml_edit | toml crate | `toml` crate loses comments and formatting on round-trip. `toml_edit` preserves document structure -- essential for surgical patching. |
-| File watching | notify 7 | inotify/FSEvents directly | `notify` abstracts platform differences. FSEvents-specific code would lock us to macOS with no future portability. |
-| File watching | notify (Rust) | chokidar (JS) | File watching must happen in Rust backend (closer to OS, no WebView overhead, can run before/after window is visible). |
-| Data storage | JSON files (per-provider) | SQLite | PROJECT.md explicitly excludes SQLite. JSON files are iCloud-safe (no lock conflicts), human-readable, easy to debug. |
-| Data storage | JSON files | tauri-plugin-store | plugin-store is for device-local KV settings only. Provider data needs individual files for iCloud sync granularity. |
-| TOML parsing (frontend) | smol-toml | @iarna/toml | smol-toml is smaller, ESM-native, actively maintained. Used by cc-switch for frontend TOML display/validation. |
-| Package manager | pnpm | npm / yarn | pnpm is faster, stricter (no phantom dependencies), better monorepo support. cc-switch uses it. |
-| Animations | framer-motion | CSS transitions | framer-motion handles list reorder animations (AnimatePresence) that pure CSS cannot. Worth the 30KB for provider list UX. |
-| Error handling | thiserror + anyhow | manual Error impl | thiserror for library types, anyhow for command handlers. Standard Rust pattern, minimal boilerplate. |
+| Tray implementation layer | Rust-only (`tauri::tray`) | JS-side (`@tauri-apps/api/tray`) | Tray must function when window is hidden; Rust is the correct layer |
+| Menu updates | Full rebuild + `set_menu()` | Individual item mutation | Tauri 2 menus are immutable post-build; rebuild is the only option |
+| Active provider display | `CheckMenuItem` with native checkmark | `MenuItem` with emoji/text prefix | `CheckMenuItem` is semantic, native, handles check state automatically |
+| Dock icon behavior | Toggle Accessory/Regular on hide/show | Always hide dock icon | Users expect dock icon when window is visible; toggling matches macOS convention |
+| Tray icon asset | Monochrome template PNG | Colored app icon | macOS HIG mandates monochrome template icons in menu bar |
+| Menu structure | Flat with section headers | Nested submenus per CLI | Flat is faster to navigate; only 2 CLI types don't warrant nesting |
 
-## What NOT to Use
+---
 
-| Technology | Reason |
-|------------|--------|
-| SQLite / rusqlite | Explicit project decision. SQLite in iCloud Drive is a known disaster (see icloud-sync-root-cause-zh.md). |
-| Electron | Tauri 2 is the project constraint. Electron would be 10x larger binary. |
-| Redux / MobX / Jotai | Over-engineering for this app's state needs. TanStack Query + React context is sufficient. |
-| Next.js / Remix | SSR frameworks are meaningless in Tauri. |
-| tauri-plugin-fs | CLIManager needs surgical file operations (read-modify-write specific fields). The plugin-fs API is too high-level. Use direct Rust std::fs for precise control. |
-| tauri-plugin-updater | Not needed for v1 MVP. Add when distributing outside dev machine. |
-| axum / hyper / tower | cc-switch uses these for its local proxy server. CLIManager has no proxy feature -- strip them. |
-| reqwest | No HTTP requests needed in v1 (no proxy, no WebDAV, no API calls). |
-| rquickjs | cc-switch uses this for JS eval in proxy. Not needed. |
-| zip / serde_yaml | cc-switch uses for skill installation. Not in scope. |
-| CodeMirror | cc-switch uses for config editor. CLIManager does simple form-based editing, not raw config editing. |
-| recharts | cc-switch uses for usage statistics. Not in scope. |
-| react-hook-form | Over-engineering for the simple Provider forms in CLIManager. Use controlled components + Zod validation. Add later if forms get complex. |
-| dnd-kit | cc-switch uses for provider reorder drag. Not MVP -- add in v2 if users want custom ordering. |
+## Integration Points with Existing v1.0 Code
 
-## Architecture-Significant Stack Decisions
+The tray feature integrates with existing code at these points:
 
-### 1. Surgical JSON Patching Strategy (Rust)
+| Existing Code | Integration |
+|---------------|-------------|
+| `lib.rs` `run()` function | Add `.on_window_event()` for close-to-tray; add tray builder in `.setup()` |
+| `commands::provider::set_active_provider` | After switching, call tray menu rebuild |
+| `watcher::start_file_watcher` | When iCloud sync triggers provider refresh, also rebuild tray menu |
+| `storage` module | Tray reads provider list + active provider via existing storage APIs |
+| i18next translations | Add tray-specific strings: "Show Window", "Quit", "No providers" |
 
-Use `serde_json::Value` as the intermediate representation for read-modify-write:
+No changes needed to: `adapter`, `provider` (model), `error`, `commands::onboarding`.
 
-```rust
-// Read existing config
-let content = std::fs::read_to_string(&config_path)?;
-let mut doc: serde_json::Value = serde_json::from_str(&content)?;
+---
 
-// Surgical patch -- only modify target fields
-if let Some(obj) = doc.as_object_mut() {
-    obj.insert("apiKey".to_string(), serde_json::Value::String(new_key));
-    obj.insert("model".to_string(), serde_json::Value::String(new_model));
-    // All other fields preserved
-}
-
-// Write back
-let output = serde_json::to_string_pretty(&doc)?;
-std::fs::write(&config_path, output)?;
-```
-
-Note: `serde_json::Value` preserves all fields but does NOT preserve key order or formatting. For JSON configs this is acceptable (JSON spec says objects are unordered). If comment preservation matters (e.g., JSONC), use `jsonc-parser` on the frontend or a Rust JSONC crate.
-
-### 2. Surgical TOML Patching Strategy (Rust)
-
-Use `toml_edit::DocumentMut` to preserve formatting and comments:
-
-```rust
-use toml_edit::DocumentMut;
-
-let content = std::fs::read_to_string(&config_path)?;
-let mut doc: DocumentMut = content.parse()?;
-
-// Surgical patch -- preserves all formatting, comments, other keys
-doc["model"] = toml_edit::value("new-model-name");
-doc["api_key"] = toml_edit::value("sk-xxx");
-
-std::fs::write(&config_path, doc.to_string())?;
-```
-
-### 3. File Watcher Architecture (Rust)
-
-```rust
-use notify::{RecommendedWatcher, RecursiveMode, Watcher};
-use notify_debouncer_full::{new_debouncer, DebounceEventResult};
-
-// Watch iCloud Drive provider directory
-let (tx, rx) = std::sync::mpsc::channel();
-let mut debouncer = new_debouncer(
-    Duration::from_millis(500), // 500ms debounce for iCloud sync storms
-    None,
-    tx,
-)?;
-debouncer.watcher().watch(&icloud_provider_dir, RecursiveMode::NonRecursive)?;
-
-// In a tokio task, receive events and emit to frontend
-for result in rx {
-    match result {
-        Ok(events) => {
-            // Filter for .json file changes
-            // Emit Tauri event to frontend for UI refresh
-            app_handle.emit("providers-changed", payload)?;
-        }
-        Err(errors) => { /* log */ }
-    }
-}
-```
-
-### 4. Data Storage Layout
-
-```
-# iCloud Drive (synced) -- one file per provider
-~/Library/Mobile Documents/com~apple~CloudDocs/CLIManager/
-  providers/
-    {uuid}.json          # One provider per file
-  active-provider.json   # Which provider is currently active (per-device override below)
-
-# Device-local (NOT synced)
-~/.cli-manager/
-  device-settings.json   # Current active provider for THIS device, language, window state
-```
-
-### 5. i18n Setup (Frontend)
-
-Follow cc-switch's proven pattern -- bundled JSON, no async loading:
-
-```
-src/
-  i18n/
-    index.ts             # i18n.init() with bundled resources
-    locales/
-      zh.json            # Chinese (default)
-      en.json            # English (fallback)
-```
-
-Two languages with ~200 keys each. No need for lazy loading or namespace splitting at this scale. Store language preference in `tauri-plugin-store` (device-local).
-
-## Installation
-
-```bash
-# Scaffold Tauri 2 + React + TypeScript project
-pnpm create tauri-app cli-manager --template react-ts
-
-# Frontend core
-pnpm add @tauri-apps/api @tauri-apps/plugin-dialog @tauri-apps/plugin-process @tauri-apps/plugin-store
-pnpm add @tanstack/react-query
-pnpm add i18next react-i18next
-pnpm add zod
-pnpm add sonner
-pnpm add lucide-react
-pnpm add clsx tailwind-merge class-variance-authority
-pnpm add framer-motion
-
-# Frontend dev
-pnpm add -D @tauri-apps/cli
-pnpm add -D tailwindcss@^3.4 postcss autoprefixer
-pnpm add -D vitest @testing-library/react @testing-library/jest-dom
-pnpm add -D prettier
-
-# shadcn/ui -- init then add components as needed
-pnpm dlx shadcn-ui@latest init
-pnpm dlx shadcn-ui@latest add button dialog input label select switch tabs toast
-```
+## Installation Summary
 
 ```toml
-# Cargo.toml [dependencies]
-tauri = { version = "2.8", features = ["tray-icon"] }
-tauri-plugin-log = "2"
-tauri-plugin-dialog = "2"
-tauri-plugin-process = "2"
-tauri-plugin-store = "2"
-tauri-plugin-single-instance = "2"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-toml = "0.8"
-toml_edit = "0.22"
-notify = "7"
-notify-debouncer-full = "0.4"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
-dirs = "5.0"
-uuid = { version = "1.11", features = ["v4"] }
-chrono = { version = "0.4", features = ["serde"] }
-thiserror = "2.0"
-anyhow = "1.0"
-log = "0.4"
-indexmap = { version = "2", features = ["serde"] }
-
-[build-dependencies]
-tauri-build = { version = "2.4", features = [] }
-
-[dev-dependencies]
-tempfile = "3"
-serial_test = "3"
+# src-tauri/Cargo.toml -- single dependency line change
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
 ```
 
-## Version Verification Notes
+No `npm install`. No new Rust crates. No config changes. Two icon assets to create.
 
-| Item | Source | Confidence | Notes |
-|------|--------|------------|-------|
-| Tauri 2.8.x | cc-switch Cargo.toml + package.json (actively maintained, v3.12.0) | HIGH | Real dependency from working project |
-| React 18.2 | cc-switch package.json | HIGH | Deliberately not React 19 |
-| Vite ^7.3 | cc-switch package.json | MEDIUM | cc-switch uses ^7.3.0; verify scaffolded version |
-| TailwindCSS 3.4 | cc-switch package.json | HIGH | Explicitly avoid TW4 for shadcn compat |
-| i18next ^25 | cc-switch package.json | HIGH | Working i18n implementation exists in reference |
-| toml_edit 0.22 | cc-switch Cargo.toml | HIGH | Proven surgical TOML editing in production |
-| notify 7.x | Training data (May 2025 knowledge cutoff) | MEDIUM | notify 6 was stable; 7.0 may or may not be released. Fallback: `notify = "6"` with `notify-debouncer-full = "0.3"`. Verify on crates.io at build time. |
-| zod ^4 | cc-switch package.json uses ^4.1.12 | MEDIUM | Zod 4 was released mid-2025. Verify stability. Fallback: ^3.23. |
+---
 
 ## Sources
 
-- cc-switch `package.json` (v3.12.0) -- `/Users/kelin/Workspace/CLIManager/cc-switch/package.json`
-- cc-switch `Cargo.toml` -- `/Users/kelin/Workspace/CLIManager/cc-switch/src-tauri/Cargo.toml`
-- cc-switch i18n setup -- `/Users/kelin/Workspace/CLIManager/cc-switch/src/i18n/index.ts`
-- cc-switch TOML utils -- `/Users/kelin/Workspace/CLIManager/cc-switch/src/utils/tomlUtils.ts`
-- cc-switch toml_edit usage -- `cc-switch/src-tauri/src/services/provider/live.rs`
-- PROJECT.md constraints -- `/Users/kelin/Workspace/CLIManager/.planning/PROJECT.md`
-- iCloud sync root cause analysis -- `/Users/kelin/Workspace/CLIManager/icloud-sync-root-cause-zh.md`
-- cc-switch reference notes -- `/Users/kelin/Workspace/CLIManager/cc-switch-ref-notes-zh.md`
-- Training data (Claude, May 2025 cutoff) -- Used for: notify crate version, notify-debouncer-full, general Rust ecosystem knowledge
+- [Tauri 2 System Tray Guide](https://v2.tauri.app/learn/system-tray/) -- official documentation (HIGH confidence)
+- [Tauri 2 Tray JS API Reference](https://v2.tauri.app/reference/javascript/api/namespacetray/) -- official API reference
+- [Tauri Feature Flags](https://lib.rs/crates/tauri/features) -- Cargo feature reference
+- [Tauri GitHub Discussion #2684 -- Close to Tray](https://github.com/tauri-apps/tauri/discussions/2684) -- community pattern for close-to-tray
+- [Tauri GitHub Discussion #6038 -- macOS Dock Hide](https://github.com/tauri-apps/tauri/discussions/6038) -- ActivationPolicy pattern
+- [Tauri GitHub Discussion #10774 -- Dock Toggle](https://github.com/tauri-apps/tauri/discussions/10774) -- dynamic dock visibility toggle
+- cc-switch `src-tauri/src/tray.rs` -- working reference: CheckMenuItem, dynamic menu rebuild, ActivationPolicy, i18n tray texts
+- cc-switch `src-tauri/src/lib.rs` -- working reference: TrayIconBuilder setup, on_window_event close-to-tray, macOS template icon loading
+- cc-switch `src-tauri/Cargo.toml` -- confirmed features: `tray-icon`, `image-png`

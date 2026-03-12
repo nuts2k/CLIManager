@@ -1,353 +1,242 @@
-# Domain Pitfalls
+# Pitfalls Research
 
-**Domain:** AI CLI Configuration Manager (Desktop App with iCloud Sync)
-**Project:** CLIManager
-**Researched:** 2026-03-10
-
----
+**Domain:** Adding system tray to existing Tauri 2 desktop app (CLIManager v1.1)
+**Researched:** 2026-03-12
+**Confidence:** HIGH (verified against Tauri GitHub issues, official docs, and cc-switch reference implementation)
 
 ## Critical Pitfalls
 
-Mistakes that cause rewrites, data loss, or fundamental architecture changes. Each of these was either directly observed in cc-switch or is a highly probable risk given the project's design constraints.
+### Pitfall 1: Stale Tray Menu After Provider Changes
+
+**What goes wrong:**
+The tray menu shows an outdated provider list or wrong active-provider checkmark. Users click a provider that was deleted, or the checkmark stays on the old provider after switching via the main window. This is the single most likely bug in this milestone.
+
+**Why it happens:**
+CLIManager has three sources of provider state changes: (1) user actions in the main window UI, (2) iCloud sync via FSEvents watcher, and (3) tray menu clicks themselves. The tray menu is a static native menu object -- it does not automatically reflect state changes. In Tauri 2, there is no API to modify individual menu items in-place; the entire menu must be rebuilt and replaced via `tray.set_menu(Some(new_menu))` ([GitHub Issue #9280](https://github.com/tauri-apps/tauri/issues/9280)). If any state-change path forgets to trigger a menu rebuild, the menu goes stale.
+
+**How to avoid:**
+- Create a single `rebuild_tray_menu(app_handle)` function that reads current provider list + active provider from storage and calls `tray.set_menu()`.
+- Call this function from exactly three places: (1) after `set_active_provider` command completes, (2) inside the FSEvents watcher `process_events` after re-patching, (3) after any provider CRUD operation (create/update/delete).
+- The cc-switch reference code (`tray.rs` lines 260, 308) shows this pattern -- every provider click rebuilds the menu. Follow it, but also hook into iCloud sync events which cc-switch handles differently.
+- Consider emitting a Tauri event (e.g., `"tray-menu-stale"`) from the watcher and CRUD commands; listen for it in a centralized handler that rebuilds the menu. This avoids scattering `rebuild_tray_menu` calls across the codebase.
+
+**Warning signs:**
+- Switching provider via main window does not update tray checkmark.
+- Adding/deleting a provider does not change tray menu item count.
+- After iCloud sync from another device, tray still shows old state.
+
+**Phase to address:**
+Phase 2 (Provider Menu) -- build the rebuild mechanism from day one when adding provider items to the menu. But the `rebuild_tray_menu` function signature should be designed in Phase 1 (Tray Foundation) even if the menu is initially simple.
 
 ---
 
-### Pitfall 1: Full-File Rewrite Destroys User's Other Settings
+### Pitfall 2: Window Close vs. Hide -- Breaking the "Close to Tray" Contract
 
-**What goes wrong:** When switching providers, the app serializes its internal model of the config and writes the entire file. Any fields the app does not track (user-added settings, comments, custom formatting) are silently destroyed.
+**What goes wrong:**
+On macOS, clicking the red window close button either (a) kills the entire app (no tray persistence) or (b) hides the window but leaves a ghost dock icon, or (c) prevents Cmd+Q from actually quitting. Users lose trust when the app behavior is unpredictable.
 
-**Why it happens:** It is the path of least resistance to serialize a struct to JSON and write it. The developer thinks "I'm writing the correct config" but forgets the file has more content than the app knows about.
+**Why it happens:**
+Tauri 2 requires intercepting `WindowEvent::CloseRequested` in `on_window_event`, calling `api.prevent_close()` and `window.hide()`. But the default Tauri behavior exits the process when all windows are destroyed. If you use `RunEvent::ExitRequested` with `api.prevent_exit()` instead of hiding, it creates an infinite loop on macOS ([GitHub Discussion #11489](https://github.com/tauri-apps/tauri/discussions/11489)). The correct approach is: hide the window (never actually close it) + set `ActivationPolicy::Accessory` to remove the dock icon.
 
-**Consequences:**
-- Users lose `~/.claude/settings.json` customizations (permissions, tool blocks, behavioral settings, custom model configs) every time they switch providers.
-- Users stop trusting the tool and revert to manual editing.
-- This was cc-switch's **number one reported bug**. The `write_json_file(&path, &settings)` call in `write_live_snapshot` (live.rs:646) replaces the entire `settings.json` with only the provider fields.
+**How to avoid:**
+```rust
+.on_window_event(|window, event| {
+    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+        api.prevent_close();
+        let _ = window.hide();
+        #[cfg(target_os = "macos")]
+        {
+            use tauri::Manager;
+            let _ = window.app_handle().set_activation_policy(
+                tauri::ActivationPolicy::Accessory
+            );
+        }
+    }
+})
+```
+- The tray "Show Main Window" item must call `window.show()` + `window.set_focus()` + restore `ActivationPolicy::Regular` to bring back the dock icon.
+- The tray "Quit" item must call `app.exit(0)` -- this is the only way to actually exit.
+- cc-switch reference (`lib.rs` lines 231-247) implements exactly this pattern with `apply_tray_policy()`. Reuse the same structure.
+- Note: CLIManager currently has NO `on_window_event` handler in `lib.rs`. This is the biggest code change in Phase 1.
 
-**Prevention:**
-1. **Read-Modify-Write (surgical patch):** Read the current file, parse it, modify only the target fields (API key, model, base URL), write back the complete document.
-2. **Field allowlist:** Explicitly enumerate which fields the app is authorized to touch. Never write fields outside this list.
-3. **Snapshot diffing in tests:** Before/after test that creates a settings.json with extra fields, performs a switch, and asserts extra fields survive.
-4. **Never serialize your internal model directly to the config file.** The internal Provider struct and the CLI config file are different schemas.
+**Warning signs:**
+- After closing window, tray icon disappears (app actually quit).
+- After closing window, dock icon persists (ActivationPolicy not toggled).
+- Cmd+Q does not quit the app (no way to exit except force-kill).
+- Re-opening from tray shows blank/stale window content.
 
-**Detection (warning signs):**
-- Any code path where you serialize a data structure and write it as the entire file contents.
-- `serde_json::to_string_pretty(provider)` flowing into a file write without a merge step.
-- Tests that only check "did the target fields change" without checking "did other fields survive."
-
-**Phase:** Must be solved in the **core architecture phase** (Phase 1). This is the project's raison d'etre. Get this wrong and nothing else matters.
-
----
-
-### Pitfall 2: iCloud Sync of SQLite or Device-Local State
-
-**What goes wrong:** Putting SQLite databases, device-specific settings, or "current active provider" state into an iCloud-synced directory causes conflicts, corruption, and "state bounce" across devices.
-
-**Why it happens:** Developers want "everything synced" and place the entire app data directory under iCloud Drive. iCloud is eventually consistent with no cross-device file locking, no multi-file transaction guarantees, and no ordering guarantees for renames.
-
-**Consequences (all observed in cc-switch):**
-- **SQLite corruption:** iCloud syncs a half-written WAL or journal file. The other device opens a corrupted database. SQLite's `PRAGMA incremental_vacuum` and startup cleanup writes cause write contention even when the user does nothing.
-- **State bounce:** Device A sets "current provider = X", syncs. Device B sets "current provider = Y", syncs. Both keep flipping back and forth as iCloud propagates conflicting writes.
-- **Half-file propagation:** `settings.json` written via `truncate + write` (not atomic rename) means iCloud may sync the truncated-but-not-yet-written state -- an empty file -- to the other device.
-- **Conflicted copies:** iCloud creates `settings (conflicted copy).json` which the app ignores, silently losing data.
-
-**Prevention:**
-1. **Strict data layer separation** (already in CLIManager's design -- validate it stays enforced):
-   - `~/Library/Mobile Documents/...CLIManager/` (iCloud): Only per-provider JSON files. One file per provider. No SQLite. No device state.
-   - `~/.cli-manager/` (local): Device-specific state (current active provider, device path overrides, cached data).
-2. **Never put SQLite in a cloud-synced directory.** This is a well-documented anti-pattern. SQLite's own documentation warns against it.
-3. **Never put "current active provider" in the sync layer.** Each device needs its own active selection.
-4. **Use atomic rename (tmp + rename) for iCloud files**, not truncate + write. Even though iCloud doesn't guarantee cross-device atomicity, it significantly reduces the window for syncing a partial file.
-
-**Detection (warning signs):**
-- Any `.db` file path resolving into `~/Library/Mobile Documents/`.
-- "Current provider" or "device ID" fields in a synced file.
-- User reports of settings "jumping back" to a previous state.
-
-**Phase:** Must be enforced in **architecture/data layer phase** (Phase 1). The sync vs. local boundary is a foundational decision.
+**Phase to address:**
+Phase 1 (Tray Foundation) -- this is core lifecycle behavior that must work before any menu features.
 
 ---
 
-### Pitfall 3: Multi-File Config Writes Without Transactional Semantics
+### Pitfall 3: Tray Icon Not Appearing on macOS
 
-**What goes wrong:** A single provider switch writes multiple files (e.g., Codex requires both `auth.json` AND `config.toml`). If the second write fails or iCloud syncs only one file to another device, the result is a "half-configured" state.
+**What goes wrong:**
+The tray icon silently fails to appear in the menu bar. No error, no crash -- just nothing visible. This has been a recurring issue across multiple Tauri 2 versions.
 
-**Why it happens:** Some CLIs split their config across multiple files (Codex: auth.json + config.toml; Gemini: .env + settings.json). There is no filesystem-level transaction that can atomically update two files.
+**Why it happens:**
+Three common causes:
+1. **Dual configuration:** Setting tray icon in both `tauri.conf.json` (via `trayIcon` config) AND programmatically via `TrayIconBuilder` causes duplicate or missing icons ([Issue #10912](https://github.com/tauri-apps/tauri/issues/10912), [Issue #11931](https://github.com/tauri-apps/tauri/issues/11931)).
+2. **Wrong icon format:** macOS menu bar icons must be PNG with specific size constraints. Using the app icon (which is often too large or wrong format) causes silent failure.
+3. **Missing `icon_as_template(true)`:** Without this, macOS may not render the icon correctly in dark mode, making it invisible on dark menu bars.
 
-**Consequences:**
-- Codex sees valid auth credentials but wrong model/config, or vice versa.
-- cc-switch implemented a two-phase write with rollback for Codex (`write_codex_live_atomic` in codex_config.rs:62-109): write auth.json first, write config.toml second, rollback auth.json if second fails. But this is best-effort -- a crash between steps 1 and 2 leaves an inconsistent state.
-- iCloud magnifies this: it may sync `auth.json` immediately but delay `config.toml` by seconds or minutes.
+**How to avoid:**
+- Configure tray ONLY programmatically via `TrayIconBuilder` in Rust `setup()`. Do NOT add `trayIcon` to `tauri.conf.json`. CLIManager's current `tauri.conf.json` has no `trayIcon` section -- keep it that way.
+- Use a dedicated tray icon PNG file (22x22 @1x, 44x44 @2x for macOS). Name it with `_template` suffix and call `.icon_as_template(true)` on the builder.
+- Add the `tray-icon` and `image-png` features to the `tauri` dependency in `Cargo.toml`.
+- Use `include_bytes!` to embed the icon in the binary, avoiding runtime path resolution issues. The cc-switch reference uses `include_bytes!("../icons/tray/macos/statusbar_template_3x.png")` (`lib.rs` line 178) -- this is the proven pattern.
+- Provide a fallback: if the template icon fails to load, fall back to `app.default_window_icon()`.
 
-**Prevention:**
-1. **For local writes (no iCloud involved):** Use the two-phase approach with rollback. It is imperfect but the best available option. Accept the tiny crash-window risk.
-2. **Minimize multi-file writes:** If the CLI adapter for a tool requires writing N files, treat this as a single logical operation and document the ordering + rollback strategy.
-3. **For iCloud-synced Provider files:** CLIManager's design of one-file-per-provider in iCloud avoids this for the sync layer. But the *live config write* (which patches the CLI's actual config files) still faces this problem for multi-file CLIs like Codex.
-4. **Validation on read:** When reading a multi-file config, validate that all files are consistent. If they are not, warn the user rather than silently using partial state.
+**Warning signs:**
+- Icon works in `cargo tauri dev` but not in release build (path resolution differs).
+- Icon appears on external display but not built-in display ([Discussion #9365](https://github.com/orgs/tauri-apps/discussions/9365)).
+- Icon works in light mode but invisible in dark mode.
 
-**Detection (warning signs):**
-- Any CLI adapter that writes to more than one file path.
-- Error handling that catches failures on the second write but does not rollback the first.
-- Tests that only verify "did both files get written" but not "what happens if the second write fails."
-
-**Phase:** Must be handled per-CLI-adapter in **adapter implementation phase** (Phase 2). Each adapter must document its file write strategy.
-
----
-
-### Pitfall 4: Read-Modify-Write Race Condition with CLI
-
-**What goes wrong:** CLIManager reads `settings.json`, modifies provider fields, and writes it back. Between the read and write, the CLI (or the user) also modifies `settings.json`. CLIManager's write overwrites the CLI's change.
-
-**Why it happens:** Read-Modify-Write without file locking has an inherent TOCTOU (time-of-check/time-of-use) race window. The project explicitly accepts this risk ("CLI and CLIManager simultaneously writing the same file has very low probability"), which is a reasonable tradeoff -- but only if the window is minimized.
-
-**Consequences:**
-- User changes a setting in Claude Code CLI, then immediately switches provider in CLIManager. The CLI change is lost.
-- This is much less severe than the full-file-rewrite pitfall (it only loses changes made during the tiny race window, not all non-tracked fields). But it can still frustrate users.
-
-**Prevention:**
-1. **Minimize the read-write gap:** Read the file, modify in memory, and write back as a single tight sequence. Do not hold the parsed content in memory for extended periods before writing.
-2. **Do not cache the file content across operations.** Re-read the file fresh for every write operation.
-3. **Surgical patch scope:** Only modify the exact fields being changed. The smaller the diff, the lower the probability of conflicting with a concurrent change to a *different* field.
-4. **Consider file modification time check:** After reading, check `mtime` before writing. If the file changed between read and write, re-read and re-apply the patch. This is not bulletproof but shrinks the race window to near zero.
-5. **Do NOT add full file locking.** The project decision to skip file locks is correct. File locks between a Tauri app and various CLI tools (which do not respect advisory locks) would add complexity with no benefit.
-
-**Detection (warning signs):**
-- File content stored in app state and reused across multiple write operations.
-- Long-running async operations between file read and file write.
-- Write operations that do not re-read the file first.
-
-**Phase:** Core to the **surgical patch implementation** (Phase 1). The Read-Modify-Write loop is the most important code path in the project.
+**Phase to address:**
+Phase 1 (Tray Foundation) -- first thing to validate. No point building menu features on an invisible tray.
 
 ---
 
-### Pitfall 5: CLI Config Format Changes Break the App Silently
+### Pitfall 4: FSEvents Watcher and Tray Menu Rebuild Race Condition
 
-**What goes wrong:** A CLI tool updates its config format (new fields, renamed fields, structural changes), and CLIManager either crashes, corrupts the config, or silently fails to switch providers.
+**What goes wrong:**
+When iCloud syncs provider changes, the FSEvents watcher fires, triggers re-patching of CLI configs, and should update the tray menu. But the tray menu rebuild reads provider state from disk while the watcher is still processing events, resulting in a menu that reflects a partially-synced state. Or the tray rebuild triggers before the new provider file is fully written to disk.
 
-**Why it happens:** CLIManager must parse config files it does not own. These files are defined by external projects (Claude Code, Codex) that can change their schema at any time without notice.
+**Why it happens:**
+CLIManager's existing watcher (`watcher/mod.rs`) uses a 500ms debounce and a `SelfWriteTracker` to suppress self-triggered events. The tray menu rebuild adds a new consumer to this event pipeline. If the rebuild is triggered inside `process_events` synchronously, it competes with the re-patch write. If triggered asynchronously, it might read stale disk state.
 
-**Consequences:**
-- Claude Code adds a new required field. CLIManager does not know about it. After a switch, Claude Code fails to start or behaves unexpectedly.
-- Claude Code renames `settings.json` to something else (it already has a legacy `claude.json` path). CLIManager writes to the old path; Claude Code ignores it.
-- Codex changes its `config.toml` structure. CLIManager's TOML merge logic produces invalid config.
+**How to avoid:**
+- Trigger tray menu rebuild AFTER `sync_changed_active_providers` completes successfully (not before, not in parallel). The existing `process_events` function already calls `sync_changed_active_providers` first, then emits `"providers-changed"`. Add the tray rebuild between these two steps, or immediately after both.
+- The `SelfWriteTracker` only tracks provider file writes in the iCloud directory. The tray rebuild reads provider files but does not write them, so no risk of self-write loops from the tray rebuild itself. But if the tray switching logic writes to `local_settings` (which the tracker does not monitor), ensure no watcher monitors the local settings file.
+- Do NOT start a second watcher for local settings just to update the tray. Use explicit function calls after state changes.
 
-**Prevention:**
-1. **Defensive parsing:** Never assume a fixed schema. Parse as `serde_json::Value` (dynamic), not as a rigid struct. This is what the surgical patch approach naturally does -- it treats the file as an opaque document and only touches known fields.
-2. **Preserve unknown fields:** The Read-Modify-Write approach inherently preserves fields CLIManager does not understand, which is exactly right.
-3. **Version detection:** If the CLI has a version indicator in its config or can be queried (`claude --version`), use it to select the correct adapter behavior.
-4. **Graceful degradation:** If a required target field path does not exist in the config, warn the user rather than crashing or creating it blindly.
-5. **Integration tests against real CLI configs:** Maintain a set of sample config files from different CLI versions. Run tests against them to detect breakage early.
-6. **Monitor CLI changelogs:** Claude Code and Codex are actively developed. Subscribe to their release notes.
+**Warning signs:**
+- Tray menu shows intermediate state during iCloud sync bursts.
+- Menu shows a provider that was just deleted on another device.
+- SelfWriteTracker logs show unexpected entries after tray operations.
 
-**Detection (warning signs):**
-- Hard-coded field paths without fallback logic.
-- Strict struct deserialization (`serde(deny_unknown_fields)`).
-- No tests using real-world config samples.
-- User reports of "switching worked last week but broke after CLI update."
-
-**Phase:** Ongoing concern, but the **adapter abstraction layer** (Phase 2) must be designed to accommodate this. The adapter interface should have a version/compatibility concept.
+**Phase to address:**
+Phase 2 (Provider Menu) -- when tray menu starts displaying provider state and needs to stay synchronized with the FSEvents pipeline.
 
 ---
 
-## Moderate Pitfalls
+### Pitfall 5: Tray Provider Switch Bypasses Existing Command Pipeline
+
+**What goes wrong:**
+The tray click handler calls provider-switching logic directly, bypassing the existing `set_active_provider` Tauri command. This creates a second code path for the same operation, leading to subtle differences: the tray path might skip validation, miss event emission to the frontend, or forget to update `SelfWriteTracker`.
+
+**Why it happens:**
+Tray menu event handlers run in the Rust backend (via `on_menu_event` callback on `TrayIconBuilder`). Developers are tempted to call internal functions directly rather than going through the Tauri command layer, because the command layer is designed for frontend invocation.
+
+**How to avoid:**
+- Extract the core logic of `set_active_provider` into a shared internal function. It already exists as `_set_active_provider_in`. Call this same function from both the Tauri command handler and the tray event handler.
+- After switching via tray, emit `"providers-changed"` event so the frontend UI also updates (even if the window is hidden, it should receive events and update state for when it is shown again).
+- The tray handler does not have access to `SelfWriteTracker` via Tauri command parameters, but it can access managed state via `app_handle.state::<SelfWriteTracker>()`. Use this to record self-writes just like `delete_provider` does (line 416 in `commands/provider.rs`).
+- The cc-switch reference (`tray.rs` lines 285-328) calls `crate::commands::switch_provider` from the tray handler and then emits events to the frontend -- follow this shared-function pattern.
+
+**Warning signs:**
+- Switching via tray works but main window UI does not reflect the change until refresh.
+- Switching via tray does not trigger CLI config patching.
+- iCloud watcher fires after tray switch (should be suppressed by SelfWriteTracker).
+
+**Phase to address:**
+Phase 2 (Provider Menu) -- when implementing the tray switch action.
 
 ---
 
-### Pitfall 6: FSEvents Debouncing and Infinite Loops
-
-**What goes wrong:** CLIManager watches the iCloud sync directory via FSEvents. When a synced Provider file changes, it re-reads and re-patches the CLI config. But CLIManager's own write also triggers FSEvents, causing a re-patch loop.
-
-**Prevention:**
-1. **Self-write suppression:** Maintain a "recently written by me" set of file paths with timestamps. When an FSEvents notification arrives, check if the file was written by CLIManager within the last N milliseconds. If so, ignore the event.
-2. **Debounce:** Coalesce rapid-fire FSEvents into a single handling event (e.g., 500ms debounce window).
-3. **Content comparison:** Before re-patching, compare the new provider data with what was last applied. If identical, skip the write.
-4. **Avoid watching the live config directory.** Only watch the iCloud Provider files directory. Never watch `~/.claude/` or `~/.codex/` -- that way lies infinite loops (write config -> detect change -> re-read -> re-write -> ...).
-
-**Detection (warning signs):**
-- CPU spikes after a provider switch.
-- Log entries showing repeated read-write cycles.
-- Config file `mtime` updating continuously.
-
-**Phase:** **File watching implementation** (Phase 2-3). Must be designed into the watcher from the start.
-
----
-
-### Pitfall 7: iCloud Drive Availability and Evicted Files
-
-**What goes wrong:** iCloud Drive can "evict" files (replace them with a stub/placeholder) to save local disk space. Reading an evicted file returns an error or empty content instead of the expected provider data.
-
-**Prevention:**
-1. **Check file materialization status** before reading. On macOS, use `NSURL` resource values (`NSURLUbiquitousItemIsDownloadedKey`, `NSURLUbiquitousItemDownloadingStatusKey`) or check for the `.icloud` placeholder prefix in filenames.
-2. **Trigger download** if the file is evicted: `NSFileManager.startDownloadingUbiquitousItem(at:)`.
-3. **Graceful handling:** If a provider file is evicted and cannot be downloaded (offline), show the provider as "syncing" in the UI rather than crashing or showing corrupt data.
-4. **Small file sizes help:** Per-provider JSON files are tiny (< 1KB). iCloud is unlikely to evict very small files, but the code should not assume this.
-
-**Detection (warning signs):**
-- Files in the iCloud container starting with `.` and ending with `.icloud` (placeholder format).
-- Read errors only on machines with low disk space or "Optimize Mac Storage" enabled.
-
-**Phase:** **iCloud sync layer** (Phase 2). Must be handled when implementing the sync directory reader.
-
----
-
-### Pitfall 8: First-Launch Import Corrupts Existing Config
-
-**What goes wrong:** On first launch, CLIManager scans existing CLI configs to create initial Provider entries. If this import logic is too aggressive or makes assumptions about the config structure, it can misparse fields or, worse, trigger a write-back that corrupts the original config.
-
-**Prevention:**
-1. **Import is read-only.** The first-launch import should ONLY read CLI configs and create Provider records in CLIManager's data store. It must NEVER write back to the CLI config files during import.
-2. **Partial import is OK.** If a field cannot be parsed, skip it and warn the user. Do not fail the entire import.
-3. **Preview before applying.** Show the user what was detected and let them confirm before creating providers.
-4. **Backup original.** Before any operation that writes to a CLI config file, create a timestamped backup copy (e.g., `settings.json.bak.1710072000`).
-
-**Detection (warning signs):**
-- Import code paths that call any `write_*` function.
-- Users reporting that their first launch "messed up" their CLI config.
-
-**Phase:** **First-launch experience** (Phase 2-3). The import flow must be carefully isolated from the write flow.
-
----
-
-### Pitfall 9: Provider Model Coupling to CLI Instead of Protocol
-
-**What goes wrong:** The Provider data model is designed around specific CLI tools (e.g., "this is a Claude Code provider", "this is a Codex provider") instead of around API protocols (Anthropic API, OpenAI-compatible API). Adding a new CLI that uses the same API protocol requires duplicating provider data.
-
-**Why it happens:** It feels natural to think "I'm configuring Claude Code" rather than "I'm configuring an Anthropic API endpoint." cc-switch fell into this pattern with per-app provider tables.
-
-**Prevention:**
-1. **Protocol-first modeling** (already planned): A Provider stores protocol-level data (API key, base URL, model, protocol type). CLI adapters translate this into CLI-specific config format.
-2. **Adapter pattern:** Each CLI has an adapter that knows how to read/write its config format. The adapter takes a protocol-level Provider and produces CLI-specific config patches.
-3. **Do not store CLI-specific config blobs in the Provider model.** cc-switch's `settings_config: Record<string, any>` stored the entire CLI config blob in the provider, making providers non-portable across CLIs.
-
-**Detection (warning signs):**
-- Provider struct containing fields like `claude_specific_setting` or `codex_auth_format`.
-- Provider CRUD requiring an `app_type` parameter.
-- Unable to share a single provider across multiple CLIs without duplication.
-
-**Phase:** **Data model design** (Phase 1). This is a foundational modeling decision.
-
----
-
-### Pitfall 10: Write Surface Amplification (One Switch = Many Writes)
-
-**What goes wrong:** A single "switch provider" action triggers writes to multiple systems: live config files, device settings, UI state, and (in cc-switch's case) MCP configs, skills, and database. Each additional write increases the probability of failure, partial state, and iCloud conflicts.
-
-**Why it happens:** Feature accumulation. As the app grows, more systems need to react to a provider switch. Without discipline, the switch code path becomes a cascade of side effects.
-
-**Consequences (observed in cc-switch):**
-- `sync_current_to_live` (live.rs:830-864) writes providers for ALL app types, then syncs ALL MCP configs, then syncs ALL skills. A single switch operation touches potentially dozens of files.
-- Each file write is an iCloud conflict opportunity.
-- If any write fails mid-cascade, the system is in a partially-switched state.
-
-**Prevention:**
-1. **v1: A switch only writes to the specific CLI's config files.** Nothing else. No MCP, no skills, no cascading writes.
-2. **Explicit write budget:** Document "a switch operation writes to exactly N files" for each CLI adapter. If adding a feature increases N, that is a design review trigger.
-3. **Lazy propagation:** If future features (MCP, skills) need to react to a switch, make them react lazily (on next access) rather than eagerly (write everything now).
-4. **Separate "sync all" from "switch one":** cc-switch conflated these operations. CLIManager should have a distinct "re-sync everything" command (for recovery) separate from the normal switch path.
-
-**Detection (warning signs):**
-- Switch handler calling more than the target CLI's adapter.
-- Write count per switch growing over time.
-- Functions named `sync_all_*` in the switch code path.
-
-**Phase:** **Architecture discipline** throughout all phases. Must be actively guarded against as features are added.
-
----
-
-## Minor Pitfalls
-
----
-
-### Pitfall 11: JSON Formatting and Comment Preservation
-
-**What goes wrong:** Some users hand-edit their CLI config files and add formatting preferences (indentation, key ordering) or use JSON5/JSONC formats with comments. Standard JSON serialization destroys comments and may reorder keys.
-
-**Prevention:**
-1. **For JSON files (Claude Code):** Use a format-preserving JSON parser if possible, or accept that standard `serde_json` will normalize formatting. Document this behavior.
-2. **For TOML files (Codex):** Use `toml_edit` (not `toml`) which preserves formatting, comments, and ordering. cc-switch already does this for TOML -- carry this forward.
-3. **For JSON5 files:** If supporting CLIs that use JSON5 (like OpenClaw), use a JSON5 parser. Standard JSON parsers will reject JSON5 syntax.
-4. **Minimize rewrite scope:** The surgical patch approach helps here -- if you only modify 2 fields, the rest of the file (including formatting around untouched fields) is preserved by the parse-modify-serialize cycle at the field level.
-
-**Phase:** **Adapter implementation** (Phase 2). Each adapter must choose the right parser.
-
----
-
-### Pitfall 12: API Key Exposure in Logs or Error Messages
-
-**What goes wrong:** Debug logging, error messages, or crash reports include raw API keys from provider configs.
-
-**Prevention:**
-1. **Never log provider config values.** Log provider IDs and names, never API keys or tokens.
-2. **Redact in error messages:** If an error includes config content, mask API keys (show first 4 + last 4 characters).
-3. **No API keys in Tauri IPC error strings.** The `.map_err(|e| e.to_string())` pattern used in Tauri commands can leak internal details to the frontend console.
-
-**Phase:** **All phases.** Establish a logging/error convention in Phase 1 and enforce it.
-
----
-
-### Pitfall 13: Blocking the Main Thread with File I/O
-
-**What goes wrong:** Tauri's command handlers run on the main thread by default. File I/O (especially reading configs, scanning directories for first-launch import, or waiting for iCloud file downloads) blocks the UI.
-
-**Prevention:**
-1. **Use `async` Tauri commands** for any operation involving file I/O.
-2. **Offload heavy operations** (directory scanning, multi-file writes) to a background thread via `tokio::spawn_blocking` or Tauri's async command infrastructure.
-3. **The switch operation should feel instant.** For a single JSON patch, the I/O is sub-millisecond. But if the switch cascades into multiple writes or triggers re-reads, it can stall.
-
-**Phase:** **Implementation** (Phase 1-2). Choose async-by-default for Tauri commands from the start.
-
----
-
-### Pitfall 14: Hardcoded Home Directory Assumptions
-
-**What goes wrong:** Assuming `~` always resolves correctly, or that CLI config directories are always at their default locations. Some users customize config paths via environment variables or symlinks.
-
-**Prevention:**
-1. **Support directory overrides** (already planned in CLIManager). Let users specify custom paths for each CLI's config directory.
-2. **Use `dirs::home_dir()` not `$HOME`** -- cc-switch learned this the hard way on Windows where `$HOME` may be injected by Git/MSYS and differ from the actual user directory.
-3. **Resolve symlinks carefully.** If `~/.claude` is a symlink, ensure the app follows it correctly and does not write to the symlink file itself.
-
-**Phase:** **Path resolution utilities** (Phase 1). Build a robust path module early.
-
----
-
-## Phase-Specific Warnings
-
-| Phase Topic | Likely Pitfall | Mitigation |
-|-------------|---------------|------------|
-| Surgical patch implementation | Full-file rewrite sneaking in via "convenience" code path | Code review rule: any `write_json_file(path, data)` where `data` is not the result of a read-modify cycle is a bug. |
-| Data model design | Coupling Provider to CLI instead of protocol | Enforce protocol-first modeling from day one. Provider has no `app_type` field. |
-| CLI adapter: Claude Code | `settings.json` format changes in new Claude Code versions | Parse as `Value`, not as typed struct. Test against real config samples. |
-| CLI adapter: Codex | Two-file write (auth.json + config.toml) partial failure | Implement two-phase write with rollback. Accept tiny crash-window risk. |
-| iCloud sync layer | Evicted files, placeholder detection | Use NSFileManager APIs to check download status before reads. |
-| iCloud sync layer | FSEvents infinite loop | Self-write suppression + debounce + content comparison. |
-| File watching | Watching live config dirs causes feedback loops | Only watch iCloud Provider directory. Never watch CLI config directories. |
-| First-launch import | Import accidentally writing back to CLI configs | Import function signature should not accept write handles. Make it structurally impossible to write during import. |
-| Provider switch | Write surface growing as features accumulate | Explicit write budget per switch. Phase 1 switch = exactly 1-2 file writes per CLI. |
-| i18n | Retrofitting i18n after shipping | Start with i18n framework in Phase 1. Much cheaper than adding later. |
-
----
-
-## Lessons from cc-switch (Direct Observations)
-
-These are not hypothetical -- they are bugs and design problems directly observed in the cc-switch codebase:
-
-1. **`atomic_write` gives false confidence.** cc-switch implemented tmp-file + rename (config.rs:183-238) and called it "atomic write." This is locally atomic but does NOT help with: (a) iCloud sync consistency, (b) cross-file transaction consistency, or (c) the full-file-rewrite-destroying-other-fields problem. The name "atomic" made developers feel safe when they were not.
-
-2. **`settings.json` written via truncate, not atomic rename.** The device settings file (settings.rs:405-439) used `OpenOptions(truncate(true))` instead of the tmp+rename pattern. iCloud could sync the truncated (empty) file to another device. Inconsistency in write strategies within the same codebase.
-
-3. **SQLite startup writes caused phantom conflicts.** Even with no user action, opening cc-switch ran `cleanup_old_stream_check_logs`, `rollup_and_prune`, and `PRAGMA incremental_vacuum` (database/mod.rs:138-151). On two devices with iCloud-synced db, this created write contention at every launch.
-
-4. **`sync_current_to_live` was a blast radius amplifier.** One switch triggered writes for ALL app types + ALL MCP configs + ALL skills (live.rs:830-864). What should have been a 1-file operation became a 10+ file operation.
-
-5. **Provider data was a CLI-specific config blob.** `settings_config: Record<string, any>` stored the entire CLI config structure per provider (types.ts:14-15), making providers non-portable and the data model fragile.
-
----
+## Technical Debt Patterns
+
+| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
+|----------|-------------------|----------------|-----------------|
+| Rebuilding entire menu on every state change | Simple, no item tracking needed | Menu flickers on large lists, O(n) disk reads on every change | Always acceptable at CLIManager's scale (<50 providers). Tauri 2 has no in-place menu update API anyway. |
+| `std::mem::forget(debouncer)` for watcher lifetime | Avoids managing debouncer ownership | Memory never freed, no clean shutdown | Acceptable -- already used in v1.0 watcher, single instance per app lifetime |
+| Hardcoding tray text in Rust without i18n | Fast to implement, no extra dependencies | Adding languages requires recompile, inconsistent with frontend i18n | NOT acceptable. CLIManager already uses i18next for the frontend. Tray texts should read the `language` setting from `LocalSettings` and use a Rust-side translation map. cc-switch does this (`TrayTexts::from_language` in tray.rs). |
+| Storing tray icon as `include_bytes!` | No file resolution issues at runtime | Larger binary, cannot change icon without recompile | Acceptable -- icon rarely changes, eliminates path resolution bugs that have caused real issues (see Pitfall 3) |
+
+## Integration Gotchas
+
+| Integration | Common Mistake | Correct Approach |
+|-------------|----------------|------------------|
+| FSEvents watcher + tray rebuild | Starting a second watcher for tray updates | Reuse existing watcher; add tray rebuild as a downstream consumer of the `process_events` pipeline |
+| `SelfWriteTracker` + tray writes | Not recording tray-initiated provider file writes in tracker | Call `tracker.record_write()` via `app_handle.state::<SelfWriteTracker>()` before any file write triggered by tray actions |
+| `ActivationPolicy` + window show/hide | Setting policy once at startup and forgetting to toggle | Toggle between `Regular` (window visible, dock icon shows) and `Accessory` (window hidden, dock icon hides) on every show/hide transition |
+| Frontend event listener + tray events | Assuming frontend does not need updates when window is hidden | Tauri events are delivered regardless of window visibility. Emit `"providers-changed"` from tray switch handler so frontend state stays fresh for when window is shown. |
+| `tauri.conf.json` tray config + `TrayIconBuilder` | Configuring tray icon in both places | Use ONLY `TrayIconBuilder` in Rust code. Remove any `trayIcon` section from `tauri.conf.json`. |
+| Tray `on_menu_event` + `CheckMenuItem` state | Expecting `CheckMenuItem` to auto-toggle state on click | Tauri CheckMenuItem toggles visually on click, but the underlying state may not match your app state. Always rebuild the menu after handling the click to ensure consistency. |
+
+## Performance Traps
+
+| Trap | Symptoms | Prevention | When It Breaks |
+|------|----------|------------|----------------|
+| Rebuilding tray menu on every FSEvents tick | Menu flickers during iCloud sync storms | The existing 500ms debounce already handles this. Rebuild tray WITHIN the debounced handler, never on raw events. | Never at CLIManager's scale |
+| Reading all provider files from disk on every tray rebuild | Slow menu open, visible lag | Acceptable at current scale. If providers grow beyond ~100, consider an in-memory cache updated by watcher events. | >100 provider files |
+| Blocking main thread during tray event handling | Tray menu becomes unresponsive, spinning cursor | Use `tauri::async_runtime::spawn_blocking` for provider switching (involves disk I/O). cc-switch does this correctly (`tray.rs` line 184). | Any provider switch involves multiple file reads + writes |
+| Creating new `Menu` objects without dropping old ones | Memory leak, gradual slowdown | `set_menu(Some(new_menu))` should drop the old menu. Verify this in testing. | After hundreds of menu rebuilds (frequent switching users) |
+
+## UX Pitfalls
+
+| Pitfall | User Impact | Better Approach |
+|---------|-------------|-----------------|
+| No visual feedback after tray provider switch | User unsure if switch worked, clicks again | Rebuild menu immediately so checkmark moves. Optionally set tray tooltip to active provider name. |
+| Tray menu shows raw provider IDs | Confusing, looks broken | Always display `provider.name`, never the UUID. Use provider ID only as menu item ID prefix (like cc-switch's `claude_{id}` pattern). |
+| No "current provider" indicator outside the menu | User must open menu to check what is active | Set tray tooltip to "CLIManager - [provider name]" using `tray.set_tooltip()`. Update on every switch. |
+| Close button behavior differs from other macOS apps | Users expect close = quit (most apps). Tray apps hide instead. No clear indication of this behavior. | Show a one-time notification or hint the first time the user closes the window: "CLIManager is still running in the menu bar." |
+| Quit in tray menu is the only way to exit | Users try Cmd+Q or close button, app does not quit | Respect Cmd+Q as a quit action (not hide). Only the red close button should hide to tray. This matches apps like Docker Desktop and 1Password. |
+| Menu shows providers for CLIs the user does not use | Clutter, confusion | Only show CLI sections that have at least one provider. Group by CLI with headers (cc-switch pattern). |
+
+## "Looks Done But Isn't" Checklist
+
+- [ ] **Close-to-tray:** Verify Cmd+Q actually quits the app (not just hides). Test both red close button (should hide) and Cmd+Q (should quit).
+- [ ] **Dock icon toggle:** After hiding window via close button, verify dock icon disappears. After showing from tray, verify dock icon returns.
+- [ ] **Tray icon appearance:** Verify icon appears in both light and dark macOS menu bar themes. Test with `icon_as_template(true)`.
+- [ ] **Menu state bidirectional sync:** Switch provider via main window, open tray menu, verify checkmark moved. Then switch via tray, verify main window UI updates.
+- [ ] **iCloud sync + tray:** Change provider on another device, wait for iCloud sync, verify tray menu on this device updates.
+- [ ] **App restart persistence:** Quit and relaunch. Verify tray icon appears AND menu shows correct provider state from `LocalSettings`.
+- [ ] **Window re-show:** Hide window via close button, then click "Show Main Window" in tray. Verify window appears, is focused, has correct content (not blank/stale).
+- [ ] **i18n in tray:** Switch language in settings, verify tray menu labels update on next rebuild.
+- [ ] **Provider CRUD + tray:** Create a new provider, verify it appears in tray. Delete a provider, verify it disappears from tray. Update a provider name, verify tray shows new name.
+- [ ] **Release build testing:** Test tray behavior in `cargo tauri build` output, not just `cargo tauri dev`. Icon paths and activation policy behave differently.
+
+## Recovery Strategies
+
+| Pitfall | Recovery Cost | Recovery Steps |
+|---------|---------------|----------------|
+| Stale tray menu | LOW | Add `rebuild_tray_menu` call to the missed code path. No data loss, just UI inconsistency. |
+| Window close kills app | MEDIUM | Add `on_window_event` handler to `lib.rs`. Requires testing all close/hide/show transitions carefully. |
+| Tray icon not appearing | LOW | Switch from config-based to programmatic icon setup. Use `include_bytes!` pattern. |
+| Duplicate tray icons | LOW | Remove `trayIcon` from `tauri.conf.json` if accidentally added. Use only `TrayIconBuilder`. |
+| Tray switch bypasses command pipeline | MEDIUM | Refactor to share `_set_active_provider_in`. Audit all state-change side effects (event emission, SelfWriteTracker, LocalSettings write). |
+| Race condition with watcher | MEDIUM | Ensure tray rebuild happens after `sync_changed_active_providers` completes, not before. Sequence within `process_events`. |
+| Cmd+Q cannot quit | LOW | Differentiate between `CloseRequested` from close button vs. Cmd+Q in the event handler. Only hide-to-tray on close button. |
+
+## Pitfall-to-Phase Mapping
+
+| Pitfall | Prevention Phase | Verification |
+|---------|------------------|--------------|
+| Tray icon not appearing | Phase 1: Tray Foundation | Icon visible in both light/dark mode, dev and release builds |
+| Window close vs. hide | Phase 1: Tray Foundation | Close button hides to tray, Cmd+Q quits, dock icon toggles correctly |
+| Stale tray menu | Phase 2: Provider Menu | Switch via UI -> verify tray updates. Switch via tray -> verify UI updates. Trigger iCloud sync -> verify both update. |
+| Tray switch bypasses pipeline | Phase 2: Provider Menu | Tray switch triggers same events as UI switch. Frontend receives `"providers-changed"` after tray switch. |
+| FSEvents race condition | Phase 2: Provider Menu | Simulate rapid iCloud sync (touch multiple provider files quickly). Verify menu converges to correct final state. |
+| i18n for tray text | Phase 2: Provider Menu | Switch language in settings, verify tray menu labels change on next open. |
+| Cmd+Q vs close button | Phase 1: Tray Foundation | Both paths tested explicitly. Cmd+Q = quit. Close button = hide. |
 
 ## Sources
 
-- cc-switch source code analysis: `cc-switch/src-tauri/src/config.rs`, `codex_config.rs`, `services/provider/live.rs`
-- iCloud root cause analysis: `icloud-sync-root-cause-zh.md` (project document)
-- cc-switch reference notes: `cc-switch-ref-notes-zh.md` (project document)
-- CLIManager project spec: `.planning/PROJECT.md`
-- Apple documentation on iCloud Drive file coordination (training data, MEDIUM confidence)
-- SQLite documentation on network filesystems (training data, HIGH confidence -- well-documented anti-pattern)
+- [Tauri 2 System Tray official docs](https://v2.tauri.app/learn/system-tray/) -- API reference, setup instructions, event types (HIGH confidence)
+- [Issue #10912: Two tray icons on macOS](https://github.com/tauri-apps/tauri/issues/10912) -- duplicate icon from dual config bug (HIGH confidence)
+- [Issue #13770: macOS Tray Icon does not appear](https://github.com/tauri-apps/tauri/issues/13770) -- icon regression in Tauri 2.6.x (HIGH confidence)
+- [Issue #11931: Tray menu will not appear when trayIcon is set in config](https://github.com/tauri-apps/tauri/issues/11931) -- config vs programmatic conflict (HIGH confidence)
+- [Issue #9280: Easier updates for system tray menu](https://github.com/tauri-apps/tauri/issues/9280) -- no in-place menu update API, must rebuild (HIGH confidence)
+- [Discussion #11489: Tray-only app in Tauri 2](https://github.com/tauri-apps/tauri/discussions/11489) -- ExitRequested infinite loop on macOS (HIGH confidence)
+- [Discussion #9365: Tray icon only on external display](https://github.com/orgs/tauri-apps/discussions/9365) -- multi-monitor issue (MEDIUM confidence)
+- [Discussion #6038: Hide dock icon on macOS](https://github.com/tauri-apps/tauri/discussions/6038) -- ActivationPolicy toggle pattern (HIGH confidence)
+- [Issue #12060: Tray disappears on macOS](https://github.com/tauri-apps/tauri/issues/12060) -- tray instability in Tauri 2.1.x on macOS Sequoia (MEDIUM confidence)
+- cc-switch reference: `cc-switch/src-tauri/src/tray.rs` -- battle-tested tray menu rebuild, provider switching, i18n patterns (HIGH confidence, direct code inspection)
+- cc-switch reference: `cc-switch/src-tauri/src/lib.rs` -- TrayIconBuilder setup, icon_as_template, on_window_event close-to-tray, ActivationPolicy toggle (HIGH confidence, direct code inspection)
+- CLIManager codebase: `src-tauri/src/watcher/mod.rs`, `src-tauri/src/commands/provider.rs`, `src-tauri/src/lib.rs` -- existing architecture context (HIGH confidence, direct code inspection)
+
+---
+*Pitfalls research for: CLIManager v1.1 System Tray*
+*Researched: 2026-03-12*

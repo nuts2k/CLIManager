@@ -1,155 +1,192 @@
-# Feature Landscape
+# Feature Research: System Tray (v1.1)
 
-**Domain:** AI CLI Configuration Management (Provider switching for Claude Code, Codex, and future AI CLIs)
-**Researched:** 2026-03-10
-**Overall confidence:** MEDIUM-HIGH (based on cc-switch reference analysis, PROJECT.md requirements, and domain knowledge of AI CLI tooling)
+**Domain:** Desktop system tray for CLI config-switching app
+**Researched:** 2026-03-12
+**Confidence:** HIGH
 
-## Table Stakes
+## Feature Landscape
 
-Features users expect. Missing = product feels incomplete.
+### Table Stakes (Users Expect These)
+
+Features users assume exist once a tray icon is present. Missing any of these = the tray feels broken or pointless.
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| Provider CRUD | Core data management -- users need to create, view, edit, and delete provider configs. Without this, nothing else works. | Low | Standard form-based UI. Fields: name, API key, base URL, model. Keep minimal -- avoid cc-switch's 20+ meta fields. |
-| One-click provider switching | The entire raison d'etre. Users switch providers dozens of times per day. Must be < 1 second, zero friction. | Medium | This is where surgical patch happens. Read current config, modify only credential/model fields, write back. |
-| Surgical config patching | cc-switch's atomic_write replaces entire files, destroying user's other CLI settings. This is THE differentiator that justifies CLIManager's existence. | High | Read-Modify-Write for JSON (Claude Code settings.json) and JSON+TOML (Codex auth.json + config.toml). Must parse, patch specific keys, preserve everything else including comments in TOML. |
-| Claude Code adapter | Claude Code is the most popular AI CLI. Not supporting it means losing majority of target users. | Medium | Patch `~/.claude/settings.json` -- modify `apiKey`, `model`, and related credential fields only. Handle legacy `claude.json` fallback. |
-| Codex adapter | Codex is the second major AI CLI. Two-file config (auth.json + config.toml) requires coordinated writes. | Medium | Two-phase write with rollback: write auth.json first, then config.toml. If second fails, rollback first. |
-| Active provider indicator | Users must see at a glance which provider is currently active for each CLI. Ambiguity = anxiety about billing. | Low | Simple UI state: highlight active provider card, show in header/badge. |
-| Error handling on config corruption | If config read/parse fails, user must know immediately and not lose data. Silent failures = trust destruction. | Medium | Validate config before and after patch. If parse fails, show clear error, do NOT write. Backup original before first write. |
-| i18n (Chinese + English) | Target user base is heavily Chinese-speaking (cc-switch community). English for global reach. | Medium | Must be baked in from v1. Retrofitting i18n is painful. Default Chinese, switchable to English. |
+| Tray icon with app identity | Any tray-resident app shows a recognizable icon. Without it the app appears not running. | LOW | Use macOS template image (monochrome, auto dark/light). Tauri 2 `TrayIconBuilder` supports `icon_as_template(true)`. cc-switch has `statusbar_template_3x.png` as reference. |
+| Provider list in tray menu | The entire value of tray = quick switching without opening the window. Must list all providers grouped by CLI. | MEDIUM | Use `CheckMenuItem` with radio-style semantics (one checked at a time per CLI section). Group by CLI (Claude header, then providers; Codex header, then providers). Flat layout, no nested submenus. cc-switch does exactly this pattern. |
+| Current active provider indicated | Users need to know which provider is active at a glance. Without this, the menu is a list with no context. | LOW | `CheckMenuItem` with `is_checked = true` for the active provider per CLI section. Proven pattern in cc-switch's `append_provider_section`. |
+| One-click provider switching | Click a provider name in tray menu -> it becomes active immediately. No confirmation dialog, no opening the main window. | MEDIUM | Reuse existing `set_active_provider` command logic. The tray click handler calls the same surgical-patch pipeline. Must emit events so the main window (if open) stays in sync. |
+| "Open main window" menu item | Users need a way to get back to the full UI for CRUD operations. Standard pattern in every tray app. | LOW | `MenuItem::with_id("show_main", ...)`. On click: `window.show()`, `window.unminimize()`, `window.set_focus()`. On macOS also `set_activation_policy(Regular)` + `set_dock_visibility(true)`. |
+| "Quit" menu item | Without explicit quit, users cannot exit the app since closing the window no longer terminates it. Critical UX requirement. | LOW | `MenuItem::with_id("quit", ...)`. On click: `app.exit(0)`. |
+| Close-to-tray behavior | The core reason for having a tray. Users expect the app to keep running after closing the window. Without this, the tray icon is just decoration. | MEDIUM | Intercept `on_window_event` for `CloseRequested`. Call `event.prevent_default()`, then `window.hide()`. On macOS: switch to `ActivationPolicy::Accessory` to hide from Dock and Cmd+Tab. |
+| Menu updates after provider changes | If user adds/edits/deletes providers in the main window, the tray menu must reflect changes immediately. Stale menus destroy trust. | MEDIUM | After any provider mutation (create/update/delete/switch), rebuild and re-set the tray menu via `tray.set_menu(Some(new_menu))`. Triggered by Tauri events or direct function call. |
+| i18n in tray menu | App already supports zh/en. Tray menu items in mixed languages = broken feel. | LOW | Read language from local settings at menu build time. Only a few static strings: "Open main window", "Quit". Provider names are user-defined, no translation needed. Use `TrayTexts` struct pattern from cc-switch. |
 
-## Differentiators
+### Differentiators (Competitive Advantage)
 
-Features that set product apart. Not expected (cc-switch doesn't do them well), but highly valued.
+Features that make CLIManager's tray experience notably better. Not required for launch, but low-effort and high-value.
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| iCloud Drive sync (per-provider files) | Cross-device provider sharing without the SQLite-in-iCloud disaster cc-switch has. Each provider = one JSON file in iCloud Drive dir. No DB sync, no conflict hell. | High | Core architectural differentiator. Design: `~/Library/Mobile Documents/com~apple~CloudDocs/CLIManager/providers/{id}.json`. Single-file granularity means iCloud handles conflicts at provider level, not whole-DB level. |
-| Data layer separation (sync vs local) | Device-specific settings (active provider, path overrides) stay local in `~/.cli-manager/`. Provider definitions sync via iCloud. Prevents the "two Macs overwriting each other's active provider" problem. | Medium | Two clear directories: iCloud sync dir for provider data, local dir for device state. Clean separation cc-switch failed to achieve. |
-| File watching for live sync | When iCloud syncs a provider change from another device, UI updates automatically. If the active provider was modified, re-patch CLI configs automatically. | Medium | FSEvents on macOS. Watch the iCloud sync directory. Debounce events (iCloud can emit multiple events per file). |
-| Auto-import on first launch | Scan existing CLI configs and create initial providers. Zero-config onboarding -- user installs, opens, and their current setup is already there. | Medium | Read `~/.claude/settings.json` and `~/.codex/auth.json` + `config.toml`, extract credentials + model, create provider entries. Must handle missing/partial configs gracefully. |
-| Protocol-based provider modeling | Providers bind to API protocol type (Anthropic, OpenAI-compatible) not to a specific CLI. When new CLIs are added, providers are reused -- just add an adapter. | Medium | Future-proofing design. A provider with protocol=anthropic works for Claude Code today and any future Anthropic-compatible CLI. Reduces duplicate provider entries across CLIs. |
-| Active provider linkage on sync | When iCloud syncs a change to the currently active provider (e.g., API key rotation on another device), automatically re-patch CLI configs with updated credentials. | Medium | Combines file watching + surgical patch. Critical for the "set it and forget it" cross-device workflow. |
-| Lightweight / fast startup | cc-switch starts with DB migrations, vacuum, cleanup -- visible startup lag. CLIManager with flat JSON files should launch near-instantly. | Low | No SQLite, no migrations, no startup maintenance writes. Just read JSON files from disk. Flat file storage is inherently faster to cold-start. |
+| Active provider name in tray tooltip | Hovering over the tray icon shows "CLIManager - Claude: MyProvider / Codex: AnotherProvider". Saves a click to check status. | LOW | `TrayIconBuilder::tooltip(...)`. Update tooltip whenever active provider changes. Very low effort, high information density. |
+| Tray icon visual state indicator | Different tray icon variants (normal vs dimmed/hollow) to show whether a provider is active or none configured. Quick visual feedback without clicking the menu. | LOW | 2-3 icon variants, swap with `tray.set_icon()`. macOS template icons auto-adapt to dark/light mode. |
+| Provider protocol/model in menu label | Show "My Provider (opus-4)" not just "My Provider" next to each provider. Helps distinguish providers with similar names. | LOW | Append model info to the `CheckMenuItem` label string. No extra API needed, just string formatting from provider data. |
+| Global keyboard shortcut | Hotkey (e.g., Cmd+Shift+P) to open the tray menu or trigger a provider switch without touching the mouse. | HIGH | Requires `tauri-plugin-global-shortcut`. Registration, conflict handling, and cross-platform differences add significant complexity. Defer to v1.2+. |
 
-## Anti-Features
+### Anti-Features (Commonly Requested, Often Problematic)
 
-Features to explicitly NOT build. Each is a lesson learned from cc-switch's feature bloat.
+Features that seem useful for tray but create problems in practice.
 
-| Anti-Feature | Why Avoid | What to Do Instead |
-|--------------|-----------|-------------------|
-| MCP server management | Scope creep. cc-switch's MCP module added significant complexity (separate DB table, per-app toggling, import/export). Provider management is the core value; MCP is a separate concern. | Defer to v2 milestone. Surgical patch already preserves MCP config in CLI files by not touching those fields. |
-| Prompts / Skills management | Same as MCP -- cc-switch bolted these on and they became maintenance burdens. Skills alone has GitHub/ZIP install, symlink/copy sync, legacy migration. | Completely out of scope. These are editor/IDE concerns, not provider config concerns. |
-| Local proxy / failover / usage tracking | The single biggest source of complexity in cc-switch. proxy_config alone has 50+ schema fields. Failover queues, circuit breakers, stream health checks, request logging, pricing tables -- enormous surface area for marginal value in a config switcher. | Explicitly exclude. If users need proxy/failover, they should use dedicated proxy tools. CLIManager does one thing well: switch providers. |
-| SQLite as data store | cc-switch's SQLite DB is the root cause of iCloud sync failures. DB in a sync directory = classic disaster. Migrations add startup complexity. | Use flat JSON files. One file per provider in iCloud sync dir. One local JSON for device settings. No schema migrations ever. |
-| WebDAV / custom sync backends | Adds configuration complexity, auth management, error handling for network failures. iCloud Drive "just works" on macOS. | iCloud Drive only for v1. The architecture (flat files in a directory) naturally supports other sync backends later if needed, but don't build the abstraction now. |
-| Session manager | Weak coupling with provider switching. cc-switch's session manager scans Codex/Claude Code local session files -- interesting but orthogonal to the config management mission. | Out of scope entirely. |
-| Deep link import (ccswitch://) | Nice for sharing but not core. Adds URL scheme registration, parsing, security considerations. | Defer. Manual provider creation and auto-import cover the onboarding story. |
-| System tray quick-switch | Adds native menu management, background process lifetime concerns, "minimize to tray" UX decisions. Valuable but not MVP. | v2 feature. The main window with one-click switching is sufficient for v1. |
-| Whole-file atomic write (tmp + rename) | cc-switch's `atomic_write` writes a temp file then renames -- this replaces the entire file, destroying user's other settings. It's "atomic" but destructive. | Surgical Read-Modify-Write. Read the current file, parse it, modify only target fields, write back. Accept the tiny race condition (CLI writing at exact same moment) because the alternative (file locking) adds disproportionate complexity. |
-| Universal Provider (cross-app abstraction) | cc-switch added this late -- a single provider entry that auto-generates per-CLI configs. Sounds elegant but adds a complex mapping layer and confuses users about what's actually written to each CLI. | Protocol-based modeling achieves reusability without the abstraction tax. A provider has a protocol type; each CLI adapter knows how to write that protocol's credentials. No "universal" indirection. |
-| Provider categories / icons / partner badges | cc-switch has 8 provider categories (official, cn_official, cloud_provider, aggregator, third_party, custom, omo, omo-slim), icon pickers, partner promotion keys. This is commercial platform complexity, not config management. | Simple name + optional notes. No categorization, no icon system, no partner flags. Users have 3-10 providers, not hundreds. |
-| Usage query scripts | cc-switch embeds JavaScript usage-query scripts per provider to check API balance/quota. Requires a script execution engine, timeout management, template system. | Out of scope. Users can check usage in their provider's web dashboard. |
-| Endpoint speed testing | cc-switch has per-provider endpoint latency testing with custom endpoint management. | Out of scope. If an endpoint is slow, users will notice from CLI behavior. |
+| Feature | Why Requested | Why Problematic | Alternative |
+|---------|---------------|-----------------|-------------|
+| Provider CRUD in tray menu | "Let me add/edit providers without opening the window" | Tray menus are constrained to simple items (text, checkboxes, separators). Forms, text inputs, validation, and error display cannot be done in native menus. Attempting workarounds (popup windows, webview menus) produces a worse experience than the main UI. | Keep "Open main window" prominent. Tray = view + switch only. This is explicitly stated in PROJECT.md's Out of Scope. |
+| Nested submenus per CLI | "Group Claude providers in a submenu, Codex in another" | Submenus add an extra click and feel sluggish on macOS. With typical provider counts (2-5 per CLI), flat list with section headers is faster and clearer. cc-switch deliberately chose flat layout as "more simple and reliable". | Use disabled `MenuItem` as section header + `CheckMenuItem` list. Separators between CLI sections. |
+| Auto-switch on network/location | "Switch provider when I change WiFi or VPN" | Requires background network monitoring, complex rule engine, and handling edge cases (VPN flapping, captive portals). Enormous scope for a niche use case. | Manual one-click switching is fast enough for the actual frequency of provider changes. |
+| Notification on switch success | "Show a macOS notification when provider switches" | Notification fatigue. Users switch intentionally and can see the checkmark move in the menu. Notifications add noise for a synchronous action the user just performed. | Visual feedback in the tray menu (checkmark moves) is sufficient. Log errors to console only. |
+| Tray-only mode (no main window) | "I set up providers once, then only use the tray" | Removing the main window means no way to edit providers, view details, or handle errors. Complicates onboarding and error recovery. | Close-to-tray already achieves this: window stays hidden until explicitly opened. |
+| Dynamic tray icon showing provider initial | "Show 'A' for Anthropic, 'O' for OpenAI in the icon" | Generating icons dynamically at runtime requires Core Graphics/Core Text on macOS. Results look inconsistent with other tray icons. Template icons must be pre-rendered PNGs. | Use tooltip for provider names. Keep icon simple and recognizable. |
 
 ## Feature Dependencies
 
 ```
-Provider CRUD ──────────────────┐
-                                v
-                         Provider Storage (flat JSON files)
-                                │
-                 ┌──────────────┼──────────────┐
-                 v              v              v
-         Claude Code      Codex Adapter    [Future CLI
-          Adapter                           Adapters]
-                 │              │
-                 v              v
-            Surgical Patch Engine
-            (Read-Modify-Write)
-                      │
-                      v
-              Provider Switching
-              (one-click activate)
-                      │
-          ┌───────────┴───────────┐
-          v                       v
-   Active Provider          iCloud Sync Layer
-   Indicator (UI)         (per-provider JSON files)
-                                  │
-                           ┌──────┴──────┐
-                           v             v
-                     File Watching    Data Layer
-                     (FSEvents)      Separation
-                           │        (sync vs local)
-                           v
-                    Active Provider
-                    Linkage on Sync
-                    (auto re-patch)
+[Tray Icon Setup]
+    |
+    +--requires--> [Close-to-Tray Behavior]
+    |                  +--requires--> [macOS ActivationPolicy management]
+    |
+    +--requires--> [Tray Menu with Provider List]
+    |                  +--requires--> [Provider data access from tray context]
+    |                  |                  +--uses--> [existing iCloud storage: list_providers_in()]
+    |                  |
+    |                  +--requires--> [Active provider indicator (CheckMenuItem)]
+    |                                     +--uses--> [existing LocalSettings.active_providers]
+    |
+    +--enables---> [One-Click Switching from Tray]
+                       +--reuses--> [existing set_active_provider / surgical patch pipeline]
+                       |
+                       +--requires--> [Menu rebuild after switch]
+                                          +--requires--> [Frontend sync via Tauri events]
 
-Auto-import ──> Provider CRUD (creates providers from existing CLI configs)
-i18n ──> All UI components (must be wired in from start)
+[Provider mutations in main window] --triggers--> [Tray menu rebuild]
+[iCloud file watcher detects change] --triggers--> [Tray menu rebuild]
 ```
 
-### Critical Path
+### Dependency Notes
 
-1. **Provider Storage** must exist before anything else
-2. **Surgical Patch Engine** must work before switching is useful
-3. **CLI Adapters** depend on the patch engine and are CLI-specific
-4. **iCloud Sync Layer** is independent of switching but depends on storage format
-5. **File Watching** depends on iCloud sync layer being in place
-6. **Active Provider Linkage** depends on both file watching and switching
+- **Tray Icon Setup requires Close-to-Tray:** Without close-to-tray, the tray icon disappears when the user closes the window, defeating the purpose. These must ship together.
+- **One-Click Switching reuses set_active_provider:** The existing `_set_active_provider_in` function in `commands/provider.rs` handles all surgical patch logic. The tray handler calls the same pipeline, not a duplicate. This keeps switching behavior consistent whether done from the UI or the tray.
+- **Menu rebuild triggered by multiple sources:** Provider CRUD in the main window, provider switch from tray itself, and iCloud watcher detecting external changes all need to trigger a tray menu rebuild. Build a centralized `rebuild_tray_menu(app_handle)` function.
+- **Frontend sync via events:** When switching from the tray, emit a `provider-switched` event so the main window (if open) updates its UI. cc-switch does this with `app.emit("provider-switched", ...)`. The main window already handles provider list refresh via the watcher; the event ensures immediate UI update without waiting for FSEvents debounce.
 
-### Parallel Work Possible
+## MVP Definition
 
-- i18n setup can happen alongside any feature
-- iCloud sync layer can be built in parallel with CLI adapters
-- Auto-import can be built after adapters exist (reads same configs adapters write)
+### Launch With (v1.1)
 
-## MVP Recommendation
+All table stakes must ship together. This is the minimum viable tray experience.
 
-### Phase 1: Core Loop (must ship together)
+- [ ] Tray icon with template image (macOS) -- app identity in menu bar
+- [ ] Tray menu: "Open main window" item -- escape hatch to full UI
+- [ ] Tray menu: Provider list grouped by CLI with section headers -- core value
+- [ ] Tray menu: Active provider indicated with checkmark -- status at a glance
+- [ ] Tray menu: One-click switching via CheckMenuItem click -- primary use case
+- [ ] Tray menu: "Quit" item -- explicit app termination
+- [ ] Close-to-tray: window close hides instead of exits -- reason the tray exists
+- [ ] macOS ActivationPolicy: Accessory when hidden, Regular when shown -- proper Dock/Cmd+Tab behavior
+- [ ] Menu rebuild on provider mutations from main window -- keeps tray in sync
+- [ ] Menu rebuild on iCloud watcher events -- keeps tray in sync across devices
+- [ ] i18n support in tray menu strings -- consistent with existing zh/en support
 
-1. **Provider CRUD** -- Create, read, edit, delete providers with flat JSON storage
-2. **Claude Code adapter** -- Surgical patch to `~/.claude/settings.json`
-3. **Codex adapter** -- Surgical patch to `~/.codex/auth.json` + `config.toml`
-4. **One-click switching** -- Select provider, patch CLI configs, update active indicator
-5. **i18n foundation** -- Wire in from day one (zh + en)
+### Add After Validation (v1.1.x)
 
-Rationale: This is the minimum that delivers the core value proposition. A user can manage providers and switch between them without destroying their CLI settings.
+Features to add once core tray is working and tested.
 
-### Phase 2: Cross-Device (the iCloud story)
+- [ ] Tooltip showing active provider names per CLI -- low effort, high info density
+- [ ] Tray icon state variants (active vs. no-provider) -- visual feedback improvement
+- [ ] Provider model name in menu item label -- disambiguation for similar provider names
 
-6. **iCloud sync layer** -- Per-provider JSON files in iCloud Drive
-7. **Data layer separation** -- Device-local settings vs synced provider data
-8. **File watching** -- FSEvents on iCloud sync directory
-9. **Active provider linkage** -- Auto re-patch when synced provider changes
+### Future Consideration (v2+)
 
-Rationale: Cross-device sync is the second major value prop but requires the core loop to work first.
+Features to defer until tray UX is proven.
 
-### Phase 3: Onboarding Polish
+- [ ] Global keyboard shortcut for tray menu -- requires plugin, conflict handling
+- [ ] Additional CLI sections in tray (Gemini, OpenCode) -- when those adapters are built
+- [ ] Visible apps filtering (hide certain CLI sections) -- only relevant with 3+ CLIs
 
-10. **Auto-import on first launch** -- Scan existing configs, create providers
-11. **Error recovery / config backup** -- Safety net before writes
+## Feature Prioritization Matrix
 
-Rationale: Nice-to-have for onboarding but not blocking daily use.
+| Feature | User Value | Implementation Cost | Priority |
+|---------|------------|---------------------|----------|
+| Tray icon + basic menu structure | HIGH | LOW | P1 |
+| Provider list with active indicator | HIGH | MEDIUM | P1 |
+| One-click switching from tray | HIGH | MEDIUM | P1 |
+| Close-to-tray behavior | HIGH | MEDIUM | P1 |
+| macOS ActivationPolicy management | HIGH | LOW | P1 |
+| Menu rebuild on mutations/watcher | HIGH | MEDIUM | P1 |
+| i18n in tray strings | MEDIUM | LOW | P1 |
+| Tooltip with active provider names | MEDIUM | LOW | P2 |
+| Tray icon state variants | LOW | LOW | P2 |
+| Provider model in menu label | LOW | LOW | P3 |
+| Global keyboard shortcut | MEDIUM | HIGH | P3 |
 
-### Defer Entirely
+**Priority key:**
+- P1: Must have for v1.1 launch (all table stakes)
+- P2: Should have, add in v1.1 if time permits or v1.1.x patch
+- P3: Nice to have, future consideration
 
-- MCP management, prompts, skills (v2+ milestones)
-- System tray (v2)
-- Additional CLI support: Gemini, OpenCode, OpenClaw (v2)
-- Local proxy / failover / usage (never, unless user demand proves otherwise)
+## Existing Code Dependencies
+
+The tray feature depends heavily on existing CLIManager infrastructure. Here is what exists and what needs to be built.
+
+### Reusable As-Is
+
+| Existing Code | Location | How Tray Uses It |
+|--------------|----------|------------------|
+| `set_active_provider` / `_set_active_provider_in` | `commands/provider.rs` | Tray click handler calls this to perform surgical patch switching |
+| `list_providers_in` / provider storage | `storage/icloud.rs` | Tray menu builder reads provider list to populate menu items |
+| `read_local_settings` / `LocalSettings` | `storage/local.rs` | Tray reads `active_providers` map for checkmark state and `language` for i18n |
+| `SelfWriteTracker` | `watcher/self_write.rs` | Prevents tray-triggered writes from re-triggering the file watcher |
+| iCloud file watcher | `watcher/mod.rs` | Already watches for changes; needs hook to also trigger tray menu rebuild |
+| CLI adapters | `adapter/claude.rs`, `adapter/codex.rs` | Used by the switching pipeline, no changes needed for tray |
+
+### Needs Modification
+
+| Existing Code | What Changes | Why |
+|--------------|-------------|-----|
+| `lib.rs` (the `run()` function) | Add `TrayIconBuilder` setup in `.setup()`, add `on_window_event` for close-to-tray, register tray menu event handler | This is where Tauri app lifecycle is configured |
+| `watcher/mod.rs` | After processing iCloud changes and emitting frontend events, also call `rebuild_tray_menu()` | Tray menu must reflect provider changes from other devices |
+| `Cargo.toml` dependencies | Add `"tray-icon"` to Tauri features | Enables `tauri::tray` module |
+| `tauri.conf.json` | Potentially update window close behavior or permissions | May need `"withGlobalTauri"` or tray-related config |
+
+### Needs to Be Built (New Code)
+
+| New Code | Purpose | Estimated Size |
+|----------|---------|---------------|
+| `src-tauri/src/tray.rs` | Tray module: `create_tray_menu()`, `handle_tray_menu_event()`, `rebuild_tray_menu()`, `TrayTexts` i18n struct, `apply_tray_policy()` | ~200-300 lines (cc-switch's is ~450 but includes failover/proxy logic we skip) |
+| Tray icon assets | Template PNG for macOS status bar (monochrome, @1x/@2x/@3x) in `src-tauri/icons/tray/` | 3 PNG files |
+| Tauri command: `update_tray_menu` | Exposed command so frontend can trigger tray rebuild after provider CRUD | ~10 lines (thin wrapper) |
+
+## Competitor Feature Analysis
+
+| Feature | cc-switch (reference) | CLIManager v1.1 (our approach) |
+|---------|----------------------|-------------------------------|
+| Tray menu structure | Flat list with CLI section headers, `CheckMenuItem` per provider | Same pattern -- proven to work, simple and reliable |
+| Provider switching from tray | Calls `switch_provider`, rebuilds menu, emits events to frontend | Same pattern -- reuse `set_active_provider`, rebuild menu, emit events |
+| Close-to-tray | `CloseRequested` -> `prevent_default()` + `window.hide()` + `ActivationPolicy::Accessory` | Same pattern -- this is the standard macOS approach |
+| Tray i18n | `TrayTexts` struct with hardcoded zh/en/ja strings | Same pattern, zh/en only (matching existing i18n scope) |
+| Auto/Failover in tray | Has "Auto (Failover)" mode toggle per CLI section | Not applicable -- CLIManager has no proxy/failover feature. Simplifies the menu. |
+| Visible apps filtering | Settings to hide certain CLI sections from tray | Defer -- only 2 CLIs (Claude, Codex), not enough to warrant filtering |
+| Tray icon | macOS template image with `icon_as_template(true)` | Same approach -- must create our own icon asset |
+| Menu rebuild trigger | Frontend calls `update_tray_menu` command; also rebuilds internally after tray-initiated switch | Same approach -- centralized rebuild function called from multiple trigger points |
 
 ## Sources
 
-- cc-switch source code analysis (`cc-switch/` reference directory, read-only)
-- `cc-switch-ref-notes-zh.md` -- detailed feature breakdown of cc-switch
-- `icloud-sync-root-cause-zh.md` -- iCloud sync failure analysis
-- `.planning/PROJECT.md` -- CLIManager project requirements and design decisions
-- cc-switch type definitions (`cc-switch/src/types.ts`) -- reveals full feature surface
-- cc-switch provider commands (`cc-switch/src-tauri/src/commands/provider.rs`) -- switching implementation
-- cc-switch config adapters (`cc-switch/src-tauri/src/config.rs`, `codex_config.rs`) -- CLI config format handling
+- cc-switch tray implementation: `cc-switch/src-tauri/src/tray.rs` (447 lines, complete reference with menu creation, event handling, i18n, ActivationPolicy)
+- cc-switch tray setup: `cc-switch/src-tauri/src/lib.rs` (TrayIconBuilder config, window close interception, dock visibility)
+- Tauri 2 tray API: `tauri::tray::TrayIconBuilder`, `tauri::menu::{Menu, MenuBuilder, MenuItem, CheckMenuItem}` (used directly in cc-switch, proven with Tauri 2.10)
+- CLIManager provider pipeline: `src-tauri/src/commands/provider.rs` (`set_active_provider`, `_set_active_provider_in`, surgical patch flow)
+- CLIManager app setup: `src-tauri/src/lib.rs` (current `run()` function, watcher setup, command registration)
+- PROJECT.md: Out of Scope section explicitly states "tray only does view + switch, CRUD stays in main window"
 
-**Confidence note:** No web search was available during this research. Feature landscape is derived from cc-switch reference code analysis, the iCloud sync root-cause document, and training data knowledge of Claude Code / Codex CLI configuration formats. The categorization of table stakes vs differentiators is grounded in the specific problems documented in PROJECT.md (config corruption, iCloud sync failures, feature bloat) rather than broad market analysis. Confidence in the feature list itself is HIGH; confidence in competitive positioning relative to tools outside cc-switch is LOW (no web search to discover other tools in this niche).
+---
+*Feature research for: System Tray (v1.1 milestone)*
+*Researched: 2026-03-12*

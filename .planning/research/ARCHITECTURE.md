@@ -1,609 +1,583 @@
-# Architecture Patterns
+# Architecture Research: System Tray Integration
 
-**Domain:** Desktop CLI configuration manager (Tauri 2)
-**Researched:** 2026-03-10
-**Confidence:** HIGH (based on detailed analysis of cc-switch reference code + Tauri 2 architecture knowledge + iCloud sync root-cause analysis)
+**Domain:** System tray integration for existing Tauri 2 desktop app (CLIManager v1.1)
+**Researched:** 2026-03-12
+**Confidence:** HIGH (Tauri 2 tray API is stable and well-documented; cc-switch reference implementation provides proven patterns; existing codebase architecture is fully analyzed)
 
-## Recommended Architecture
+## System Overview (Before vs After)
 
-CLIManager uses a **layered architecture** with clear separation between IPC surface, business logic, storage, and external I/O. The key departure from cc-switch is replacing SQLite SSOT with a **two-layer file-based storage** model designed for iCloud safety, and replacing whole-file rewrites with **surgical Read-Modify-Write patching**.
-
-```
-+------------------------------------------------------------------+
-|                        React Frontend                             |
-|  +------------------+  +------------------+  +----------------+  |
-|  | Provider List UI |  | Provider Editor  |  | Settings UI    |  |
-|  +--------+---------+  +--------+---------+  +-------+--------+  |
-|           |                     |                     |           |
-|  +--------+---------------------+---------------------+--------+ |
-|  |              TanStack Query (cache + mutations)             | |
-|  +--------+---------------------+---------------------+--------+ |
-|           |                     |                     |           |
-|  +--------+---------------------+---------------------+--------+ |
-|  |           IPC API Layer (invoke wrappers)                   | |
-|  +-------------------------------------------------------------+ |
-+------------------------------------------------------------------+
-                              | Tauri IPC (JSON)
-+------------------------------------------------------------------+
-|                        Rust Backend                               |
-|                                                                   |
-|  +-------------------------------------------------------------+ |
-|  |              Commands Layer (thin IPC handlers)              | |
-|  |  provider.rs | settings.rs | import.rs | watcher.rs         | |
-|  +--------+---------------------+---------------------+--------+ |
-|           |                     |                     |           |
-|  +--------+---------------------+---------------------+--------+ |
-|  |              Services Layer (business logic)                | |
-|  |  ProviderService | SyncService | WatcherService             | |
-|  |  ImportService   | SettingsService                          | |
-|  +--------+---------------------+---------------------+--------+ |
-|           |                     |                     |           |
-|  +--------v--------+  +--------v--------+  +--------v--------+  |
-|  | Storage Layer   |  | CLI Adapters    |  | File Watcher    |  |
-|  | (iCloud + Local)|  | (per-CLI R/M/W) |  | (FSEvents)      |  |
-|  +-----------------+  +-----------------+  +-----------------+  |
-+------------------------------------------------------------------+
-                |                |                     |
-    +-----------v---+   +-------v--------+   +--------v--------+
-    | iCloud Drive  |   | ~/.claude/     |   | iCloud sync dir |
-    | sync dir      |   | ~/.codex/      |   | (watched)       |
-    | (per-provider |   | (CLI live      |   |                 |
-    |  JSON files)  |   |  configs)      |   |                 |
-    +---------------+   +----------------+   +-----------------+
-    | ~/.cli-manager/|
-    | local.json     |
-    +----------------+
-```
-
-### Component Boundaries
-
-| Component | Responsibility | Communicates With | Location |
-|-----------|---------------|-------------------|----------|
-| **Commands** | Thin Tauri IPC handlers; parse args, delegate to services, map errors | Services (calls), Frontend (receives IPC from) | `src-tauri/src/commands/` |
-| **ProviderService** | Provider CRUD, switching, validation | Storage Layer (read/write providers), CLI Adapters (patch on switch) | `src-tauri/src/services/provider.rs` |
-| **SyncService** | Orchestrates switch flow: load provider -> patch all applicable CLIs -> update local state | ProviderService, CLI Adapters, SettingsService | `src-tauri/src/services/sync.rs` |
-| **WatcherService** | FSEvents watcher on iCloud sync directory; debounce + emit events | Storage Layer (detects changes), Frontend (emits Tauri events) | `src-tauri/src/services/watcher.rs` |
-| **ImportService** | First-launch scan of existing CLI configs to create initial providers | CLI Adapters (read current), ProviderService (create) | `src-tauri/src/services/import.rs` |
-| **SettingsService** | Device-local settings management (active provider, locale, paths) | Local Storage (read/write local.json) | `src-tauri/src/services/settings.rs` |
-| **Storage Layer** | Two-layer file I/O: iCloud sync dir (per-provider JSON) + local.json | Filesystem directly | `src-tauri/src/storage/` |
-| **CLI Adapters** | Per-CLI Read-Modify-Write logic for surgical patching | CLI config files on disk | `src-tauri/src/adapters/` |
-| **File Watcher** | Low-level FSEvents binding, raw event stream | WatcherService (provides events to) | `src-tauri/src/watcher/` |
-| **Frontend IPC Layer** | TypeScript invoke wrappers with typed args/returns | Tauri IPC bridge | `src/lib/api/` |
-| **Frontend Query Layer** | TanStack Query queries/mutations, cache invalidation | IPC Layer, React components | `src/lib/query/` |
-| **Frontend UI** | React components for provider management and settings | Query Layer | `src/components/` |
-
-### Data Flow
-
-#### Flow 1: User Switches Provider (Primary Happy Path)
+### Before (v1.0) -- Window-only
 
 ```
-User clicks "Switch" in UI
-  -> React component calls mutation
-    -> invoke("switch_provider", { id: "xxx" })
-      -> Commands::switch_provider()
-        -> SyncService::switch(provider_id)
-          1. ProviderService::get(provider_id)  -- reads from iCloud sync dir
-          2. For each supported CLI (Claude Code, Codex):
-             CLIAdapter::patch(provider)        -- Read-Modify-Write on CLI config
-          3. SettingsService::set_active(provider_id)  -- writes local.json
-          4. Return SwitchResult { warnings }
-      -> Command returns Result to frontend
-    -> TanStack Query invalidates relevant queries
-  -> UI updates to show new active provider
++--------------------------------------------------+
+|                  React Frontend                   |
+|  ProviderList -- ProviderForm -- SettingsPanel    |
++--------------------------------------------------+
+|              Tauri IPC (invoke + emit)            |
++--------------------------------------------------+
+|               Rust Backend                        |
+|  commands/provider -- commands/onboarding         |
+|  storage/icloud ---- storage/local                |
+|  adapter/claude ---- adapter/codex                |
+|  watcher (FSEvents) ---- SelfWriteTracker         |
++--------------------------------------------------+
+|  iCloud Drive (providers/*.json)                  |
+|  ~/.cli-manager/local.json                        |
+|  ~/.claude/settings.json                          |
+|  ~/.codex/{auth.json, config.toml}                |
++--------------------------------------------------+
 ```
 
-#### Flow 2: iCloud Sync Triggers Provider Refresh
+### After (v1.1) -- Window + Tray
 
 ```
-Another device saves/updates a provider JSON file
-  -> iCloud Drive syncs file to local disk
-    -> FSEvents fires event on sync directory
-      -> WatcherService receives event
-        -> Debounce (100-300ms window)
-        -> Determine change type (add/modify/delete)
-        -> Emit Tauri event: "providers-changed" { kind, provider_id }
-          -> Frontend listener receives event
-            -> TanStack Query invalidates provider list query
-            -> UI re-renders with fresh data
-        -> If changed provider is active provider:
-           -> SyncService::re_patch_active()
-             -> Read updated provider from sync dir
-             -> Re-patch all CLI configs with new credentials
++--------------------------------------------------+
+|                  React Frontend                   |
+|  ProviderList -- ProviderForm -- SettingsPanel    |
++--------------------------------------------------+
+|              Tauri IPC (invoke + emit)            |
++----------+---------------------------------------+
+|  System  |            Rust Backend                |
+|  Tray    |  commands/provider -- commands/onboard |
+|  Module  |  storage/icloud ---- storage/local     |
+|  (NEW)   |  adapter/claude ---- adapter/codex     |
+|          |  watcher (FSEvents) -- SelfWriteTracker|
++----------+---------------------------------------+
+|  iCloud Drive (providers/*.json)                  |
+|  ~/.cli-manager/local.json                        |
+|  ~/.claude/settings.json                          |
+|  ~/.codex/{auth.json, config.toml}                |
++--------------------------------------------------+
 ```
 
-#### Flow 3: Provider CRUD (Create as example)
+Key architectural insight: The tray module sits alongside the existing backend, consuming the same storage and adapter layers. It introduces NO new data paths, NO new state stores, and NO new persistence. It is purely a new UI surface that reads from and writes to the existing storage layer.
 
-```
-User fills form, clicks "Save"
-  -> invoke("create_provider", { provider })
-    -> Commands::create_provider()
-      -> ProviderService::create(provider)
-        1. Validate fields (protocol type, required credentials)
-        2. Generate UUID
-        3. Write {uuid}.json to iCloud sync dir
-        4. Return created provider
-    -> Frontend invalidates provider list
-  -> UI shows new provider in list
-```
+## New vs Modified Components
 
-#### Flow 4: First Launch Auto-Import
+### New: `src-tauri/src/tray.rs`
 
-```
-App starts
-  -> init() in lib.rs setup
-    -> ImportService::scan_and_import()
-      1. For each supported CLI:
-         adapter.read_current_config()  -- read live config
-         If credentials found:
-           ProviderService::create(extracted_provider)
-      2. If any providers created:
-         SettingsService::set_active(first_created.id)
-      3. Emit "import-complete" event to frontend
-```
+**Responsibility:** Tray icon lifecycle, dynamic menu construction, menu event handling, i18n labels.
 
-## Component Design Details
+**Public API:**
 
-### Storage Layer: Two-Layer File Architecture
+| Function | Purpose | Called By |
+|----------|---------|-----------|
+| `create_tray_menu(app: &AppHandle) -> Result<Menu<Wry>>` | Build menu from current storage state | `lib.rs` setup, `update_tray_menu` |
+| `update_tray_menu(app: &AppHandle)` | Rebuild and replace the menu | Watcher, frontend command, tray event handler |
+| `handle_tray_menu_event(app: &AppHandle, event_id: &str)` | Dispatch menu item clicks | TrayIconBuilder callback |
 
-This is the most critical architectural decision. It replaces cc-switch's SQLite SSOT with a design that is inherently iCloud-safe.
+**Does NOT contain:** Provider switching logic. It calls existing internal functions from `commands::provider` for that.
 
-**Sync Layer (iCloud Drive directory)**
-```
-~/Library/Mobile Documents/com~apple~CloudDocs/CLIManager/
-  providers/
-    {uuid-1}.json    # One file per provider
-    {uuid-2}.json
-    {uuid-3}.json
+### Modified: `src-tauri/src/lib.rs`
+
+| Change | What | Why |
+|--------|------|-----|
+| Add `mod tray;` | Declare new module | Standard Rust module registration |
+| In `setup()` | Build `TrayIconBuilder`, register event handlers | Initialize tray at startup |
+| Add `.on_window_event()` | Intercept `CloseRequested`, hide window instead of quit | App must stay alive in tray |
+| Add `refresh_tray_menu` command | Register new Tauri command | Frontend needs to trigger tray rebuild after CRUD |
+
+### Modified: `src-tauri/Cargo.toml`
+
+Add `"tray-icon"` and `"image-png"` to tauri features:
+```toml
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
 ```
 
-Each provider file:
-```json
-{
-  "id": "uuid-1",
-  "name": "Anthropic Direct",
-  "protocol": "anthropic",
-  "credentials": {
-    "api_key": "sk-ant-...",
-    "base_url": "https://api.anthropic.com"
-  },
-  "model": "claude-sonnet-4-20250514",
-  "notes": "Personal account",
-  "icon": "anthropic",
-  "icon_color": "#D97757",
-  "sort_index": 0,
-  "created_at": 1710000000,
-  "updated_at": 1710000100
-}
+### Modified: `src-tauri/src/watcher/mod.rs`
+
+Add one line in `process_events()` after the existing `app.emit("providers-changed", ...)`:
+```rust
+crate::tray::update_tray_menu(app_handle);
 ```
 
-**Why one file per provider:**
-- iCloud syncs at file granularity. Editing Provider A never creates a conflict with Provider B
-- No cross-file transaction needed -- each file is its own atomic unit
-- Deleting a provider = deleting a file -- iCloud handles this naturally
-- File-level conflict resolution is manageable (last-write-wins is acceptable for single-provider edits)
+This ensures the tray menu reflects provider changes from iCloud sync.
 
-**Local Layer (device-specific, NOT synced)**
+### Unchanged Components
+
+| Component | Why Unchanged |
+|-----------|---------------|
+| `commands/provider.rs` | Tray calls internal functions directly, no new commands needed for switching |
+| `storage/icloud.rs` | Tray reads providers via existing `list_providers()` |
+| `storage/local.rs` | Tray reads active state via existing `read_local_settings()` |
+| `adapter/claude.rs` | Switching reuses existing `_set_active_provider_in` which calls adapters |
+| `adapter/codex.rs` | Same as above |
+| `watcher/self_write.rs` | Unchanged tracking logic |
+| `provider.rs` | Data model unchanged |
+| `error.rs` | No new error variants needed (reuse `AppError::Validation` for menu errors) |
+
+## Data Flow
+
+### Flow 1: Tray Menu Build (startup + after changes)
+
 ```
-~/.cli-manager/
-  local.json         # Device-local state
+list_providers() --------------------------+
+                                           +---> create_tray_menu()
+read_local_settings().active_providers ----+          |
+                                            Menu with CheckMenuItems
+                                            (checked = active provider per CLI)
+                                                      |
+                                            TrayIcon.set_menu(menu)
 ```
 
-local.json:
-```json
-{
-  "active_provider_id": "uuid-1",
-  "locale": "zh-CN",
-  "claude_config_dir": null,
-  "codex_config_dir": null,
-  "sync_dir": "~/Library/Mobile Documents/com~apple~CloudDocs/CLIManager"
-}
+The menu is built synchronously from the same storage functions the frontend uses. Each provider becomes a `CheckMenuItem` with `id = "{cli_id}_{provider_id}"`. The active provider for each CLI gets `checked = true`.
+
+### Flow 2: Tray Provider Switch
+
+```
+User clicks tray menu item
+    |
+    v
+on_menu_event(event_id = "claude_abc-123")
+    |
+    +---> Parse: cli_id="claude", provider_id="abc-123"
+    |
+    +---> _set_active_provider_in(...)    <-- REUSE existing internal function
+    |       +-- get_provider_in(...)
+    |       +-- patch_provider_for_cli(...)
+    |       +-- write_local_settings(...)
+    |
+    +---> update_tray_menu(app)           <-- Rebuild menu with new check state
+    |
+    +---> app.emit("provider-switched")   <-- Notify frontend if window is open
 ```
 
-**Why separate:**
-- Active provider is per-device (my Mac uses Provider A, my MacBook Pro uses Provider B)
-- Config directory overrides are per-device (different install paths)
-- Prevents the "state ping-pong" bug in cc-switch where syncing settings.json caused active provider to flip between devices
-
-### CLI Adapters: Surgical Patch via Read-Modify-Write
-
-Each CLI adapter implements a common trait:
+Critical design decision: The tray calls the same internal `_set_active_provider_in` function that the `set_active_provider` Tauri command uses. This avoids duplicating validation, patching, and persistence logic. The function signature:
 
 ```rust
-pub trait CliAdapter {
-    /// Which protocol types this CLI supports
-    fn supported_protocols(&self) -> &[ProtocolType];
-
-    /// Read current credential fields from live config
-    fn read_credentials(&self) -> Result<Option<Credentials>, AdapterError>;
-
-    /// Surgical patch: read config, modify only credential+model fields, write back
-    fn patch(&self, provider: &Provider) -> Result<PatchResult, AdapterError>;
-
-    /// Remove credentials written by this app (for "deactivate" scenarios)
-    fn unpatch(&self) -> Result<(), AdapterError>;
-}
+fn _set_active_provider_in(
+    providers_dir: &Path,
+    local_settings_path: &Path,
+    cli_id: String,
+    provider_id: Option<String>,
+    adapter: Option<Box<dyn CliAdapter>>,
+) -> Result<LocalSettings, AppError>
 ```
 
-**Claude Code Adapter** (`adapters/claude.rs`):
-- Target: `~/.claude/settings.json` (JSON)
-- Fields to patch: `env.ANTHROPIC_AUTH_TOKEN`, `env.ANTHROPIC_BASE_URL`, `env.ANTHROPIC_MODEL` (via deep merge)
-- Read-Modify-Write: `serde_json::from_str` -> modify env keys -> `serde_json::to_string_pretty` -> write
-- Critical: preserve all other keys in settings.json (permissions, allowedTools, etc.)
+Currently this is `fn` (crate-private), which is exactly what we need since `tray.rs` is in the same crate.
 
-**Codex Adapter** (`adapters/codex.rs`):
-- Target: `~/.codex/auth.json` (JSON) + `~/.codex/config.toml` (TOML)
-- Fields: auth.json has API key, config.toml has model + base_url
-- Two-phase write with rollback (carry over from cc-switch's proven pattern)
-- Use `toml_edit` (not `toml`) to preserve comments and formatting in config.toml
+### Flow 3: External Change Triggers Tray Update
 
-### Protocol Type Model
+```
+iCloud sync changes provider file
+    |
+    v
+FSEvents watcher fires
+    |
+    v
+process_events() in watcher/mod.rs
+    +-- filter, dedup, skip self-writes     (existing)
+    +-- sync_changed_active_providers()     (existing re-patch)
+    +-- app.emit("providers-changed")       (existing frontend notify)
+    +-- tray::update_tray_menu(app)         (NEW: rebuild tray menu)
+```
 
-Providers are modeled by API protocol, not by CLI:
+The watcher already has `AppHandle`. Adding one call to `tray::update_tray_menu()` is sufficient.
+
+### Flow 4: Window Close -> Hide to Tray
+
+```
+User clicks window X button
+    |
+    v
+on_window_event(CloseRequested { api, .. })
+    |
+    +-- api.prevent_close()
+    +-- window.hide()
+    |
+    +-- [macOS only] app.set_activation_policy(Accessory)
+        +-- Hides Dock icon, app lives in tray only
+```
+
+### Flow 5: Tray -> Show Window
+
+```
+User clicks "Open Main Window" in tray menu
+    |
+    v
+handle_tray_menu_event("show_main")
+    |
+    +-- window.unminimize()
+    +-- window.show()
+    +-- window.set_focus()
+    |
+    +-- [macOS only] app.set_activation_policy(Regular)
+        +-- Dock icon reappears
+```
+
+### Flow 6: Frontend CRUD -> Tray Refresh
+
+```
+User creates/edits/deletes provider in UI
+    |
+    v
+Frontend calls invoke("create_provider", ...)   (existing)
+    |
+    v
+Frontend calls invoke("refresh_tray_menu")       (NEW)
+    |
+    v
+tray::update_tray_menu(app)
+```
+
+## Tray Menu Structure
+
+```
++-----------------------------+
+|  Open Main Window           |  <-- MenuItem, always enabled
++-----------------------------+
+|  Claude Code                |  <-- MenuItem, disabled (section header)
+|  * My Anthropic Direct      |  <-- CheckMenuItem, checked = active
+|    OpenRouter                |  <-- CheckMenuItem, unchecked
+|    Azure Proxy               |  <-- CheckMenuItem, unchecked
++-----------------------------+
+|  Codex                      |  <-- MenuItem, disabled (section header)
+|    My Codex Provider         |  <-- CheckMenuItem
++-----------------------------+
+|  Quit                       |  <-- MenuItem
++-----------------------------+
+```
+
+Menu item ID scheme:
+- `show_main` -- fixed: open main window
+- `quit` -- fixed: exit app
+- `{cli_id}_header` -- fixed per CLI: non-clickable section header
+- `{cli_id}_empty` -- fixed per CLI: "no providers" hint
+- `{cli_id}_{provider_id}` -- dynamic: provider switch target
+
+Provider sorting: Use `created_at` ascending (same as `list_providers_in()` already returns).
+
+## Implementation Skeleton
+
+### `tray.rs`
 
 ```rust
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ProtocolType {
-    Anthropic,        // Anthropic native API (api.anthropic.com)
-    OpenAiCompatible, // OpenAI-compatible (OpenRouter, Azure, etc.)
-}
-```
+use tauri::menu::{CheckMenuItem, Menu, MenuBuilder, MenuItem};
+use tauri::{AppHandle, Manager, Wry};
 
-Each protocol defines which credential fields are required:
+use crate::error::AppError;
+use crate::storage::icloud::list_providers;
+use crate::storage::local::read_local_settings;
 
-```rust
-impl ProtocolType {
-    pub fn required_fields(&self) -> &[&str] {
-        match self {
-            ProtocolType::Anthropic => &["api_key"],
-            ProtocolType::OpenAiCompatible => &["api_key", "base_url"],
-        }
-    }
-}
-```
-
-Each CLI adapter knows how to map protocol credentials to its own config format. For example:
-- Claude Code + Anthropic protocol -> writes `ANTHROPIC_AUTH_TOKEN` to env
-- Claude Code + OpenAI-compatible -> writes `ANTHROPIC_AUTH_TOKEN` + `ANTHROPIC_BASE_URL` to env (Claude Code uses these env vars for compatible endpoints too)
-- Codex + Anthropic protocol -> writes API key to auth.json, no base_url in config.toml
-- Codex + OpenAI-compatible -> writes API key to auth.json, model + base_url to config.toml
-
-### File Watcher: FSEvents-Based with Debounce
-
-```rust
-pub struct WatcherService {
-    watcher: RecommendedWatcher,  // from `notify` crate
-    debouncer: Debouncer,
+/// i18n labels for tray menu
+struct TrayTexts {
+    show_main: &'static str,
+    quit: &'static str,
+    no_providers: &'static str,
 }
 
-impl WatcherService {
-    pub fn new(sync_dir: PathBuf, app_handle: AppHandle) -> Self {
-        // Watch sync_dir/providers/ recursively
-        // On events: debounce 200ms, then:
-        //   - Parse which provider file changed
-        //   - Emit "providers-changed" Tauri event
-        //   - If active provider changed, trigger re-patch
-    }
-}
-```
-
-**Debounce rationale:** iCloud may trigger multiple FSEvents for a single logical file update (write + metadata update + xattr update). A 200ms debounce window coalesces these into one logical event.
-
-**Event types to handle:**
-- `Create` -> new provider synced from another device
-- `Modify` -> provider updated on another device
-- `Remove` -> provider deleted on another device
-- Ignore `.icloud` placeholder files (iCloud "evicted" state)
-
-### Application State
-
-Simpler than cc-switch (no SQLite, no ProxyService):
-
-```rust
-pub struct AppState {
-    pub sync_dir: PathBuf,           // iCloud sync directory
-    pub local_settings: RwLock<LocalSettings>,  // Device-local state (from local.json)
-    pub watcher: Mutex<Option<WatcherService>>, // File watcher (initialized after setup)
-}
-```
-
-Using `RwLock` for local_settings because reads are far more frequent than writes. Using `Mutex<Option<...>>` for watcher because it's initialized lazily during app setup.
-
-### Frontend Architecture
-
-```
-src/
-  main.tsx              # App entry, QueryClientProvider, Tauri event listeners
-  App.tsx               # Router / main layout
-  components/
-    providers/
-      ProviderList.tsx  # List with switch buttons
-      ProviderForm.tsx  # Create/edit form
-      ProviderCard.tsx  # Individual provider display
-    settings/
-      SettingsPage.tsx  # Locale, paths, sync dir
-    layout/
-      Sidebar.tsx       # Navigation
-      Header.tsx        # App title, active provider indicator
-  lib/
-    api/
-      providers.ts      # invoke("get_providers"), invoke("switch_provider"), etc.
-      settings.ts       # invoke("get_settings"), invoke("update_settings")
-      import.ts         # invoke("scan_and_import")
-    query/
-      providers.ts      # useQuery/useMutation hooks for providers
-      settings.ts       # useQuery/useMutation hooks for settings
-    i18n/
-      index.ts          # i18n setup
-      locales/
-        zh-CN.json
-        en-US.json
-    types/
-      provider.ts       # Provider, ProtocolType, Credentials TypeScript types
-      settings.ts       # LocalSettings type
-```
-
-**Tauri event listener pattern** (in main.tsx):
-
-```typescript
-import { listen } from "@tauri-apps/api/event";
-
-// On "providers-changed" from backend watcher:
-listen("providers-changed", (event) => {
-  queryClient.invalidateQueries({ queryKey: ["providers"] });
-});
-```
-
-This keeps the frontend reactive to iCloud-synced changes without polling.
-
-## Patterns to Follow
-
-### Pattern 1: Thin Commands, Fat Services
-
-**What:** Command handlers do only argument parsing and error mapping. All business logic lives in services.
-
-**When:** Every Tauri command.
-
-**Why:** Keeps the IPC surface declarative and testable. Services can be unit-tested without Tauri runtime.
-
-**Example (Rust):**
-```rust
-// commands/provider.rs -- thin
-#[tauri::command]
-pub fn switch_provider(
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<SwitchResult, String> {
-    SyncService::switch(&state, &id).map_err(|e| e.to_string())
-}
-
-// services/sync.rs -- fat
-impl SyncService {
-    pub fn switch(state: &AppState, provider_id: &str) -> Result<SwitchResult, AppError> {
-        let provider = ProviderService::get(state, provider_id)?;
-        let mut warnings = Vec::new();
-
-        for adapter in get_adapters_for_protocol(&provider.protocol) {
-            match adapter.patch(&provider) {
-                Ok(result) => warnings.extend(result.warnings),
-                Err(e) => warnings.push(format!("Failed to patch {}: {}", adapter.name(), e)),
+impl TrayTexts {
+    fn from_language(lang: &str) -> Self {
+        if lang.starts_with("en") {
+            Self {
+                show_main: "Open Main Window",
+                quit: "Quit",
+                no_providers: "  (No providers yet)",
+            }
+        } else {
+            Self {
+                show_main: "\u{6253}\u{5F00}\u{4E3B}\u{754C}\u{9762}",
+                quit: "\u{9000}\u{51FA}",
+                no_providers: "  (\u{6682}\u{65E0} Provider)",
             }
         }
-
-        SettingsService::set_active(state, provider_id)?;
-        Ok(SwitchResult { warnings })
     }
 }
-```
 
-### Pattern 2: Read-Modify-Write with Preserve
+pub fn create_tray_menu(app: &AppHandle) -> Result<Menu<Wry>, AppError> {
+    let settings = read_local_settings()?;
+    let providers = list_providers()?;
+    let lang = settings.language.as_deref().unwrap_or("zh-CN");
+    let texts = TrayTexts::from_language(lang);
 
-**What:** When patching a CLI config file, read the entire file, modify only the target fields, write the entire file back. Never construct a new file from scratch.
+    let mut builder = MenuBuilder::new(app);
 
-**When:** Every CLI adapter patch operation.
+    // "Open Main Window"
+    let show_item = MenuItem::with_id(app, "show_main", texts.show_main, true, None::<&str>)
+        .map_err(menu_err)?;
+    builder = builder.item(&show_item).separator();
 
-**Why:** This is the core value proposition of CLIManager over cc-switch. cc-switch's `atomic_write` reconstructed config from SSOT, which destroyed user settings (permissions, tools, etc.).
+    // Provider sections grouped by cli_id
+    for (cli_id, header_label) in [("claude", "Claude Code"), ("codex", "Codex")] {
+        let cli_providers: Vec<_> = providers.iter()
+            .filter(|p| p.cli_id == cli_id)
+            .collect();
 
-**Example (Rust):**
-```rust
-// adapters/claude.rs
-fn patch(&self, provider: &Provider) -> Result<PatchResult, AdapterError> {
-    let path = self.settings_path();
+        let header = MenuItem::with_id(app, format!("{cli_id}_header"), header_label, false, None::<&str>)
+            .map_err(menu_err)?;
+        builder = builder.item(&header);
 
-    // READ: Load existing config (or empty object if file doesn't exist)
-    let mut config: Value = if path.exists() {
-        let content = fs::read_to_string(&path)?;
-        serde_json::from_str(&content)?
-    } else {
-        json!({})
+        let active_id = settings.active_providers
+            .get(cli_id)
+            .and_then(|v| v.as_ref());
+
+        if cli_providers.is_empty() {
+            let empty = MenuItem::with_id(app, format!("{cli_id}_empty"), texts.no_providers, false, None::<&str>)
+                .map_err(menu_err)?;
+            builder = builder.item(&empty);
+        } else {
+            for provider in cli_providers {
+                let is_active = active_id.map_or(false, |id| id == &provider.id);
+                let item = CheckMenuItem::with_id(
+                    app, format!("{}_{}", cli_id, provider.id),
+                    &provider.name, true, is_active, None::<&str>,
+                ).map_err(menu_err)?;
+                builder = builder.item(&item);
+            }
+        }
+        builder = builder.separator();
+    }
+
+    // Quit
+    let quit = MenuItem::with_id(app, "quit", texts.quit, true, None::<&str>)
+        .map_err(menu_err)?;
+    builder = builder.item(&quit);
+
+    builder.build().map_err(menu_err)
+}
+
+pub fn update_tray_menu(app: &AppHandle) {
+    match create_tray_menu(app) {
+        Ok(menu) => {
+            if let Some(tray) = app.tray_by_id("main") {
+                if let Err(e) = tray.set_menu(Some(menu)) {
+                    log::error!("Failed to update tray menu: {e}");
+                }
+            }
+        }
+        Err(e) => log::error!("Failed to create tray menu: {e}"),
+    }
+}
+
+pub fn handle_tray_menu_event(app: &AppHandle, event_id: &str) {
+    match event_id {
+        "show_main" => show_main_window(app),
+        "quit" => { log::info!("Quit from tray"); app.exit(0); }
+        id => {
+            // Parse "{cli_id}_{provider_id}" -- find first underscore
+            // Skip header/empty items
+            if id.ends_with("_header") || id.ends_with("_empty") { return; }
+            if let Some((cli_id, provider_id)) = id.split_once('_') {
+                handle_provider_click(app, cli_id, provider_id);
+            }
+        }
+    }
+}
+
+fn show_main_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+        #[cfg(target_os = "macos")]
+        {
+            let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
+        }
+    }
+}
+
+fn handle_provider_click(app: &AppHandle, cli_id: &str, provider_id: &str) {
+    // Reuse existing internal switching logic
+    let providers_dir = match crate::storage::icloud::get_icloud_providers_dir() {
+        Ok(d) => d,
+        Err(e) => { log::error!("Tray switch failed: {e}"); return; }
     };
+    let settings_path = crate::storage::local::get_local_settings_path();
 
-    // MODIFY: Only touch credential fields
-    let env = config.as_object_mut()
-        .unwrap()
-        .entry("env")
-        .or_insert(json!({}));
-
-    env["ANTHROPIC_AUTH_TOKEN"] = json!(provider.credentials.api_key);
-    if let Some(base_url) = &provider.credentials.base_url {
-        env["ANTHROPIC_BASE_URL"] = json!(base_url);
+    match crate::commands::provider::_set_active_provider_in(
+        &providers_dir, &settings_path,
+        cli_id.to_string(), Some(provider_id.to_string()), None,
+    ) {
+        Ok(_) => {
+            log::info!("Tray: switched {cli_id} to {provider_id}");
+            update_tray_menu(app);
+            // Notify frontend
+            let _ = app.emit("provider-switched", serde_json::json!({
+                "cli_id": cli_id, "provider_id": provider_id
+            }));
+        }
+        Err(e) => log::error!("Tray switch failed: {e}"),
     }
-    // Do NOT touch any other keys in the config
+}
 
-    // WRITE: Write back the full config
-    let content = serde_json::to_string_pretty(&config)?;
-    fs::write(&path, content)?;
-
-    Ok(PatchResult::default())
+fn menu_err(e: impl std::fmt::Display) -> AppError {
+    AppError::Validation(format!("menu error: {e}"))
 }
 ```
 
-### Pattern 3: Event-Driven Frontend Refresh
+**Note on `_set_active_provider_in` visibility:** This function is currently `fn` (private to `commands::provider`). It needs to be made `pub(crate)` so `tray.rs` can call it. This is a one-word change.
 
-**What:** Backend emits Tauri events when data changes (from file watcher or from own writes). Frontend listens and invalidates TanStack Query caches.
+### `lib.rs` Changes
 
-**When:** Any backend state change that the frontend should reflect.
-
-**Why:** Decouples backend state changes from frontend polling. Works for both local changes and iCloud-synced remote changes.
-
-**Example (TypeScript):**
-```typescript
-// In main.tsx or a dedicated hook
-useEffect(() => {
-  const unlisten = listen("providers-changed", () => {
-    queryClient.invalidateQueries({ queryKey: ["providers"] });
-  });
-  return () => { unlisten.then(fn => fn()); };
-}, []);
-```
-
-### Pattern 4: Adapter Registry
-
-**What:** CLI adapters are registered in a central registry. When switching providers, iterate applicable adapters by protocol type.
-
-**When:** Provider switch, first-launch import, config validation.
-
-**Why:** Adding a new CLI support (e.g., OpenCode in v2) requires only adding a new adapter module and registering it. Zero changes to switch logic, commands, or frontend.
-
-**Example (Rust):**
 ```rust
-pub fn get_adapters() -> Vec<Box<dyn CliAdapter>> {
-    vec![
-        Box::new(ClaudeAdapter::new()),
-        Box::new(CodexAdapter::new()),
-        // Future: Box::new(OpenCodeAdapter::new()),
-    ]
-}
+mod tray;  // ADD
 
-pub fn get_adapters_for_protocol(protocol: &ProtocolType) -> Vec<Box<dyn CliAdapter>> {
-    get_adapters()
-        .into_iter()
-        .filter(|a| a.supported_protocols().contains(protocol))
-        .collect()
+// In setup():
+let menu = tray::create_tray_menu(app.handle())?;
+
+let _tray = tauri::tray::TrayIconBuilder::with_id("main")
+    .icon(app.default_window_icon().unwrap().clone())
+    .icon_as_template(true)  // macOS dark/light mode adaptation
+    .menu(&menu)
+    .show_menu_on_left_click(true)
+    .on_menu_event(|app, event| {
+        tray::handle_tray_menu_event(app, &event.id.0);
+    })
+    .on_tray_icon_event(|_tray, _event| {
+        // Left click shows menu via show_menu_on_left_click(true)
+    })
+    .build(app)?;
+
+// ADD to invoke_handler:
+commands::provider::refresh_tray_menu,
+
+// ADD before .setup():
+.on_window_event(|window, event| {
+    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+        api.prevent_close();
+        let _ = window.hide();
+        #[cfg(target_os = "macos")]
+        {
+            let _ = window.app_handle()
+                .set_activation_policy(tauri::ActivationPolicy::Accessory);
+        }
+    }
+})
+```
+
+### New Tauri Command: `refresh_tray_menu`
+
+```rust
+// In commands/provider.rs (or commands/mod.rs)
+#[tauri::command]
+pub fn refresh_tray_menu(app_handle: tauri::AppHandle) -> Result<(), String> {
+    crate::tray::update_tray_menu(&app_handle);
+    Ok(())
 }
 ```
+
+The frontend calls this after any CRUD operation that changes provider data.
+
+## Architectural Patterns
+
+### Pattern 1: Menu-as-Snapshot (Full Rebuild)
+
+**What:** The tray menu is rebuilt entirely from storage state each time it needs updating. No incremental menu patching.
+
+**Why:** Tauri 2 menus are immutable after build. To update, you replace the entire menu via `tray.set_menu(Some(new_menu))`. This aligns with the app's file-based storage (re-read providers, rebuild menu).
+
+**Trade-offs:** Rebuilds read all provider files from disk each time. With the expected scale (3-20 providers), this is negligible (<1ms). Avoids complex state synchronization between menu items and storage.
+
+### Pattern 2: Shared Internal Functions (No Logic Duplication)
+
+**What:** Tray event handlers call the same `_set_active_provider_in()` internal function that the Tauri command uses.
+
+**Why:** The `#[tauri::command]` functions are designed for IPC. The tray handler is in the same Rust crate and can call the internal `_in` variant directly. This keeps switching logic in one place: one code path for both UI-initiated and tray-initiated switches.
+
+**Trade-offs:** Requires `pub(crate)` visibility on the `_in` function (currently `fn`). This is a minor visibility change, not an API change.
+
+### Pattern 3: Event-Driven Cross-Surface Sync
+
+**What:** After a tray-initiated switch, the backend emits `"provider-switched"`. After a frontend-initiated CRUD, the frontend calls `refresh_tray_menu`. Both surfaces stay in sync via events and commands.
+
+**Why:** The window may or may not be visible. Events are cheap and the frontend already has listener infrastructure from the file watcher.
+
+**Bidirectional sync:**
+- Tray -> Frontend: `app.emit("provider-switched", ...)`
+- Frontend -> Tray: `invoke("refresh_tray_menu")`
+- iCloud -> Both: watcher calls `update_tray_menu` + emits `providers-changed`
+
+## Window Lifecycle Changes
+
+| Scenario | Before (v1.0) | After (v1.1) |
+|----------|---------------|--------------|
+| User closes window | App exits | Window hides, app stays in tray |
+| User clicks tray "Open" | N/A | Window shows, gets focus, Dock icon appears |
+| User clicks tray "Quit" | N/A | App fully exits (`app.exit(0)`) |
+| macOS Dock icon | Always visible while app runs | Hidden when window is hidden (ActivationPolicy::Accessory) |
+| App startup | Window opens | Window opens + tray icon appears simultaneously |
+| All windows closed | App exits (default Tauri behavior) | App continues (CloseRequested intercepted) |
+
+### macOS ActivationPolicy Details
+
+- `ActivationPolicy::Regular` -- App appears in Dock, Cmd+Tab, has menu bar. Use when window is visible.
+- `ActivationPolicy::Accessory` -- App does NOT appear in Dock or Cmd+Tab. Only tray icon visible. Use when window is hidden.
+
+This is controlled via `app.set_activation_policy()` (Tauri 2 API), not via Info.plist. It can be toggled at runtime.
 
 ## Anti-Patterns to Avoid
 
-### Anti-Pattern 1: Whole-File Rewrite on Switch
+### Anti-Pattern 1: Tray Holding Its Own Provider Cache
 
-**What:** Constructing a complete config file from stored data and replacing the live config entirely.
+**What people do:** Store a copy of provider data in the tray module's state, sync it separately.
+**Why it is wrong:** Creates a second source of truth. If the cache diverges from storage (missed update, iCloud sync), the tray shows stale data.
+**Do this instead:** Always read from storage when building the menu. `list_providers()` + `read_local_settings()` are fast reads of small JSON files.
 
-**Why bad:** This is cc-switch's core bug. When you rebuild `settings.json` from your SSOT, you lose:
-- User-configured `allowedTools` lists
-- Permission settings
-- Custom environment variables unrelated to the provider
-- Any other settings the CLI added that your app doesn't model
+### Anti-Pattern 2: Duplicating Switch Logic in Tray Handler
 
-**Instead:** Read-Modify-Write. Only touch the fields you own (credentials + model).
+**What people do:** Write provider-switching code (validation, adapter patching, settings update) directly in the tray event handler.
+**Why it is wrong:** Diverges from the tested switching path. Bugs get fixed in one place but not the other.
+**Do this instead:** Call `_set_active_provider_in()` -- the same function the Tauri command uses.
 
-### Anti-Pattern 2: SQLite in iCloud Sync Directory
+### Anti-Pattern 3: Keeping Default App Exit on Window Close
 
-**What:** Placing a SQLite database in a directory synced by iCloud.
+**What people do:** Keep `.run(tauri::generate_context!())` which exits when the last window closes.
+**Why it is wrong:** Closing the window kills the app, defeating the purpose of a system tray.
+**Do this instead:** Intercept `CloseRequested`, call `api.prevent_close()`, hide the window.
 
-**Why bad:** Extensively documented in `icloud-sync-root-cause-zh.md`. SQLite depends on local filesystem lock semantics. iCloud's eventual consistency + lack of cross-device locks = corruption, conflict copies, phantom state resets.
+### Anti-Pattern 4: Provider ID Parsing Fragility
 
-**Instead:** Per-provider JSON files in iCloud. JSON files are append/replace-friendly. Single-file granularity avoids cross-file transaction issues.
+**What people do:** Use `split_once('_')` on menu IDs like `"claude_abc-123"` and assume the first part is always the CLI ID.
+**Why it is wrong:** If a provider UUID happens to contain no hyphens, or if a CLI ID contains underscores, parsing breaks.
+**Do this instead:** Use the known CLI ID prefixes (`"claude_"`, `"codex_"`) and `strip_prefix()` to extract the provider ID. The cc-switch reference code uses this pattern correctly.
 
-### Anti-Pattern 3: Syncing Device-Local State
+## Integration Points
 
-**What:** Putting active-provider-id, locale, or path overrides in the iCloud sync directory.
+### Internal Boundaries
 
-**Why bad:** Device A sets active = Provider1, Device B sets active = Provider2. iCloud syncs -- both devices now ping-pong between Provider1 and Provider2.
+| Boundary | Communication | Notes |
+|----------|---------------|-------|
+| `tray.rs` -> `commands::provider` | Direct `fn` call (`_set_active_provider_in`) | Same crate, needs `pub(crate)` |
+| `tray.rs` -> `storage::icloud` | Direct `fn` call (`list_providers`) | Already `pub` |
+| `tray.rs` -> `storage::local` | Direct `fn` call (`read_local_settings`) | Already `pub` |
+| `watcher/mod.rs` -> `tray.rs` | Direct `fn` call (`update_tray_menu`) | New call in `process_events` |
+| `tray.rs` -> Frontend | Event emission (`provider-switched`) | Frontend may be hidden |
+| Frontend -> `tray.rs` | Tauri command (`refresh_tray_menu`) | After provider CRUD |
 
-**Instead:** `local.json` stays in `~/.cli-manager/` which is NOT in iCloud.
+### Tray Icon Asset
 
-### Anti-Pattern 4: Fat Commands
+macOS best practice: Use a template image (single-color, transparency-based) so the system can adapt it for light/dark mode. The icon should be:
+- 22x22 points (44x44 pixels @2x, 66x66 pixels @3x)
+- Single color (black/white, system inverts as needed)
+- Named with `Template` suffix or flagged with `.icon_as_template(true)`
 
-**What:** Putting business logic directly in `#[tauri::command]` handlers.
+For v1.1 MVP, using the app's default window icon via `app.default_window_icon().unwrap().clone()` is acceptable. A proper template icon can be added as polish.
 
-**Why bad:** Cannot unit test without Tauri runtime. Mixes IPC concerns with domain logic. Hard to reuse logic (e.g., watcher triggering re-patch uses same logic as user-initiated switch).
+## Suggested Build Order
 
-**Instead:** Commands delegate to services. Services are pure Rust with no Tauri dependency (except through passed state).
+Build in this order to maintain a working app at each step:
 
-### Anti-Pattern 5: Unbounded File Watcher Events
+| Step | What | Depends On | Deliverable |
+|------|------|------------|-------------|
+| 1 | `Cargo.toml` features + minimal `tray.rs` + `lib.rs` setup | Nothing | Tray icon appears with "Quit" menu item |
+| 2 | Full `create_tray_menu` with provider sections | Step 1 | Providers visible in tray with active state |
+| 3 | `handle_tray_menu_event` for provider switching | Step 2 | Switching from tray patches CLI configs |
+| 4 | Bidirectional sync (emit events + `refresh_tray_menu` command) | Step 3 | Tray and frontend stay in sync |
+| 5 | Window lifecycle (`on_window_event`, hide/show, ActivationPolicy) | Step 1 | Close-to-tray works |
+| 6 | i18n labels + tray icon asset + edge cases | Steps 4+5 | Production polish |
 
-**What:** Reacting to every FSEvent immediately without debouncing.
-
-**Why bad:** iCloud file sync generates multiple events per logical change (content write, extended attribute update, metadata update). Processing each one triggers redundant re-reads and UI refreshes.
-
-**Instead:** Debounce with a 200ms window. Coalesce events for the same file path.
-
-## Suggested Build Order (Dependencies)
-
-The components have clear dependency ordering. Building bottom-up ensures each layer has its foundation before the layer above starts.
-
-```
-Phase 1: Foundation
-  Storage Layer (iCloud sync dir + local.json read/write)
-  Provider data model (ProtocolType, Provider struct, validation)
-  -> These have zero external dependencies. Everything else builds on them.
-
-Phase 2: Core Logic
-  CLI Adapters (Claude Code + Codex R/M/W)
-  ProviderService (CRUD using Storage Layer)
-  SettingsService (local.json management)
-  -> Depends on Phase 1. This is where the core value lives.
-
-Phase 3: Integration
-  SyncService (orchestrates switch: provider -> adapters -> settings)
-  Commands Layer (IPC surface for all services)
-  -> Depends on Phase 2. Wire everything to Tauri IPC.
-
-Phase 4: Frontend Shell
-  Frontend types + IPC wrappers
-  TanStack Query hooks
-  Basic Provider list + switch UI
-  -> Depends on Phase 3 commands existing. First usable UI.
-
-Phase 5: Reactive Features
-  File Watcher (FSEvents on sync dir)
-  WatcherService (debounce + event emission)
-  Frontend event listeners (cache invalidation on sync)
-  -> Depends on Phase 4 having working UI to refresh.
-
-Phase 6: Onboarding
-  ImportService (first-launch scan)
-  i18n setup
-  Settings UI (locale, path overrides)
-  -> Can be built in parallel with Phase 5. Not blocking core flow.
-```
-
-**Critical path:** Phase 1 -> 2 -> 3 -> 4 (minimum viable product)
-
-**Parallelizable:** Phase 5 and 6 can be developed concurrently once Phase 4 is complete.
-
-## Scalability Considerations
-
-| Concern | At 5 providers | At 50 providers | At 500 providers |
-|---------|---------------|-----------------|-------------------|
-| Storage (sync dir) | 5 small JSON files, trivial | 50 files, still trivial for iCloud | Unlikely scenario; directory listing may slow. Consider index file |
-| File watcher events | Infrequent, no concern | Moderate during bulk sync | Debounce window may need widening; batch processing |
-| Provider list rendering | Simple flat list | Needs search/filter | Virtual scrolling, categorization |
-| Switch operation | 2 CLI adapters, <100ms | Same -- switch is per-provider, not per-list | Same |
-| iCloud sync bandwidth | Negligible (few KB) | Still negligible | Consider lazy download of .icloud placeholders |
-
-**Realistic scale:** Most users will have 3-10 providers. The architecture handles 50+ without modification. 500+ is an edge case that can be addressed with an index file if ever needed.
-
-## Key Differences from cc-switch
-
-| Aspect | cc-switch | CLIManager |
-|--------|-----------|------------|
-| SSOT | SQLite database | Per-provider JSON files |
-| Config write | Whole-file rewrite (`atomic_write`) | Surgical Read-Modify-Write |
-| Sync mechanism | SQLite + settings.json in iCloud (broken) | Per-provider files in iCloud (safe by design) |
-| Device state | settings.json (sometimes synced) | local.json (never synced) |
-| CLI support | 5 CLIs (Claude/Codex/Gemini/OpenCode/OpenClaw) | 2 CLIs (Claude Code + Codex), extensible via adapter trait |
-| Feature scope | Providers + MCP + Prompts + Skills + Proxy + Sessions | Providers only (v1) |
-| State management | `AppState { db, proxy_service }` | `AppState { sync_dir, local_settings, watcher }` |
-| Backend layers | Commands -> Services -> Database (DAO) | Commands -> Services -> Storage + Adapters |
+Steps 4 and 5 can be developed in parallel after step 3.
 
 ## Sources
 
-- cc-switch reference code (read-only): `/Users/kelin/Workspace/CLIManager/cc-switch/`
-- cc-switch architecture notes: `/Users/kelin/Workspace/CLIManager/cc-switch-ref-notes-zh.md`
-- iCloud sync root cause analysis: `/Users/kelin/Workspace/CLIManager/icloud-sync-root-cause-zh.md`
-- Project requirements: `/Users/kelin/Workspace/CLIManager/.planning/PROJECT.md`
-- Tauri 2 architecture patterns: Based on training data (Tauri 2.x stable release architecture). Confidence: HIGH -- Tauri 2's command/state/event model is well-documented and stable.
-- `notify` crate for file watching: Standard Rust file watcher crate, wraps FSEvents on macOS. Confidence: HIGH.
-- `toml_edit` for comment-preserving TOML editing: Confidence: HIGH -- this is the standard approach for preserving TOML formatting.
+- [Tauri 2 System Tray documentation](https://v2.tauri.app/learn/system-tray/)
+- [TrayIconBuilder API reference (Tauri 2)](https://docs.rs/tauri/2.0.0/tauri/tray/struct.TrayIconBuilder.html)
+- [Tauri 2 crate feature flags](https://docs.rs/crate/tauri/latest/features)
+- [Tauri 2 migration guide (tray changes)](https://v2.tauri.app/start/migrate/from-tauri-1/)
+- cc-switch reference implementation: `cc-switch/src-tauri/src/tray.rs` (447 lines, full tray with multi-app sections)
+- cc-switch tray setup: `cc-switch/src-tauri/src/lib.rs` (TrayIconBuilder at line 685, on_window_event at line 231)
+- Existing CLIManager source: `src-tauri/src/lib.rs`, `src-tauri/src/commands/provider.rs`, `src-tauri/src/watcher/mod.rs`
+
+---
+*Architecture research for: CLIManager v1.1 System Tray Integration*
+*Researched: 2026-03-12*
