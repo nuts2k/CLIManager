@@ -90,10 +90,11 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. On first launch, the app scans `~/.claude/` and `~/.codex/` configurations and offers to create providers from detected credentials
   2. User can skip auto-import and manually create providers from scratch at any time
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 05-01: TBD
+- [ ] 05-01-PLAN.md — Backend scan_cli_configs command with import_provider (relaxed validation) and unit tests
+- [ ] 05-02-PLAN.md — Frontend ImportDialog, AppShell onboarding trigger, Settings import button, i18n
 
 ## Progress
 
@@ -106,4 +107,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 2. Surgical Patch Engine | 2/2 | Complete   | 2026-03-11 |
 | 3. Provider Management UI | 4/4 | Complete   | 2026-03-11 |
 | 4. iCloud Sync and File Watching | 2/2 | Complete | 2026-03-11 |
-| 5. Onboarding | 0/TBD | Not started | - |
+| 5. Onboarding | 0/2 | Not started | - |
