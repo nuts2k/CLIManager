@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: Phase 5 context gathered
-last_updated: "2026-03-12T05:24:33.165Z"
-last_activity: 2026-03-11 -- Completed plan 04-02 (Frontend sync listener)
+status: in-progress
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-03-12T05:58:22Z"
+last_activity: 2026-03-12 -- Completed plan 05-01 (CLI Config Scan Backend)
 progress:
   total_phases: 5
   completed_phases: 4
-  total_plans: 10
-  completed_plans: 10
-  percent: 95
+  total_plans: 12
+  completed_plans: 11
+  percent: 92
 ---
 
 # Project State
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-10)
 
 **Core value:** Surgical patch -- switch Provider only modifies credential and model fields, never rewrites other config content
-**Current focus:** Phase 4: iCloud Sync and File Watching
+**Current focus:** Phase 5: Onboarding
 
 ## Current Position
 
-Phase: 4 of 5 (iCloud Sync and File Watching) -- COMPLETE
-Plan: 2 of 2 in current phase -- COMPLETE
-Status: Phase 04 complete, ready for Phase 05
-Last activity: 2026-03-11 -- Completed plan 04-02 (Frontend sync listener)
+Phase: 5 of 5 (Onboarding) -- IN PROGRESS
+Plan: 1 of 2 in current phase -- COMPLETE
+Status: Plan 05-01 complete, ready for plan 05-02
+Last activity: 2026-03-12 -- Completed plan 05-01 (CLI Config Scan Backend)
 
-Progress: [█████████▌] 95%
+Progress: [█████████▎] 92%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 10
+- Total plans completed: 11
 - Average duration: 6min
-- Total execution time: 0.90 hours
+- Total execution time: 0.97 hours
 
 **By Phase:**
 
@@ -47,6 +47,7 @@ Progress: [█████████▌] 95%
 | 2 - Patch Engine | 2/2 | 7min | 3.5min |
 | 3 - Provider UI | 4/4 | 28min | 7min |
 | 4 - iCloud Sync | 2/2 | 22min | 11min |
+| 5 - Onboarding | 1/2 | 4min | 4min |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -57,6 +58,7 @@ Progress: [█████████▌] 95%
 | Phase 03 P04 | 15min | 2 tasks | 9 files |
 | Phase 04 P01 | 5min | 2 tasks | 5 files |
 | Phase 04 P02 | 17min | 2 tasks | 8 files |
+| Phase 05 P01 | 4min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -106,6 +108,10 @@ Recent decisions affecting current work:
 - 04-02: Provider file validation: id/filename match, required fields non-empty, base_url http(s)://
 - 04-02: refreshTrigger prop pattern for cross-component refresh coordination
 
+- 05-01: Separate import_provider command instead of relaxing create_provider global validation
+- 05-01: import_provider_to internal variant for test isolation consistent with _in/_to project pattern
+- 05-01: Model field set to empty string on import (only API key + base URL imported per CONTEXT.md)
+
 ### Pending Todos
 
 None yet.
@@ -117,6 +123,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-12T05:24:33.156Z
-Stopped at: Phase 5 context gathered
-Resume file: .planning/phases/05-onboarding/05-CONTEXT.md
+Last session: 2026-03-12T05:58:22Z
+Stopped at: Completed 05-01-PLAN.md
+Resume file: .planning/phases/05-onboarding/05-02-PLAN.md

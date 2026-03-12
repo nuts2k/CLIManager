@@ -39,7 +39,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Onboarding
 
-- [ ] **ONBD-01**: First launch scans existing `~/.claude/` and `~/.codex/` configs and creates initial Providers
+- [x] **ONBD-01**: First launch scans existing `~/.claude/` and `~/.codex/` configs and creates initial Providers
 - [ ] **ONBD-02**: User can also manually create Providers from scratch at any time
 
 ### i18n
@@ -115,7 +115,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SYNC-03 | Phase 4 | Complete |
 | SYNC-04 | Phase 4 | Complete |
 | SYNC-05 | Phase 4 | Complete |
-| ONBD-01 | Phase 5 | Pending |
+| ONBD-01 | Phase 5 | Complete |
 | ONBD-02 | Phase 5 | Pending |
 | I18N-01 | Phase 3 | Complete |
 | I18N-02 | Phase 3 | Complete |
