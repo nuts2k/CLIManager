@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Surgical Patch Engine** - Read-Modify-Write CLI adapters that patch config files without destroying other content (completed 2026-03-11)
 - [x] **Phase 3: Provider Management UI** - Full provider CRUD interface with one-click switching and i18n (completed 2026-03-11)
 - [x] **Phase 4: iCloud Sync and File Watching** - FSEvents-based live sync with reactive UI refresh and active provider linkage (completed 2026-03-11)
-- [ ] **Phase 5: Onboarding** - First-launch auto-import from existing CLI configs
+- [x] **Phase 5: Onboarding** - First-launch auto-import from existing CLI configs (completed 2026-03-12)
 
 ## Phase Details
 
@@ -90,11 +90,11 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. On first launch, the app scans `~/.claude/` and `~/.codex/` configurations and offers to create providers from detected credentials
   2. User can skip auto-import and manually create providers from scratch at any time
-**Plans:** 2 plans
+**Plans:** 2/2 plans executed
 
 Plans:
-- [ ] 05-01-PLAN.md — Backend scan_cli_configs command with import_provider (relaxed validation) and unit tests
-- [ ] 05-02-PLAN.md — Frontend ImportDialog, AppShell onboarding trigger, Settings import button, i18n
+- [x] 05-01-PLAN.md — Backend scan_cli_configs command with import_provider (relaxed validation) and unit tests
+- [x] 05-02-PLAN.md — Frontend ImportDialog, AppShell onboarding trigger, Settings import button, i18n
 
 ## Progress
 
@@ -107,4 +107,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 2. Surgical Patch Engine | 2/2 | Complete   | 2026-03-11 |
 | 3. Provider Management UI | 4/4 | Complete   | 2026-03-11 |
 | 4. iCloud Sync and File Watching | 2/2 | Complete | 2026-03-11 |
-| 5. Onboarding | 0/2 | Not started | - |
+| 5. Onboarding | 2/2 | Complete | 2026-03-12 |

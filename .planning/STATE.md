@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: in-progress
-stopped_at: Completed 05-01-PLAN.md
-last_updated: "2026-03-12T05:58:22Z"
-last_activity: 2026-03-12 -- Completed plan 05-01 (CLI Config Scan Backend)
+status: completed
+stopped_at: Completed 05-02-PLAN.md -- ALL PLANS COMPLETE
+last_updated: "2026-03-12T08:17:21Z"
+last_activity: 2026-03-12 -- Completed plan 05-02 (Import Dialog Frontend)
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 12
-  completed_plans: 11
-  percent: 92
+  completed_plans: 12
+  percent: 100
 ---
 
 # Project State
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-10)
 
 **Core value:** Surgical patch -- switch Provider only modifies credential and model fields, never rewrites other config content
-**Current focus:** Phase 5: Onboarding
+**Current focus:** All phases complete (v1.0 milestone)
 
 ## Current Position
 
-Phase: 5 of 5 (Onboarding) -- IN PROGRESS
-Plan: 1 of 2 in current phase -- COMPLETE
-Status: Plan 05-01 complete, ready for plan 05-02
-Last activity: 2026-03-12 -- Completed plan 05-01 (CLI Config Scan Backend)
+Phase: 5 of 5 (Onboarding) -- COMPLETE
+Plan: 2 of 2 in current phase -- COMPLETE
+Status: All plans complete. v1.0 milestone achieved.
+Last activity: 2026-03-12 -- Completed plan 05-02 (Import Dialog Frontend)
 
-Progress: [█████████▎] 92%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 11
+- Total plans completed: 12
 - Average duration: 6min
-- Total execution time: 0.97 hours
+- Total execution time: 1.12 hours
 
 **By Phase:**
 
@@ -47,7 +47,7 @@ Progress: [█████████▎] 92%
 | 2 - Patch Engine | 2/2 | 7min | 3.5min |
 | 3 - Provider UI | 4/4 | 28min | 7min |
 | 4 - iCloud Sync | 2/2 | 22min | 11min |
-| 5 - Onboarding | 1/2 | 4min | 4min |
+| 5 - Onboarding | 2/2 | 19min | 9.5min |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -59,6 +59,7 @@ Progress: [█████████▎] 92%
 | Phase 04 P01 | 5min | 2 tasks | 5 files |
 | Phase 04 P02 | 17min | 2 tasks | 8 files |
 | Phase 05 P01 | 4min | 2 tasks | 3 files |
+| Phase 05 P02 | 15min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -112,6 +113,10 @@ Recent decisions affecting current work:
 - 05-01: import_provider_to internal variant for test isolation consistent with _in/_to project pattern
 - 05-01: Model field set to empty string on import (only API key + base URL imported per CONTEXT.md)
 
+- 05-02: isConfigComplete() checks both has_api_key AND base_url -- configs missing required fields default to unchecked
+- 05-02: Import dialog auto-names providers as "{cli_name} {defaultSuffix}" (e.g. "Claude Code 默认配置")
+- 05-02: Dedup check compares api_key + base_url against existing providers before import
+
 ### Pending Todos
 
 None yet.
@@ -123,6 +128,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-12T05:58:22Z
-Stopped at: Completed 05-01-PLAN.md
-Resume file: .planning/phases/05-onboarding/05-02-PLAN.md
+Last session: 2026-03-12T08:17:21Z
+Stopped at: Completed 05-02-PLAN.md -- ALL PLANS COMPLETE
+Resume file: N/A (v1.0 milestone complete)
