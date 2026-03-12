@@ -83,6 +83,7 @@
     "importSelected": "Import Selected",
     "skip": "Skip",
     "missingApiKey": "Missing API Key",
+    "missingBaseUrl": "Missing Base URL",
     "importSuccess": "Imported {{count}} provider(s)",
     "importError": "Import failed: {{error}}",
     "noNewConfigs": "No new configs detected",

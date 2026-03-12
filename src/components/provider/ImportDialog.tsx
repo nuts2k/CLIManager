@@ -21,6 +21,11 @@ interface ImportDialogProps {
   onImportComplete: () => void;
 }
 
+/** Config is complete when all required fields are present */
+function isConfigComplete(config: DetectedCliConfig): boolean {
+  return config.has_api_key && config.base_url.length > 0;
+}
+
 function maskApiKey(key: string): string {
   if (key.length <= 8) {
     return key.length >= 4
@@ -40,11 +45,11 @@ export function ImportDialog({
   const [selected, setSelected] = useState<Record<number, boolean>>({});
   const [importing, setImporting] = useState(false);
 
-  // Initialize all as selected when configs change
+  // Default: only select configs with all required fields present
   const effectiveSelected = useMemo(() => {
     const result: Record<number, boolean> = {};
-    configs.forEach((_, i) => {
-      result[i] = selected[i] ?? true;
+    configs.forEach((config, i) => {
+      result[i] = selected[i] ?? isConfigComplete(config);
     });
     return result;
   }, [configs, selected]);
@@ -142,9 +147,15 @@ export function ImportDialog({
                     </span>
                   )}
                   <span className="text-border">|</span>
-                  <span className="truncate">
-                    {config.base_url || "-"}
-                  </span>
+                  {config.base_url ? (
+                    <span className="truncate">
+                      {config.base_url}
+                    </span>
+                  ) : (
+                    <span className="text-yellow-500">
+                      {t("import.missingBaseUrl")}
+                    </span>
+                  )}
                 </div>
               </div>
             </label>
