@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Provider, CreateProviderInput } from "@/types/provider";
+import type { Provider, CreateProviderInput, DetectedCliConfig, ProtocolType } from "@/types/provider";
 import type { LocalSettings, TestResult } from "@/types/settings";
 
 export async function listProviders(cliId?: string): Promise<Provider[]> {
@@ -41,4 +41,18 @@ export async function testProvider(providerId: string): Promise<TestResult> {
 
 export async function syncActiveProviders(): Promise<void> {
   return invoke("sync_active_providers");
+}
+
+export async function scanCliConfigs(): Promise<DetectedCliConfig[]> {
+  return invoke("scan_cli_configs");
+}
+
+export async function importProvider(input: {
+  name: string;
+  protocolType: ProtocolType;
+  apiKey: string;
+  baseUrl: string;
+  cliId: string;
+}): Promise<Provider> {
+  return invoke("import_provider", { ...input });
 }

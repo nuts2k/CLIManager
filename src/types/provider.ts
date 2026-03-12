@@ -30,3 +30,12 @@ export interface CreateProviderInput {
   model: string;
   cliId: string;
 }
+
+export interface DetectedCliConfig {
+  cli_id: string;
+  cli_name: string;
+  api_key: string;
+  base_url: string;
+  protocol_type: ProtocolType;
+  has_api_key: boolean;
+}

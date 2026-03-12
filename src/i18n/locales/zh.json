@@ -77,5 +77,17 @@
     "providerUpdated": "\u5df2\u540c\u6b65\uff1aProvider \"{{name}}\" \u5df2\u66f4\u65b0",
     "repatchFailed": "\u540c\u6b65\u540e\u81ea\u52a8\u66f4\u65b0 CLI \u914d\u7f6e\u5931\u8d25",
     "repatchSuccess": "CLI \u914d\u7f6e\u5df2\u81ea\u52a8\u66f4\u65b0"
+  },
+  "import": {
+    "title": "\u5bfc\u5165\u73b0\u6709\u914d\u7f6e",
+    "importSelected": "\u5bfc\u5165\u5df2\u9009\u9879",
+    "skip": "\u8df3\u8fc7",
+    "missingApiKey": "\u7f3a\u5c11 API Key",
+    "importSuccess": "\u5df2\u5bfc\u5165 {{count}} \u4e2a Provider",
+    "importError": "\u5bfc\u5165\u5931\u8d25: {{error}}",
+    "noNewConfigs": "\u672a\u68c0\u6d4b\u5230\u65b0\u7684\u914d\u7f6e",
+    "settingsButton": "\u4ece CLI \u914d\u7f6e\u5bfc\u5165",
+    "defaultSuffix": "\u9ed8\u8ba4\u914d\u7f6e",
+    "importing": "\u5bfc\u5165\u4e2d..."
   }
 }
