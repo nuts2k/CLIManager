@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: MVP
-status: milestone_complete
-stopped_at: v1.0 milestone archived
-last_updated: "2026-03-12T14:15:00.000Z"
-last_activity: 2026-03-12 -- v1.0 milestone completed and archived
+milestone: v1.1
+milestone_name: System Tray
+status: defining_requirements
+stopped_at: null
+last_updated: "2026-03-12T15:00:00.000Z"
+last_activity: 2026-03-12 -- Milestone v1.1 started
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 12
-  completed_plans: 12
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -21,12 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-12)
 
 **Core value:** Surgical patch -- switch Provider only modifies credential and model fields, never rewrites other config content
-**Current focus:** v1.0 milestone complete. Planning next milestone.
+**Current focus:** v1.1 System Tray
 
 ## Current Position
 
-Milestone v1.0 MVP shipped 2026-03-12.
-All 5 phases, 12 plans complete.
+Phase: Not started (defining requirements)
+Plan: --
+Status: Defining requirements
+Last activity: 2026-03-12 -- Milestone v1.1 started
 
 ## Performance Metrics
 
@@ -48,10 +50,10 @@ None.
 
 ### Blockers/Concerns
 
-(Cleared for new milestone)
+(None)
 
 ## Session Continuity
 
 Last session: 2026-03-12
-Stopped at: v1.0 milestone archived
+Stopped at: Defining v1.1 requirements
 Resume file: N/A
