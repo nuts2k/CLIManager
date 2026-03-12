@@ -1,11 +1,11 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.0
-milestone_name: milestone
-status: completed
-stopped_at: Completed 05-02-PLAN.md -- ALL PLANS COMPLETE
-last_updated: "2026-03-12T12:39:43.708Z"
-last_activity: 2026-03-12 -- Completed plan 05-02 (Import Dialog Frontend)
+milestone_name: MVP
+status: milestone_complete
+stopped_at: v1.0 milestone archived
+last_updated: "2026-03-12T14:15:00.000Z"
+last_activity: 2026-03-12 -- v1.0 milestone completed and archived
 progress:
   total_phases: 5
   completed_phases: 5
@@ -18,116 +18,40 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-10)
+See: .planning/PROJECT.md (updated 2026-03-12)
 
 **Core value:** Surgical patch -- switch Provider only modifies credential and model fields, never rewrites other config content
-**Current focus:** All phases complete (v1.0 milestone)
+**Current focus:** v1.0 milestone complete. Planning next milestone.
 
 ## Current Position
 
-Phase: 5 of 5 (Onboarding) -- COMPLETE
-Plan: 2 of 2 in current phase -- COMPLETE
-Status: All plans complete. v1.0 milestone achieved.
-Last activity: 2026-03-12 -- Completed plan 05-02 (Import Dialog Frontend)
-
-Progress: [██████████] 100%
+Milestone v1.0 MVP shipped 2026-03-12.
+All 5 phases, 12 plans complete.
 
 ## Performance Metrics
 
-**Velocity:**
-- Total plans completed: 12
-- Average duration: 6min
-- Total execution time: 1.12 hours
-
-**By Phase:**
-
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| 1 - Storage | 2/2 | 12min | 6min |
-| 2 - Patch Engine | 2/2 | 7min | 3.5min |
-| 3 - Provider UI | 4/4 | 28min | 7min |
-| 4 - iCloud Sync | 2/2 | 22min | 11min |
-| 5 - Onboarding | 2/2 | 19min | 9.5min |
-
-**Recent Trend:**
-- Last 5 plans: -
-- Trend: -
-
-*Updated after each plan completion*
-| Phase 03 P03 | 4min | 2 tasks | 11 files |
-| Phase 03 P04 | 15min | 2 tasks | 9 files |
-| Phase 04 P01 | 5min | 2 tasks | 5 files |
-| Phase 04 P02 | 17min | 2 tasks | 8 files |
-| Phase 05 P01 | 4min | 2 tasks | 3 files |
-| Phase 05 P02 | 15min | 3 tasks | 8 files |
+**v1.0 Summary:**
+- Total plans: 12
+- Total execution time: ~1.12 hours (avg 6min/plan)
+- Commits: 85
+- LOC: 7,986
 
 ## Accumulated Context
 
 ### Decisions
 
-Decisions are logged in PROJECT.md Key Decisions table.
-Recent decisions affecting current work:
-
-- Roadmap: 5 phases derived from 23 requirements with standard granularity
-- Roadmap: Phase 4 (iCloud Sync) depends on Phase 3 (UI must exist to refresh); Phase 5 (Onboarding) depends on Phase 3 only (independent of Phase 4)
-- 01-01: Used internal _in/_to function variants for testable CRUD without mocking filesystem paths
-- 01-01: iCloud fallback to ~/.cli-manager/providers/ when ~/Library/Mobile Documents/ absent
-- 01-01: schema_version defaults to 1 via serde default for forward compatibility
-- 01-02: Followed _from/_to internal variant pattern for local storage test isolation (consistency with 01-01)
-- 01-02: Tauri commands are thin wrappers delegating to storage modules, no business logic in command layer
-- 02-01: Used serde_json::Value merge for surgical JSON patching (preserves unknown keys, ordering, nesting)
-- 02-01: CliAdapter trait keeps backup/validate as internal details of each adapter's patch() method
-- 02-01: ClaudeAdapter uses new_with_paths() constructor for test isolation (consistent with _in/_to pattern)
-
-- 02-02: Used toml_edit::DocumentMut for format-preserving TOML editing (comments survive patching)
-- 02-02: Two-phase write order: auth.json first, config.toml second; rollback auth.json from backup if config.toml fails
-- 02-02: restore_from_backup selects newest backup by reverse filename sort
-
-- 03-01: Used skip_serializing on old active_provider_id for backward-compat migration to active_providers HashMap
-- 03-01: Injectable adapter via Option<Box<dyn CliAdapter>> for command test isolation
-- 03-01: Auto-switch picks first provider sorted by created_at when deleting active
-- 03-01: test_provider uses reqwest with configurable timeout from LocalSettings.test_config
-
-- 03-02: Dark-only theme with CSS variables set directly on :root using zinc dark palette (no .dark class toggle)
-- 03-02: Spread CreateProviderInput in invoke call to satisfy Record<string, unknown> type constraint
-- 03-02: i18n imported as side-effect in main.tsx before App component for initialization order
-- [Phase 03]: Dialog state managed in ProviderTabs parent, passed down as props to dialogs
-- [Phase 03]: useProviders hook accepts refreshSettings callback to sync settings after switch/delete
-- [Phase 03]: Model config and notes set via updateProvider after createProvider since CreateProviderInput lacks those fields
-
-- 03-04: Language change calls i18n.changeLanguage() for immediate effect AND updateSettings() for persistence
-- 03-04: Startup sync reads persisted language from LocalSettings and applies via i18n.changeLanguage()
-
-- 04-01: notify-debouncer-mini with 500ms debounce for FSEvents batching
-- 04-01: SelfWriteTracker uses 1-second expiry with auto-cleanup on is_self_write check
-- 04-01: Extracted filter_and_dedup_events as pure function with closure for testability
-- 04-01: std::mem::forget(debouncer) to keep watcher alive for app lifetime
-
-- 04-02: Self-write record_write must be called BEFORE file operation to avoid race with watcher
-- 04-02: 5-second self-write expiry window for iCloud Drive delayed FSEvents (~2.5s after write)
-- 04-02: list_providers_in skips malformed files with log::warn instead of failing entire listing
-- 04-02: Provider file validation: id/filename match, required fields non-empty, base_url http(s)://
-- 04-02: refreshTrigger prop pattern for cross-component refresh coordination
-
-- 05-01: Separate import_provider command instead of relaxing create_provider global validation
-- 05-01: import_provider_to internal variant for test isolation consistent with _in/_to project pattern
-- 05-01: Model field set to empty string on import (only API key + base URL imported per CONTEXT.md)
-
-- 05-02: isConfigComplete() checks both has_api_key AND base_url -- configs missing required fields default to unchecked
-- 05-02: Import dialog auto-names providers as "{cli_name} {defaultSuffix}" (e.g. "Claude Code 默认配置")
-- 05-02: Dedup check compares api_key + base_url against existing providers before import
+Full decision log in PROJECT.md Key Decisions table (all marked with outcomes).
 
 ### Pending Todos
 
-None yet.
+None.
 
 ### Blockers/Concerns
 
-- Phase 2: Claude Code and Codex config schemas need verification against current versions (flagged by research)
-- Phase 4: iCloud file eviction detection from Rust may need objc2 bindings or Swift bridge (flagged by research)
+(Cleared for new milestone)
 
 ## Session Continuity
 
-Last session: 2026-03-12T08:17:21Z
-Stopped at: Completed 05-02-PLAN.md -- ALL PLANS COMPLETE
-Resume file: N/A (v1.0 milestone complete)
+Last session: 2026-03-12
+Stopped at: v1.0 milestone archived
+Resume file: N/A
