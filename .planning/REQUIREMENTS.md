@@ -57,21 +57,21 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TRAY-01 | — | Pending |
-| TRAY-02 | — | Pending |
-| TRAY-03 | — | Pending |
-| PROV-01 | — | Pending |
-| PROV-02 | — | Pending |
-| PROV-03 | — | Pending |
-| MENU-01 | — | Pending |
-| MENU-02 | — | Pending |
-| MENU-03 | — | Pending |
+| TRAY-01 | Phase 6 | Pending |
+| TRAY-02 | Phase 6 | Pending |
+| TRAY-03 | Phase 6 | Pending |
+| PROV-01 | Phase 7 | Pending |
+| PROV-02 | Phase 7 | Pending |
+| PROV-03 | Phase 7 | Pending |
+| MENU-01 | Phase 6 | Pending |
+| MENU-02 | Phase 6 | Pending |
+| MENU-03 | Phase 7 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 9 total
-- Mapped to phases: 0
-- Unmapped: 9
+- Mapped to phases: 9
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-12*
-*Last updated: 2026-03-12 after initial definition*
+*Last updated: 2026-03-12 after roadmap creation (traceability added)*
