@@ -22,6 +22,7 @@ pub fn run() {
             commands::provider::sync_active_providers,
             commands::provider::test_provider,
             commands::onboarding::scan_cli_configs,
+            commands::onboarding::import_provider,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

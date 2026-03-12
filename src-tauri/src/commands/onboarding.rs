@@ -1,9 +1,10 @@
 use std::path::Path;
 
 use serde::Serialize;
+use tauri::Manager;
 
 use crate::error::AppError;
-use crate::provider::ProtocolType;
+use crate::provider::{ProtocolType, Provider};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct DetectedCliConfig {
@@ -156,6 +157,82 @@ pub fn scan_cli_configs() -> Result<Vec<DetectedCliConfig>, AppError> {
     }
 
     Ok(results)
+}
+
+// --- import_provider internals ---
+
+fn normalize_import_fields(provider: &mut Provider) {
+    provider.name = provider.name.trim().to_string();
+    provider.api_key = provider.api_key.trim().to_string();
+    provider.base_url = provider.base_url.trim().to_string();
+    provider.model = provider.model.trim().to_string();
+    provider.cli_id = provider.cli_id.trim().to_string();
+}
+
+/// Internal import that writes to a specific directory (for testability).
+pub fn import_provider_to(
+    dir: &Path,
+    name: String,
+    protocol_type: ProtocolType,
+    api_key: String,
+    base_url: String,
+    cli_id: String,
+) -> Result<Provider, AppError> {
+    let mut provider = Provider::new(
+        name,
+        protocol_type,
+        api_key,
+        base_url,
+        String::new(), // model is empty for imports (only API key + base URL)
+        cli_id,
+    );
+
+    normalize_import_fields(&mut provider);
+
+    if provider.name.is_empty() {
+        return Err(AppError::Validation(
+            "Provider name cannot be empty".to_string(),
+        ));
+    }
+
+    crate::storage::icloud::save_provider_to(dir, &provider)?;
+    Ok(provider)
+}
+
+#[tauri::command]
+pub fn import_provider(
+    app_handle: tauri::AppHandle,
+    name: String,
+    protocol_type: ProtocolType,
+    api_key: String,
+    base_url: String,
+    cli_id: String,
+) -> Result<Provider, AppError> {
+    let dir = crate::storage::icloud::get_icloud_providers_dir()?;
+
+    let mut provider = Provider::new(
+        name,
+        protocol_type,
+        api_key,
+        base_url,
+        String::new(),
+        cli_id,
+    );
+
+    normalize_import_fields(&mut provider);
+
+    if provider.name.is_empty() {
+        return Err(AppError::Validation(
+            "Provider name cannot be empty".to_string(),
+        ));
+    }
+
+    // Record self-write BEFORE the file operation so the watcher ignores this change
+    let tracker = app_handle.state::<crate::watcher::SelfWriteTracker>();
+    tracker.record_write(dir.join(format!("{}.json", provider.id)));
+
+    crate::storage::icloud::save_provider_to(&dir, &provider)?;
+    Ok(provider)
 }
 
 #[cfg(test)]
@@ -366,5 +443,88 @@ base_url = "https://azure.openai.com/v1"
         let config = result.unwrap();
         assert!(!config.has_api_key);
         assert_eq!(config.api_key, "");
+    }
+
+    // --- import_provider tests ---
+
+    #[test]
+    fn test_import_provider_with_empty_api_key() {
+        let tmp = TempDir::new().unwrap();
+        let result = import_provider_to(
+            tmp.path(),
+            "Claude Import".to_string(),
+            ProtocolType::Anthropic,
+            "".to_string(),
+            "https://api.anthropic.com".to_string(),
+            "claude".to_string(),
+        );
+        assert!(result.is_ok());
+        let provider = result.unwrap();
+        assert_eq!(provider.name, "Claude Import");
+        assert_eq!(provider.api_key, "");
+        assert_eq!(provider.base_url, "https://api.anthropic.com");
+        assert_eq!(provider.model, "");
+        assert_eq!(provider.cli_id, "claude");
+        // Verify file was saved
+        let file_path = tmp.path().join(format!("{}.json", provider.id));
+        assert!(file_path.exists());
+    }
+
+    #[test]
+    fn test_import_provider_with_empty_base_url() {
+        let tmp = TempDir::new().unwrap();
+        let result = import_provider_to(
+            tmp.path(),
+            "Codex Import".to_string(),
+            ProtocolType::OpenAiCompatible,
+            "sk-test-key".to_string(),
+            "".to_string(),
+            "codex".to_string(),
+        );
+        assert!(result.is_ok());
+        let provider = result.unwrap();
+        assert_eq!(provider.name, "Codex Import");
+        assert_eq!(provider.api_key, "sk-test-key");
+        assert_eq!(provider.base_url, "");
+    }
+
+    #[test]
+    fn test_import_provider_with_full_data() {
+        let tmp = TempDir::new().unwrap();
+        let result = import_provider_to(
+            tmp.path(),
+            "Full Import".to_string(),
+            ProtocolType::Anthropic,
+            "sk-ant-full-key".to_string(),
+            "https://custom.api.com".to_string(),
+            "claude".to_string(),
+        );
+        assert!(result.is_ok());
+        let provider = result.unwrap();
+        assert_eq!(provider.name, "Full Import");
+        assert_eq!(provider.api_key, "sk-ant-full-key");
+        assert_eq!(provider.base_url, "https://custom.api.com");
+        assert_eq!(provider.protocol_type, ProtocolType::Anthropic);
+        assert_eq!(provider.cli_id, "claude");
+        // Verify saved content is correct
+        let file_path = tmp.path().join(format!("{}.json", provider.id));
+        let content = fs::read_to_string(&file_path).unwrap();
+        let saved: crate::provider::Provider = serde_json::from_str(&content).unwrap();
+        assert_eq!(saved.name, "Full Import");
+        assert_eq!(saved.api_key, "sk-ant-full-key");
+    }
+
+    #[test]
+    fn test_import_provider_rejects_empty_name() {
+        let tmp = TempDir::new().unwrap();
+        let result = import_provider_to(
+            tmp.path(),
+            "".to_string(),
+            ProtocolType::Anthropic,
+            "sk-test".to_string(),
+            "https://api.anthropic.com".to_string(),
+            "claude".to_string(),
+        );
+        assert!(result.is_err());
     }
 }
