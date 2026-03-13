@@ -1,3 +1,5 @@
+#![cfg(desktop)]
+
 use tauri::menu::{Menu, MenuBuilder, MenuItem};
 use tauri::{AppHandle, Manager, Wry};
 
