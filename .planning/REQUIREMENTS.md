@@ -21,8 +21,8 @@ Requirements for Local Proxy milestone. Each maps to roadmap phases.
 - [x] **MODE-02**: 总开关开启后，用户可在每个 CLI 的 Tab 内独立开关该 CLI 的代理模式
 - [x] **MODE-03**: 开启某 CLI 代理模式时，自动 patch 该 CLI 配置指向 localhost:port + 占位 key
 - [x] **MODE-04**: 关闭某 CLI 代理模式时，自动还原该 CLI 配置为当前活跃 Provider 的真实凭据和 base_url
-- [ ] **MODE-05**: 应用正常退出时，停止代理并还原所有已开启代理的 CLI 配置
-- [ ] **MODE-06**: 应用异常退出后下次启动时，检测到未清理的 takeover 标志则自动还原 CLI 配置（崩溃恢复）
+- [x] **MODE-05**: 应用正常退出时，停止代理并还原所有已开启代理的 CLI 配置
+- [x] **MODE-06**: 应用异常退出后下次启动时，检测到未清理的 takeover 标志则自动还原 CLI 配置（崩溃恢复）
 
 ### 实时切换 (Live Switching)
 
@@ -34,7 +34,7 @@ Requirements for Local Proxy milestone. Each maps to roadmap phases.
 ### 体验 (User Experience)
 
 - [ ] **UX-01**: 启动代理时检测端口占用，端口冲突给出清晰错误提示
-- [ ] **UX-02**: 应用重启后自动恢复之前的代理开关状态
+- [x] **UX-02**: 应用重启后自动恢复之前的代理开关状态
 - [x] **UX-03**: 代理启动后执行健康自检（GET /health），确认监听正常
 
 ## Future Requirements
@@ -94,14 +94,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | MODE-02 | Phase 9 | Complete |
 | MODE-03 | Phase 9 | Complete |
 | MODE-04 | Phase 9 | Complete |
-| MODE-05 | Phase 9 | Pending |
-| MODE-06 | Phase 9 | Pending |
+| MODE-05 | Phase 9 | Complete |
+| MODE-06 | Phase 9 | Complete |
 | LIVE-01 | Phase 10 | Pending |
 | LIVE-02 | Phase 10 | Pending |
 | LIVE-03 | Phase 10 | Pending |
 | LIVE-04 | Phase 9 | Complete |
 | UX-01 | Phase 10 | Pending |
-| UX-02 | Phase 9 | Pending |
+| UX-02 | Phase 9 | Complete |
 | UX-03 | Phase 8 | Complete |
 
 **Coverage:**

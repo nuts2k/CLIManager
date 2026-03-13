@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Local Proxy
 status: executing
-stopped_at: Completed 09-01-PLAN.md
-last_updated: "2026-03-13T14:51:00Z"
-last_activity: 2026-03-13 — Phase 9 plan 01 complete
+stopped_at: Completed 09-02-PLAN.md
+last_updated: "2026-03-13T15:02:12.594Z"
+last_activity: 2026-03-13 — Phase 9 plan 02 complete
 progress:
   total_phases: 3
-  completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
-  percent: 50
+  completed_phases: 2
+  total_plans: 4
+  completed_plans: 4
+  percent: 67
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-13)
 
 **Core value:** 切换 Provider 时只做 surgical patch（精确修改凭据和模型字段），绝不重写配置文件的其他内容
-**Current focus:** Phase 9 - 模式切换与持久化
+**Current focus:** Phase 9 complete - 准备 Phase 10
 
 ## Current Position
 
-Phase: 9 of 10 (模式切换与持久化)
-Plan: 1 of 1 in current phase
+Phase: 9 of 10 (模式切换与持久化) - COMPLETE
+Plan: 2 of 2 in current phase (phase complete)
 Status: Executing
-Last activity: 2026-03-13 — Phase 9 plan 01 complete
+Last activity: 2026-03-13 — Phase 9 plan 02 complete
 
-Progress: [██████░░░░] 60% (v2.0 milestone: 1/3 phases)
+Progress: [██████░░░░] 67% (v2.0 milestone: 2/3 phases)
 
 ## Performance Metrics
 
@@ -44,7 +44,7 @@ Progress: [██████░░░░] 60% (v2.0 milestone: 1/3 phases)
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 8. 代理核心 | 2/2 | 14min | 7min |
-| 9. 模式切换与持久化 | 1/? | 8min | 8min |
+| 9. 模式切换与持久化 | 2/2 | 13min | 6.5min |
 | 10. 实时切换与 UI 集成 | - | - | - |
 
 ## Accumulated Context
@@ -68,6 +68,10 @@ Recent decisions affecting current work:
 - [09-01]: proxy_enable 失败时回滚 CLI 配置为真实凭据（不留半成品状态）
 - [09-01]: set_active_provider 代理模式判断放在 Tauri 命令层（非 _in 函数层）
 - [09-01]: proxy_set_global 关闭时从 proxy_takeover.cli_ids 获取需关闭的 CLI 列表
+- [09-02]: cleanup_on_exit_sync 为同步函数，adapter.patch 已是同步，适合在 RunEvent 回调直接执行
+- [09-02]: 代理停止 stop_all 通过 tauri::async_runtime::block_on 在退出回调中异步执行
+- [09-02]: 恢复顺序：先崩溃恢复（同步还原 takeover）→ 再 spawn 异步恢复代理状态
+- [09-02]: restore_proxy_state 通过 tauri::async_runtime::spawn 异步执行，不阻塞应用启动
 
 ### Pending Todos
 
@@ -82,6 +86,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-13T14:51:00Z
-Stopped at: Completed 09-01-PLAN.md
-Resume file: .planning/phases/09-mode-switching/09-01-SUMMARY.md
+Last session: 2026-03-13T15:01:00Z
+Stopped at: Completed 09-02-PLAN.md
+Resume file: .planning/phases/09-mode-switching/09-02-SUMMARY.md
