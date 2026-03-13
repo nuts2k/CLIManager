@@ -47,11 +47,11 @@
   3. 代理自动将请求中的占位 API key 替换为当前活跃 Provider 的真实凭据后转发
   4. Claude Code (15800) 和 Codex (15801) 各自监听独立固定端口
   5. 上游不可达时 CLI 收到 502 + JSON 结构化错误（而非 connection refused）
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 08-01: TBD
-- [ ] 08-02: TBD
+- [ ] 08-01-PLAN.md — 代理引擎核心（依赖更新 + 类型/错误/状态 + handler 转发 + server 生命周期）
+- [ ] 08-02-PLAN.md — ProxyService 多端口管理器 + Tauri 命令层集成
 
 ### Phase 9: 模式切换与持久化
 **Goal**: 用户可在直连模式和代理模式间安全切换，切换时 CLI 配置自动联动，应用退出或崩溃后状态正确恢复
@@ -97,10 +97,10 @@ Plans:
 | 5. Onboarding | v1.0 | 2/2 | Complete | 2026-03-12 |
 | 6. Tray Foundation | v1.1 | 1/1 | Complete | 2026-03-13 |
 | 7. Provider Menu and Switching | v1.1 | 2/2 | Complete | 2026-03-13 |
-| 8. 代理核心 | v2.0 | 0/? | Not started | - |
+| 8. 代理核心 | v2.0 | 0/2 | Planning | - |
 | 9. 模式切换与持久化 | v2.0 | 0/? | Not started | - |
 | 10. 实时切换与 UI 集成 | v2.0 | 0/? | Not started | - |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*
-*Last updated: 2026-03-13 (v2.0 roadmap added)*
+*Last updated: 2026-03-13 (v2.0 Phase 8 planned)*
