@@ -87,12 +87,22 @@ impl ProxyService {
     /// 如果该 cli_id 不存在，返回 NotRunning。
     pub async fn stop(&self, cli_id: &str) -> Result<(), ProxyError> {
         let mut servers = self.servers.lock().await;
+        let stop_result = {
+            let server = servers.get_mut(cli_id).ok_or(ProxyError::NotRunning)?;
+            server.stop().await
+        };
 
-        let mut server = servers.remove(cli_id).ok_or(ProxyError::NotRunning)?;
-        server.stop().await?;
+        if stop_result.is_ok() {
+            servers.remove(cli_id);
+        }
 
-        log::info!("代理已停止: cli_id={}", cli_id);
-        Ok(())
+        match stop_result {
+            Ok(()) => {
+                log::info!("代理已停止: cli_id={}", cli_id);
+                Ok(())
+            }
+            Err(err) => Err(err),
+        }
     }
 
     /// 停止所有正在运行的代理服务器
@@ -101,14 +111,22 @@ impl ProxyService {
     pub async fn stop_all(&self) -> Vec<(String, Result<(), ProxyError>)> {
         let mut servers = self.servers.lock().await;
         let mut results = Vec::new();
+        let mut stopped_cli_ids = Vec::new();
 
         let keys: Vec<String> = servers.keys().cloned().collect();
         for cli_id in keys {
-            if let Some(mut server) = servers.remove(&cli_id) {
+            if let Some(server) = servers.get_mut(&cli_id) {
                 let result = server.stop().await;
+                if result.is_ok() {
+                    stopped_cli_ids.push(cli_id.clone());
+                }
                 log::info!("代理停止: cli_id={}, 结果={:?}", cli_id, result);
                 results.push((cli_id, result));
             }
+        }
+
+        for cli_id in stopped_cli_ids {
+            servers.remove(&cli_id);
         }
 
         results
@@ -152,12 +170,17 @@ impl ProxyService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::body::{Body, Bytes};
     use crate::provider::ProtocolType;
     use axum::Json;
+    use axum::response::Response;
     use axum::Router;
+    use futures::StreamExt;
     use serde_json::{json, Value};
+    use std::convert::Infallible;
+    use std::sync::Arc;
     use tokio::net::TcpListener;
-    use tokio::sync::oneshot;
+    use tokio::sync::{oneshot, Mutex as TokioMutex};
 
     /// 辅助函数：创建不走系统代理的 HTTP 客户端
     fn test_client() -> reqwest::Client {
@@ -174,12 +197,7 @@ mod tests {
     }
 
     /// 辅助函数：启动 mock 上游服务器
-    async fn start_mock_upstream(response_body: Value) -> (u16, oneshot::Sender<()>) {
-        let handler = Router::new().fallback(move || {
-            let body = response_body.clone();
-            async move { Json(body) }
-        });
-
+    async fn start_mock_upstream_router(handler: Router) -> (u16, oneshot::Sender<()>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let (tx, rx) = oneshot::channel::<()>();
@@ -195,6 +213,15 @@ mod tests {
 
         tokio::time::sleep(Duration::from_millis(50)).await;
         (port, tx)
+    }
+
+    async fn start_mock_upstream(response_body: Value) -> (u16, oneshot::Sender<()>) {
+        let handler = Router::new().fallback(move || {
+            let body = response_body.clone();
+            async move { Json(body) }
+        });
+
+        start_mock_upstream_router(handler).await
     }
 
     #[tokio::test]
@@ -427,5 +454,85 @@ mod tests {
             ProxyError::NotRunning => {}
             other => panic!("期望 NotRunning，得到 {:?}", other),
         }
+    }
+
+    #[tokio::test]
+    async fn test_proxy_service_stop_timeout_keeps_server_retriable() {
+        let (release_tx, release_rx) = oneshot::channel::<()>();
+        let blocker = Arc::new(TokioMutex::new(Some(release_rx)));
+
+        let mock_app = Router::new().fallback({
+            let blocker = blocker.clone();
+            move || {
+                let blocker = blocker.clone();
+                async move {
+                    let wait_rx = blocker
+                        .lock()
+                        .await
+                        .take()
+                        .expect("仅应消费一次阻塞信号");
+
+                    let stream = futures::stream::once(async {
+                        Ok::<Bytes, Infallible>(Bytes::from_static(b"data: start\n\n"))
+                    })
+                    .chain(futures::stream::once(async move {
+                        let _ = wait_rx.await;
+                        Ok::<Bytes, Infallible>(Bytes::from_static(b"data: done\n\n"))
+                    }));
+
+                    Response::builder()
+                        .status(200)
+                        .header("content-type", "text/event-stream")
+                        .body(Body::from_stream(stream))
+                        .unwrap()
+                }
+            }
+        });
+        let (upstream_port, upstream_shutdown) = start_mock_upstream_router(mock_app).await;
+
+        let service = ProxyService::new();
+        service
+            .start(
+                "claude",
+                0,
+                make_upstream(&format!("http://127.0.0.1:{}", upstream_port)),
+            )
+            .await
+            .unwrap();
+
+        let proxy_port = service
+            .status()
+            .await
+            .servers
+            .into_iter()
+            .find(|server| server.cli_id == "claude")
+            .unwrap()
+            .port;
+
+        let resp = test_client()
+            .get(format!("http://127.0.0.1:{}/v1/messages", proxy_port))
+            .header("x-api-key", "PROXY_MANAGED")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+
+        let stop_result = service.stop("claude").await;
+        assert!(matches!(stop_result, Err(ProxyError::StopTimeout)));
+
+        let status = service.status().await;
+        assert_eq!(status.servers.len(), 1);
+        assert_eq!(status.servers[0].cli_id, "claude");
+        assert!(status.servers[0].running);
+
+        let _ = release_tx.send(());
+        let body = resp.text().await.unwrap();
+        assert!(body.contains("data: start"));
+        assert!(body.contains("data: done"));
+
+        service.stop("claude").await.unwrap();
+        assert!(service.status().await.servers.is_empty());
+
+        let _ = upstream_shutdown.send(());
     }
 }

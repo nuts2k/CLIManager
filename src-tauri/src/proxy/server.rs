@@ -10,6 +10,11 @@ use super::error::ProxyError;
 use super::handler::{health_handler, proxy_handler};
 use super::state::ProxyState;
 
+#[cfg(not(test))]
+const STOP_TIMEOUT: Duration = Duration::from_secs(5);
+#[cfg(test)]
+const STOP_TIMEOUT: Duration = Duration::from_millis(100);
+
 /// 构建代理路由
 fn build_router(state: ProxyState) -> Router {
     Router::new()
@@ -44,13 +49,29 @@ impl ProxyServer {
         &self.state
     }
 
+    fn has_live_server(&self) -> bool {
+        self.server_handle
+            .as_ref()
+            .is_some_and(|handle| !handle.is_finished())
+    }
+
+    fn clear_runtime_state(&mut self) {
+        self.shutdown_tx = None;
+        self.server_handle = None;
+    }
+
     /// 启动代理服务器
     ///
     /// 绑定 127.0.0.1:{port}，启动 axum 服务，执行健康自检。
     /// 失败时自动清理资源。
     pub async fn start(&mut self) -> Result<(), ProxyError> {
-        if self.shutdown_tx.is_some() {
+        if self.has_live_server() {
             return Err(ProxyError::AlreadyRunning);
+        }
+
+        // 上一轮 stop 超时后，任务可能已经自行退出；启动前清理掉陈旧状态。
+        if self.server_handle.is_some() {
+            self.clear_runtime_state();
         }
 
         let (tx, rx) = oneshot::channel::<()>();
@@ -89,28 +110,36 @@ impl ProxyServer {
 
     /// 停止代理服务器（优雅停机，5 秒超时）
     pub async fn stop(&mut self) -> Result<(), ProxyError> {
-        let tx = self
-            .shutdown_tx
-            .take()
-            .ok_or(ProxyError::NotRunning)?;
+        if self.server_handle.is_none() {
+            return Err(ProxyError::NotRunning);
+        }
 
-        // 发送停机信号
-        let _ = tx.send(());
+        if let Some(tx) = self.shutdown_tx.take() {
+            // 首次 stop 发送优雅停机信号；超时后的重试只继续等待已有任务退出。
+            let _ = tx.send(());
+        }
 
-        if let Some(handle) = self.server_handle.take() {
-            match tokio::time::timeout(Duration::from_secs(5), handle).await {
-                Ok(Ok(())) => Ok(()),
-                Ok(Err(e)) => Err(ProxyError::StopFailed(e.to_string())),
-                Err(_) => Err(ProxyError::StopTimeout),
+        let stop_result = {
+            let handle = self.server_handle.as_mut().expect("server_handle 已检查存在");
+            tokio::time::timeout(STOP_TIMEOUT, handle).await
+        };
+
+        match stop_result {
+            Ok(Ok(())) => {
+                self.clear_runtime_state();
+                Ok(())
             }
-        } else {
-            Ok(())
+            Ok(Err(e)) => {
+                self.clear_runtime_state();
+                Err(ProxyError::StopFailed(e.to_string()))
+            }
+            Err(_) => Err(ProxyError::StopTimeout),
         }
     }
 
     /// 服务器是否正在运行
     pub fn is_running(&self) -> bool {
-        self.shutdown_tx.is_some()
+        self.has_live_server()
     }
 
     /// 获取当前监听端口
