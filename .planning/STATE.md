@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: System Tray
-status: completed
-stopped_at: Completed 07-02-PLAN.md (v1.1 milestone complete)
-last_updated: "2026-03-13T05:46:55.914Z"
-last_activity: 2026-03-13 -- Phase 7 Plan 2 complete (auto-refresh wiring, v1.1 done)
+milestone: null
+milestone_name: null
+status: idle
+stopped_at: v1.1 System Tray milestone completed and archived
+last_updated: "2026-03-13T07:05:00.000Z"
+last_activity: 2026-03-13 -- v1.1 milestone archived
 progress:
   total_phases: 7
-  completed_phases: 2
-  total_plans: 3
-  completed_plans: 3
+  completed_phases: 7
+  total_plans: 15
+  completed_plans: 15
   percent: 100
 ---
 
@@ -18,19 +18,15 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-12)
+See: .planning/PROJECT.md (updated 2026-03-13)
 
 **Core value:** Surgical patch -- switch Provider only modifies credential and model fields, never rewrites other config content
-**Current focus:** Phase 7 - Provider Menu and Switching (v1.1 System Tray)
+**Current focus:** Planning next milestone
 
 ## Current Position
 
-Phase: 7 of 7 (Provider Menu and Switching)
-Plan: 2 of 2 in current phase (complete)
-Status: v1.1 milestone complete
-Last activity: 2026-03-13 -- Phase 7 Plan 2 complete (auto-refresh wiring, v1.1 done)
-
-Progress: [####################] 100% overall (v1.0 done, v1.1 done)
+No active milestone. v1.0 MVP and v1.1 System Tray shipped.
+Run `/gsd:new-milestone` to start next milestone.
 
 ## Performance Metrics
 
@@ -40,25 +36,17 @@ Progress: [####################] 100% overall (v1.0 done, v1.1 done)
 - Commits: 85
 - LOC: 7,986
 
+**v1.1 Summary:**
+- Total plans: 3
+- Total execution time: ~25 min (avg 8min/plan)
+- Code changes: 16 files, +537/-25 lines
+- LOC: 8,441
+
 ## Accumulated Context
 
 ### Decisions
 
 Full decision log in PROJECT.md Key Decisions table.
-Recent decisions affecting current work:
-
-- [v1.0]: Tray deferred to v1.1 -- focus v1.0 on core functionality
-- [v1.1 research]: Zero new dependencies -- tray-icon + image-png feature flags on existing tauri crate
-- [v1.1 research]: All tray logic in Rust (tray must work when webview is hidden)
-- [Phase 6]: Programmatic TrayIconBuilder only (no tauri.conf.json) to avoid duplicate icon bugs
-- [Phase 6]: DoubleClick on tray conflicts with show_menu_on_left_click; menu item provides same function
-- [Phase 6]: Cmd+Q vs close button distinction works via .build()+.run() pattern
-- [Phase 7]: Emit providers-changed from tray handler to reuse existing frontend listeners
-- [Phase 7]: TrayTexts::from_language for lightweight Rust i18n (only ~5 menu strings)
-- [Phase 7]: Menu-as-Snapshot rebuild pattern via update_tray_menu + set_menu
-- [Phase 07]: Emit providers-changed from tray handler to reuse existing frontend listeners
-- [Phase 7 Plan 2]: Fire-and-forget refreshTrayMenu().catch(() => {}) for non-blocking tray sync from frontend
-- [Phase 7 Plan 2]: cfg(desktop) guard on watcher tray rebuild matching tray.rs module guard
 
 ### Pending Todos
 
@@ -66,10 +54,10 @@ None.
 
 ### Blockers/Concerns
 
-- Release build tray behavior may differ from dev build (verify during Phase 7 or before v1.1 ship)
+- Release build tray behavior may differ from dev build (needs verification)
 
 ## Session Continuity
 
-Last session: 2026-03-13T05:42:31.892Z
-Stopped at: Completed 07-02-PLAN.md (v1.1 milestone complete)
+Last session: 2026-03-13
+Stopped at: v1.1 milestone completed and archived
 Resume file: None
