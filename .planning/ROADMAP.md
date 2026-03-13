@@ -50,8 +50,8 @@
 **Plans**: 2 plans
 
 Plans:
-- [ ] 08-01-PLAN.md — 代理引擎核心（依赖更新 + 类型/错误/状态 + handler 转发 + server 生命周期）
-- [ ] 08-02-PLAN.md — ProxyService 多端口管理器 + Tauri 命令层集成
+- [x] 08-01-PLAN.md — 代理引擎核心（依赖更新 + 类型/错误/状态 + handler 转发 + server 生命周期）
+- [x] 08-02-PLAN.md — ProxyService 多端口管理器 + Tauri 命令层集成
 
 ### Phase 9: 模式切换与持久化
 **Goal**: 用户可在直连模式和代理模式间安全切换，切换时 CLI 配置自动联动，应用退出或崩溃后状态正确恢复
@@ -63,11 +63,11 @@ Plans:
   3. 应用正常退出时所有已代理的 CLI 配置被还原为直连状态
   4. 应用异常崩溃后重启时自动检测 takeover 标志并还原 CLI 配置
   5. 代理开关状态持久化到本地设备层，重启后自动恢复之前的代理状态
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 09-01: TBD
-- [ ] 09-02: TBD
+- [ ] 09-01-PLAN.md — 模式切换后端核心（LocalSettings 扩展 + 端口常量 + 四个切换命令 + set_active_provider 改造）
+- [ ] 09-02-PLAN.md — 退出清理 + 崩溃恢复 + 启动自动恢复
 
 ### Phase 10: 实时切换与 UI 集成
 **Goal**: 代理模式下切换 Provider 对 CLI 完全透明且即时生效，用户通过前端 UI 控制所有代理相关设置
@@ -97,10 +97,10 @@ Plans:
 | 5. Onboarding | v1.0 | 2/2 | Complete | 2026-03-12 |
 | 6. Tray Foundation | v1.1 | 1/1 | Complete | 2026-03-13 |
 | 7. Provider Menu and Switching | v1.1 | 2/2 | Complete | 2026-03-13 |
-| 8. 代理核心 | 2/2 | Complete   | 2026-03-13 | - |
-| 9. 模式切换与持久化 | v2.0 | 0/? | Not started | - |
+| 8. 代理核心 | v2.0 | 2/2 | Complete | 2026-03-13 |
+| 9. 模式切换与持久化 | v2.0 | 0/2 | Not started | - |
 | 10. 实时切换与 UI 集成 | v2.0 | 0/? | Not started | - |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*
-*Last updated: 2026-03-13 (v2.0 Phase 8 Plan 1 complete)*
+*Last updated: 2026-03-13 (Phase 9 planned: 2 plans)*
