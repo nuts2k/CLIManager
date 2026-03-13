@@ -17,10 +17,10 @@ Requirements for Local Proxy milestone. Each maps to roadmap phases.
 
 ### 模式切换 (Mode Switching)
 
-- [ ] **MODE-01**: 用户可在设置页切换全局代理总开关（开/关）
-- [ ] **MODE-02**: 总开关开启后，用户可在每个 CLI 的 Tab 内独立开关该 CLI 的代理模式
-- [ ] **MODE-03**: 开启某 CLI 代理模式时，自动 patch 该 CLI 配置指向 localhost:port + 占位 key
-- [ ] **MODE-04**: 关闭某 CLI 代理模式时，自动还原该 CLI 配置为当前活跃 Provider 的真实凭据和 base_url
+- [x] **MODE-01**: 用户可在设置页切换全局代理总开关（开/关）
+- [x] **MODE-02**: 总开关开启后，用户可在每个 CLI 的 Tab 内独立开关该 CLI 的代理模式
+- [x] **MODE-03**: 开启某 CLI 代理模式时，自动 patch 该 CLI 配置指向 localhost:port + 占位 key
+- [x] **MODE-04**: 关闭某 CLI 代理模式时，自动还原该 CLI 配置为当前活跃 Provider 的真实凭据和 base_url
 - [ ] **MODE-05**: 应用正常退出时，停止代理并还原所有已开启代理的 CLI 配置
 - [ ] **MODE-06**: 应用异常退出后下次启动时，检测到未清理的 takeover 标志则自动还原 CLI 配置（崩溃恢复）
 
@@ -29,7 +29,7 @@ Requirements for Local Proxy milestone. Each maps to roadmap phases.
 - [ ] **LIVE-01**: 代理模式下切换 Provider，只更新代理内存中的上游目标，CLI 无需重启、无感知中断
 - [ ] **LIVE-02**: 代理模式下 iCloud 同步的 Provider 变更（内容修改）自动更新代理内存
 - [ ] **LIVE-03**: 代理模式下 Provider CRUD 操作自动更新代理内存
-- [ ] **LIVE-04**: 代理设置（开关状态、端口）存储在本地设备层（不通过 iCloud 同步）
+- [x] **LIVE-04**: 代理设置（开关状态、端口）存储在本地设备层（不通过 iCloud 同步）
 
 ### 体验 (User Experience)
 
@@ -90,16 +90,16 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PROXY-03 | Phase 8 | Complete |
 | PROXY-04 | Phase 8 | Complete |
 | PROXY-05 | Phase 8 | Complete |
-| MODE-01 | Phase 9 | Pending |
-| MODE-02 | Phase 9 | Pending |
-| MODE-03 | Phase 9 | Pending |
-| MODE-04 | Phase 9 | Pending |
+| MODE-01 | Phase 9 | Complete |
+| MODE-02 | Phase 9 | Complete |
+| MODE-03 | Phase 9 | Complete |
+| MODE-04 | Phase 9 | Complete |
 | MODE-05 | Phase 9 | Pending |
 | MODE-06 | Phase 9 | Pending |
 | LIVE-01 | Phase 10 | Pending |
 | LIVE-02 | Phase 10 | Pending |
 | LIVE-03 | Phase 10 | Pending |
-| LIVE-04 | Phase 9 | Pending |
+| LIVE-04 | Phase 9 | Complete |
 | UX-01 | Phase 10 | Pending |
 | UX-02 | Phase 9 | Pending |
 | UX-03 | Phase 8 | Complete |

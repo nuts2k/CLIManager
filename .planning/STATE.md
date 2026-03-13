@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Local Proxy
 status: executing
-stopped_at: Phase 9 context gathered
-last_updated: "2026-03-13T13:40:21.220Z"
-last_activity: 2026-03-13 — Phase 8 complete (2/2 plans)
+stopped_at: Completed 09-01-PLAN.md
+last_updated: "2026-03-13T14:51:00Z"
+last_activity: 2026-03-13 — Phase 9 plan 01 complete
 progress:
   total_phases: 3
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
-  percent: 33
+  total_plans: 3
+  completed_plans: 3
+  percent: 50
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-13)
 ## Current Position
 
 Phase: 9 of 10 (模式切换与持久化)
-Plan: 0 of ? in current phase
+Plan: 1 of 1 in current phase
 Status: Executing
-Last activity: 2026-03-13 — Phase 8 complete (2/2 plans)
+Last activity: 2026-03-13 — Phase 9 plan 01 complete
 
-Progress: [███░░░░░░░] 33% (v2.0 milestone: 1/3 phases)
+Progress: [██████░░░░] 60% (v2.0 milestone: 1/3 phases)
 
 ## Performance Metrics
 
@@ -44,7 +44,7 @@ Progress: [███░░░░░░░] 33% (v2.0 milestone: 1/3 phases)
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 8. 代理核心 | 2/2 | 14min | 7min |
-| 9. 模式切换与持久化 | - | - | - |
+| 9. 模式切换与持久化 | 1/? | 8min | 8min |
 | 10. 实时切换与 UI 集成 | - | - | - |
 
 ## Accumulated Context
@@ -64,6 +64,10 @@ Recent decisions affecting current work:
 - [08-02]: ProxyService 使用 tokio::sync::Mutex 管理多实例，因为启停操作涉及 async
 - [08-02]: stop_all 未暴露 Tauri 命令，留给 Phase 9 内部退出清理调用
 - [08-02]: protocol_type 命令参数使用字符串传入，命令层负责解析
+- [09-01]: adapter 参数使用 Box<dyn CliAdapter + Send> 确保 async future 满足 Send bound
+- [09-01]: proxy_enable 失败时回滚 CLI 配置为真实凭据（不留半成品状态）
+- [09-01]: set_active_provider 代理模式判断放在 Tauri 命令层（非 _in 函数层）
+- [09-01]: proxy_set_global 关闭时从 proxy_takeover.cli_ids 获取需关闭的 CLI 列表
 
 ### Pending Todos
 
@@ -78,6 +82,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-13T13:40:21.213Z
-Stopped at: Phase 9 context gathered
-Resume file: .planning/phases/09-mode-switching/09-CONTEXT.md
+Last session: 2026-03-13T14:51:00Z
+Stopped at: Completed 09-01-PLAN.md
+Resume file: .planning/phases/09-mode-switching/09-01-SUMMARY.md
