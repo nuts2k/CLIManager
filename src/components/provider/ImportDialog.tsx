@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { listProviders, importProvider } from "@/lib/tauri";
+import { listProviders, importProvider, refreshTrayMenu } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import type { DetectedCliConfig } from "@/types/provider";
 
@@ -99,6 +99,7 @@ export function ImportDialog({
       }
 
       onImportComplete();
+      refreshTrayMenu().catch(() => {});
       setImporting(false);
       onOpenChange(false);
     } catch (err) {
