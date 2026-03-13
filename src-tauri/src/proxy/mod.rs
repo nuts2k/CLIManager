@@ -14,6 +14,20 @@ pub use handler::{health_handler, proxy_handler};
 pub use server::ProxyServer;
 pub use state::{ProxyState, UpstreamTarget};
 
+/// Claude Code 代理固定端口
+pub const PROXY_PORT_CLAUDE: u16 = 15800;
+/// Codex 代理固定端口
+pub const PROXY_PORT_CODEX: u16 = 15801;
+
+/// 根据 cli_id 获取对应的代理端口
+pub fn proxy_port_for_cli(cli_id: &str) -> Option<u16> {
+    match cli_id {
+        "claude" => Some(PROXY_PORT_CLAUDE),
+        "codex" => Some(PROXY_PORT_CODEX),
+        _ => None,
+    }
+}
+
 /// 代理服务状态信息（单个服务器）
 #[derive(Debug, Clone, Serialize)]
 pub struct ServerStatus {
@@ -439,6 +453,25 @@ mod tests {
             ProxyError::NotRunning => {}
             other => panic!("期望 NotRunning，得到 {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_proxy_port_for_cli_claude() {
+        assert_eq!(proxy_port_for_cli("claude"), Some(PROXY_PORT_CLAUDE));
+        assert_eq!(proxy_port_for_cli("claude"), Some(15800));
+    }
+
+    #[test]
+    fn test_proxy_port_for_cli_codex() {
+        assert_eq!(proxy_port_for_cli("codex"), Some(PROXY_PORT_CODEX));
+        assert_eq!(proxy_port_for_cli("codex"), Some(15801));
+    }
+
+    #[test]
+    fn test_proxy_port_for_cli_unknown() {
+        assert_eq!(proxy_port_for_cli("unknown"), None);
+        assert_eq!(proxy_port_for_cli(""), None);
+        assert_eq!(proxy_port_for_cli("cursor"), None);
     }
 
     #[tokio::test]

@@ -7,6 +7,42 @@ use serde::{Deserialize, Serialize};
 use super::atomic_write;
 use crate::error::AppError;
 
+/// 代理开关设置
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ProxySettings {
+    /// 全局总开关
+    #[serde(default)]
+    pub global_enabled: bool,
+    /// 每 CLI 独立开关状态 {"claude": true, "codex": false}
+    #[serde(default)]
+    pub cli_enabled: HashMap<String, bool>,
+}
+
+impl Default for ProxySettings {
+    fn default() -> Self {
+        Self {
+            global_enabled: false,
+            cli_enabled: HashMap::new(),
+        }
+    }
+}
+
+/// 代理接管标志（崩溃恢复用）
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ProxyTakeover {
+    /// 当前被接管的 CLI IDs
+    #[serde(default)]
+    pub cli_ids: Vec<String>,
+}
+
+impl Default for ProxyTakeover {
+    fn default() -> Self {
+        Self {
+            cli_ids: Vec::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CliPaths {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -59,6 +95,10 @@ pub struct LocalSettings {
     pub language: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub test_config: Option<TestConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proxy: Option<ProxySettings>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proxy_takeover: Option<ProxyTakeover>,
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,
 }
@@ -76,6 +116,8 @@ impl Default for LocalSettings {
             cli_paths: CliPaths::default(),
             language: None,
             test_config: None,
+            proxy: None,
+            proxy_takeover: None,
             schema_version: 1,
         }
     }
@@ -366,5 +408,78 @@ mod tests {
         write_local_settings_to(&path, &settings).unwrap();
         let loaded = read_local_settings_from(&path).unwrap();
         assert_eq!(loaded.language, Some("zh-CN".to_string()));
+    }
+
+    #[test]
+    fn test_proxy_settings_default() {
+        let ps = ProxySettings::default();
+        assert!(!ps.global_enabled);
+        assert!(ps.cli_enabled.is_empty());
+    }
+
+    #[test]
+    fn test_proxy_takeover_default() {
+        let pt = ProxyTakeover::default();
+        assert!(pt.cli_ids.is_empty());
+    }
+
+    #[test]
+    fn test_local_settings_with_proxy_round_trip() {
+        let mut cli_enabled = HashMap::new();
+        cli_enabled.insert("claude".to_string(), true);
+        cli_enabled.insert("codex".to_string(), false);
+
+        let settings = LocalSettings {
+            proxy: Some(ProxySettings {
+                global_enabled: true,
+                cli_enabled,
+            }),
+            proxy_takeover: Some(ProxyTakeover {
+                cli_ids: vec!["claude".to_string()],
+            }),
+            ..LocalSettings::default()
+        };
+
+        let json = serde_json::to_string_pretty(&settings).unwrap();
+        assert!(json.contains("proxy"));
+        assert!(json.contains("proxy_takeover"));
+        assert!(json.contains("global_enabled"));
+        assert!(json.contains("cli_ids"));
+
+        let deserialized: LocalSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(settings, deserialized);
+    }
+
+    #[test]
+    fn test_local_settings_backward_compat_without_proxy() {
+        // 旧 JSON 不含 proxy 和 proxy_takeover 字段，应正常反序列化为 None
+        let json = r#"{"cli_paths": {}, "active_providers": {}}"#;
+        let settings: LocalSettings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.proxy, None);
+        assert_eq!(settings.proxy_takeover, None);
+    }
+
+    #[test]
+    fn test_local_settings_with_proxy_file_round_trip() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("local.json");
+
+        let mut cli_enabled = HashMap::new();
+        cli_enabled.insert("claude".to_string(), true);
+
+        let settings = LocalSettings {
+            proxy: Some(ProxySettings {
+                global_enabled: true,
+                cli_enabled,
+            }),
+            proxy_takeover: Some(ProxyTakeover {
+                cli_ids: vec!["claude".to_string()],
+            }),
+            ..LocalSettings::default()
+        };
+
+        write_local_settings_to(&path, &settings).unwrap();
+        let loaded = read_local_settings_from(&path).unwrap();
+        assert_eq!(settings, loaded);
     }
 }
