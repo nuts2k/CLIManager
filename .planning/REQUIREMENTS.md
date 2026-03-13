@@ -43,7 +43,7 @@ Deferred to v2.x+ milestones. Tracked but not in current roadmap.
 
 ### 协议转换 (Protocol Conversion)
 
-- **PROTO-01**: 代理支持 Anthropic ↔ OpenAI 协议格式互转
+- **PROTO-01**: 代理支持 Anthropic <-> OpenAI 协议格式互转
 - **PROTO-02**: Claude Code 可通过代理使用 OpenAI 兼容的 Provider
 
 ### OAuth 桥接 (OAuth Bridge)
@@ -85,30 +85,30 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PROXY-01 | — | Pending |
-| PROXY-02 | — | Pending |
-| PROXY-03 | — | Pending |
-| PROXY-04 | — | Pending |
-| PROXY-05 | — | Pending |
-| MODE-01 | — | Pending |
-| MODE-02 | — | Pending |
-| MODE-03 | — | Pending |
-| MODE-04 | — | Pending |
-| MODE-05 | — | Pending |
-| MODE-06 | — | Pending |
-| LIVE-01 | — | Pending |
-| LIVE-02 | — | Pending |
-| LIVE-03 | — | Pending |
-| LIVE-04 | — | Pending |
-| UX-01 | — | Pending |
-| UX-02 | — | Pending |
-| UX-03 | — | Pending |
+| PROXY-01 | Phase 8 | Pending |
+| PROXY-02 | Phase 8 | Pending |
+| PROXY-03 | Phase 8 | Pending |
+| PROXY-04 | Phase 8 | Pending |
+| PROXY-05 | Phase 8 | Pending |
+| MODE-01 | Phase 9 | Pending |
+| MODE-02 | Phase 9 | Pending |
+| MODE-03 | Phase 9 | Pending |
+| MODE-04 | Phase 9 | Pending |
+| MODE-05 | Phase 9 | Pending |
+| MODE-06 | Phase 9 | Pending |
+| LIVE-01 | Phase 10 | Pending |
+| LIVE-02 | Phase 10 | Pending |
+| LIVE-03 | Phase 10 | Pending |
+| LIVE-04 | Phase 9 | Pending |
+| UX-01 | Phase 10 | Pending |
+| UX-02 | Phase 9 | Pending |
+| UX-03 | Phase 8 | Pending |
 
 **Coverage:**
 - v2.0 requirements: 18 total
-- Mapped to phases: 0
-- Unmapped: 18
+- Mapped to phases: 18
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-13*
-*Last updated: 2026-03-13 after initial definition*
+*Last updated: 2026-03-13 — traceability updated with phase mappings*
