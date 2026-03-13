@@ -17,7 +17,7 @@ Requirements for v1.1 System Tray milestone. Each maps to roadmap phases.
 
 - [x] **PROV-01**: 托盘菜单按 CLI 分组显示所有 Provider，当前激活的 Provider 显示勾选标记
 - [x] **PROV-02**: 点击托盘菜单中的 Provider 即可一键切换，无需打开主窗口
-- [ ] **PROV-03**: 主窗口中 Provider 增删改或 iCloud 同步变化后，托盘菜单自动刷新
+- [x] **PROV-03**: 主窗口中 Provider 增删改或 iCloud 同步变化后，托盘菜单自动刷新
 
 ### 菜单项 (MENU)
 
@@ -62,7 +62,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TRAY-03 | Phase 6 | Complete |
 | PROV-01 | Phase 7 | Complete |
 | PROV-02 | Phase 7 | Complete |
-| PROV-03 | Phase 7 | Pending |
+| PROV-03 | Phase 7 | Complete |
 | MENU-01 | Phase 6 | Complete |
 | MENU-02 | Phase 6 | Complete |
 | MENU-03 | Phase 7 | Complete |

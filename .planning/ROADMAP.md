@@ -22,8 +22,8 @@
 
 **Milestone Goal:** Add system tray for background residence and one-click Provider switching from menu bar
 
-- [ ] **Phase 6: Tray Foundation** - Tray icon, close-to-tray lifecycle, and basic menu controls
-- [ ] **Phase 7: Provider Menu and Switching** - Provider list in tray with one-click switching, auto-refresh, and i18n
+- [x] **Phase 6: Tray Foundation** - Tray icon, close-to-tray lifecycle, and basic menu controls
+- [x] **Phase 7: Provider Menu and Switching** - Provider list in tray with one-click switching, auto-refresh, and i18n (completed 2026-03-13)
 
 ## Phase Details
 
@@ -79,8 +79,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 07-01-PLAN.md — Dynamic tray menu with provider listing, one-click switching, and i18n
-- [ ] 07-02-PLAN.md — Auto-refresh wiring (watcher + frontend CRUD + language) and end-to-end verification
+- [x] 07-01-PLAN.md — Dynamic tray menu with provider listing, one-click switching, and i18n
+- [x] 07-02-PLAN.md — Auto-refresh wiring (watcher + frontend CRUD + language) and end-to-end verification
 
 ## Progress
 
@@ -94,8 +94,8 @@ Plans:
 | 4. iCloud Sync and File Watching | v1.0 | 2/2 | Complete | 2026-03-11 |
 | 5. Onboarding | v1.0 | 2/2 | Complete | 2026-03-12 |
 | 6. Tray Foundation | v1.1 | 1/1 | Complete | 2026-03-13 |
-| 7. Provider Menu and Switching | v1.1 | 0/2 | Not started | - |
+| 7. Provider Menu and Switching | v1.1 | 2/2 | Complete | 2026-03-13 |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*
-*Last updated: 2026-03-13 (Phase 7 planned)*
+*Last updated: 2026-03-13 (v1.1 complete)*

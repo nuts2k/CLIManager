@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: System Tray
-status: executing
-stopped_at: Completed 07-01-PLAN.md
-last_updated: "2026-03-13T05:27:25.446Z"
-last_activity: 2026-03-13 -- Phase 7 Plan 1 complete (provider menu and switching)
+status: completed
+stopped_at: Completed 07-02-PLAN.md (v1.1 milestone complete)
+last_updated: "2026-03-13T05:42:31.894Z"
+last_activity: 2026-03-13 -- Phase 7 Plan 2 complete (auto-refresh wiring, v1.1 done)
 progress:
   total_phases: 7
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 3
-  completed_plans: 2
-  percent: 71
+  completed_plans: 3
+  percent: 100
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-12)
 ## Current Position
 
 Phase: 7 of 7 (Provider Menu and Switching)
-Plan: 1 of 2 in current phase (complete)
-Status: Phase 7 in progress
-Last activity: 2026-03-13 -- Phase 7 Plan 1 complete (provider menu and switching)
+Plan: 2 of 2 in current phase (complete)
+Status: v1.1 milestone complete
+Last activity: 2026-03-13 -- Phase 7 Plan 2 complete (auto-refresh wiring, v1.1 done)
 
-Progress: [##############......] 71% overall (v1.0 done, Phase 6 complete, Phase 7 Plan 1 complete)
+Progress: [####################] 100% overall (v1.0 done, v1.1 done)
 
 ## Performance Metrics
 
@@ -57,6 +57,8 @@ Recent decisions affecting current work:
 - [Phase 7]: TrayTexts::from_language for lightweight Rust i18n (only ~5 menu strings)
 - [Phase 7]: Menu-as-Snapshot rebuild pattern via update_tray_menu + set_menu
 - [Phase 07]: Emit providers-changed from tray handler to reuse existing frontend listeners
+- [Phase 7 Plan 2]: Fire-and-forget refreshTrayMenu().catch(() => {}) for non-blocking tray sync from frontend
+- [Phase 7 Plan 2]: cfg(desktop) guard on watcher tray rebuild matching tray.rs module guard
 
 ### Pending Todos
 
@@ -68,6 +70,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-13T05:27:18.699Z
-Stopped at: Completed 07-01-PLAN.md
+Last session: 2026-03-13T05:42:31.892Z
+Stopped at: Completed 07-02-PLAN.md (v1.1 milestone complete)
 Resume file: None
