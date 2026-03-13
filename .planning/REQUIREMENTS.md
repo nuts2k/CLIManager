@@ -15,15 +15,15 @@ Requirements for v1.1 System Tray milestone. Each maps to roadmap phases.
 
 ### Provider 切换 (PROV)
 
-- [ ] **PROV-01**: 托盘菜单按 CLI 分组显示所有 Provider，当前激活的 Provider 显示勾选标记
-- [ ] **PROV-02**: 点击托盘菜单中的 Provider 即可一键切换，无需打开主窗口
+- [x] **PROV-01**: 托盘菜单按 CLI 分组显示所有 Provider，当前激活的 Provider 显示勾选标记
+- [x] **PROV-02**: 点击托盘菜单中的 Provider 即可一键切换，无需打开主窗口
 - [ ] **PROV-03**: 主窗口中 Provider 增删改或 iCloud 同步变化后，托盘菜单自动刷新
 
 ### 菜单项 (MENU)
 
 - [x] **MENU-01**: 托盘菜单包含"打开主窗口"选项，点击后显示并聚焦主窗口
 - [x] **MENU-02**: 托盘菜单包含"退出"选项，点击后完全退出应用
-- [ ] **MENU-03**: 托盘菜单文字跟随应用语言设置（中/英）
+- [x] **MENU-03**: 托盘菜单文字跟随应用语言设置（中/英）
 
 ## v2 Requirements
 
@@ -60,12 +60,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TRAY-01 | Phase 6 | Complete |
 | TRAY-02 | Phase 6 | Complete |
 | TRAY-03 | Phase 6 | Complete |
-| PROV-01 | Phase 7 | Pending |
-| PROV-02 | Phase 7 | Pending |
+| PROV-01 | Phase 7 | Complete |
+| PROV-02 | Phase 7 | Complete |
 | PROV-03 | Phase 7 | Pending |
 | MENU-01 | Phase 6 | Complete |
 | MENU-02 | Phase 6 | Complete |
-| MENU-03 | Phase 7 | Pending |
+| MENU-03 | Phase 7 | Complete |
 
 **Coverage:**
 - v1.1 requirements: 9 total

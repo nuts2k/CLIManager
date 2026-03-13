@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: System Tray
-status: completed
-stopped_at: Phase 7 context gathered
-last_updated: "2026-03-13T04:29:15.183Z"
-last_activity: 2026-03-13 -- Phase 6 Plan 1 complete (tray foundation)
+status: executing
+stopped_at: Completed 07-01-PLAN.md
+last_updated: "2026-03-13T05:27:25.446Z"
+last_activity: 2026-03-13 -- Phase 7 Plan 1 complete (provider menu and switching)
 progress:
   total_phases: 7
   completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
-  percent: 57
+  total_plans: 3
+  completed_plans: 2
+  percent: 71
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-12)
 
 **Core value:** Surgical patch -- switch Provider only modifies credential and model fields, never rewrites other config content
-**Current focus:** Phase 6 - Tray Foundation (v1.1 System Tray)
+**Current focus:** Phase 7 - Provider Menu and Switching (v1.1 System Tray)
 
 ## Current Position
 
-Phase: 6 of 7 (Tray Foundation)
-Plan: 1 of 1 in current phase (complete)
-Status: Phase 6 complete
-Last activity: 2026-03-13 -- Phase 6 Plan 1 complete (tray foundation)
+Phase: 7 of 7 (Provider Menu and Switching)
+Plan: 1 of 2 in current phase (complete)
+Status: Phase 7 in progress
+Last activity: 2026-03-13 -- Phase 7 Plan 1 complete (provider menu and switching)
 
-Progress: [###########.........] 57% overall (v1.0 done, Phase 6 complete)
+Progress: [##############......] 71% overall (v1.0 done, Phase 6 complete, Phase 7 Plan 1 complete)
 
 ## Performance Metrics
 
@@ -53,6 +53,10 @@ Recent decisions affecting current work:
 - [Phase 6]: Programmatic TrayIconBuilder only (no tauri.conf.json) to avoid duplicate icon bugs
 - [Phase 6]: DoubleClick on tray conflicts with show_menu_on_left_click; menu item provides same function
 - [Phase 6]: Cmd+Q vs close button distinction works via .build()+.run() pattern
+- [Phase 7]: Emit providers-changed from tray handler to reuse existing frontend listeners
+- [Phase 7]: TrayTexts::from_language for lightweight Rust i18n (only ~5 menu strings)
+- [Phase 7]: Menu-as-Snapshot rebuild pattern via update_tray_menu + set_menu
+- [Phase 07]: Emit providers-changed from tray handler to reuse existing frontend listeners
 
 ### Pending Todos
 
@@ -64,6 +68,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-13T04:29:15.176Z
-Stopped at: Phase 7 context gathered
-Resume file: .planning/phases/07-provider-menu-and-switching/07-CONTEXT.md
+Last session: 2026-03-13T05:27:18.699Z
+Stopped at: Completed 07-01-PLAN.md
+Resume file: None
