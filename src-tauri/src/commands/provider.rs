@@ -140,7 +140,7 @@ fn clear_provider_for_cli(
 }
 
 /// Internal: set active provider with injectable adapter
-fn _set_active_provider_in(
+pub(crate) fn _set_active_provider_in(
     providers_dir: &Path,
     local_settings_path: &Path,
     cli_id: String,
