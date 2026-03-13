@@ -23,10 +23,14 @@ thiserror = "2.0"
 chrono = { version = "0.4", features = ["serde"] }
 log = "0.4"
 toml_edit = "0.25"
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }
+axum = "0.8"
+tower-http = { version = "0.6", features = ["cors"] }
+tokio = { version = "1", features = ["net", "sync", "time"] }
 notify = { version = "8", features = ["macos_fsevent"] }
 notify-debouncer-mini = { version = "0.7", features = ["macos_fsevent"] }
 
 [dev-dependencies]
 tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 

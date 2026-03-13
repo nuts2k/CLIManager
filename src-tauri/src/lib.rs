@@ -5,6 +5,7 @@ mod adapter;
 mod commands;
 mod error;
 mod provider;
+mod proxy;
 mod storage;
 #[cfg(desktop)]
 mod tray;
