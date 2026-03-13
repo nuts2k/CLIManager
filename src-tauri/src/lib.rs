@@ -57,6 +57,33 @@ pub fn run() {
             let handle = app.handle().clone();
             watcher::start_file_watcher(handle)?;
 
+            // 崩溃恢复：检测并还原遗留 takeover 标志
+            let providers_dir = crate::storage::icloud::get_icloud_providers_dir()
+                .map_err(|e| e.to_string())?;
+            let local_settings_path = crate::storage::local::get_local_settings_path();
+            if let Err(e) =
+                commands::proxy::recover_on_startup(&providers_dir, &local_settings_path)
+            {
+                log::error!("崩溃恢复失败: {}", e);
+            }
+
+            // 自动恢复代理状态（UX-02）：根据持久化的开关状态重新开启代理
+            let handle_for_restore = app.handle().clone();
+            let providers_dir_clone = providers_dir.clone();
+            let local_settings_path_clone = local_settings_path.clone();
+            tauri::async_runtime::spawn(async move {
+                let proxy_service = handle_for_restore.state::<proxy::ProxyService>();
+                if let Err(e) = commands::proxy::restore_proxy_state(
+                    &providers_dir_clone,
+                    &local_settings_path_clone,
+                    &proxy_service,
+                )
+                .await
+                {
+                    log::error!("代理状态恢复失败: {}", e);
+                }
+            });
+
             #[cfg(desktop)]
             {
                 let menu = tray::create_tray_menu(app.handle()).map_err(|e| e.to_string())?;
@@ -93,6 +120,21 @@ pub fn run() {
         .expect("error while building tauri application");
 
     // Cmd+Q and programmatic exit pass through here.
-    // Default behavior: allow exit (no api.prevent_exit() call).
-    app.run(|_app_handle, _event| {});
+    // 正常退出时还原所有 CLI 配置并停止代理。
+    app.run(|app_handle, event| {
+        if let tauri::RunEvent::ExitRequested { .. } = event {
+            // 1. 同步还原 CLI 配置（先于代理停止，避免 CLI 指向已关闭的 localhost）
+            let providers_dir = crate::storage::icloud::get_icloud_providers_dir().ok();
+            let local_settings_path = crate::storage::local::get_local_settings_path();
+            if let Some(ref providers_dir) = providers_dir {
+                commands::proxy::cleanup_on_exit_sync(providers_dir, &local_settings_path);
+            }
+
+            // 2. 异步停止所有代理
+            let proxy_service = app_handle.state::<proxy::ProxyService>();
+            tauri::async_runtime::block_on(async {
+                proxy_service.stop_all().await;
+            });
+        }
+    });
 }

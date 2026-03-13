@@ -268,6 +268,225 @@ pub(crate) async fn _proxy_disable_in(
     Ok(())
 }
 
+// --- 生命周期管理（退出清理 / 崩溃恢复 / 启动自动恢复） ---
+
+/// 正常退出时同步还原所有已代理 CLI 配置（供 lib.rs RunEvent::ExitRequested 调用）
+///
+/// 读取 proxy_takeover.cli_ids，对每个 CLI 调用 adapter.patch(real_provider) 还原配置，
+/// 清除 takeover 标志后写回 local.json。代理停止（async）由调用方另行处理。
+pub fn cleanup_on_exit_sync(providers_dir: &Path, local_settings_path: &Path) {
+    let settings = match crate::storage::local::read_local_settings_from(local_settings_path) {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("退出清理：读取 local.json 失败: {}", e);
+            return;
+        }
+    };
+
+    let cli_ids: Vec<String> = settings
+        .proxy_takeover
+        .as_ref()
+        .map(|t| t.cli_ids.clone())
+        .unwrap_or_default();
+
+    if cli_ids.is_empty() {
+        log::info!("退出清理：无 takeover 标志，跳过");
+        return;
+    }
+
+    for cli_id in &cli_ids {
+        // 获取该 CLI 的活跃 Provider ID
+        let provider_id = match settings
+            .active_providers
+            .get(cli_id.as_str())
+            .and_then(|pid| pid.as_ref())
+        {
+            Some(pid) => pid.clone(),
+            None => {
+                log::warn!("退出清理：CLI {} 无活跃 Provider，跳过", cli_id);
+                continue;
+            }
+        };
+
+        // 从 iCloud 读取真实 Provider
+        let real_provider =
+            match crate::storage::icloud::get_provider_in(providers_dir, &provider_id) {
+                Ok(p) => p,
+                Err(e) => {
+                    log::error!(
+                        "退出清理：读取 Provider 失败: cli_id={}, provider_id={}, err={}",
+                        cli_id,
+                        provider_id,
+                        e
+                    );
+                    continue;
+                }
+            };
+
+        // 获取 adapter 并还原配置
+        match get_adapter_for_cli(cli_id, &settings) {
+            Ok(adapter) => {
+                if let Err(e) = adapter.patch(&real_provider) {
+                    log::error!("退出清理：还原 CLI 配置失败: cli_id={}, err={}", cli_id, e);
+                }
+            }
+            Err(e) => {
+                log::error!("退出清理：获取 adapter 失败: cli_id={}, err={}", cli_id, e);
+            }
+        }
+    }
+
+    // 清除 takeover 标志并写回
+    let mut settings = match crate::storage::local::read_local_settings_from(local_settings_path) {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("退出清理：重新读取 local.json 失败: {}", e);
+            return;
+        }
+    };
+    settings.proxy_takeover = None;
+    if let Err(e) = crate::storage::local::write_local_settings_to(local_settings_path, &settings) {
+        log::error!("退出清理：写回 local.json 失败: {}", e);
+    }
+
+    log::info!("退出清理完成：已还原 {} 个 CLI 的配置", cli_ids.len());
+}
+
+/// 崩溃恢复：启动时检测遗留 takeover 标志并还原 CLI 配置
+///
+/// 同步函数。如果上次崩溃导致 takeover 未清除，则对每个 cli_id 还原配置。
+pub fn recover_on_startup(
+    providers_dir: &Path,
+    local_settings_path: &Path,
+) -> Result<(), AppError> {
+    let settings = crate::storage::local::read_local_settings_from(local_settings_path)?;
+
+    let cli_ids: Vec<String> = settings
+        .proxy_takeover
+        .as_ref()
+        .map(|t| t.cli_ids.clone())
+        .unwrap_or_default();
+
+    if cli_ids.is_empty() {
+        return Ok(());
+    }
+
+    log::info!("崩溃恢复：检测到遗留 takeover 标志，cli_ids={:?}", cli_ids);
+
+    for cli_id in &cli_ids {
+        let provider_id = match settings
+            .active_providers
+            .get(cli_id.as_str())
+            .and_then(|pid| pid.as_ref())
+        {
+            Some(pid) => pid.clone(),
+            None => {
+                log::warn!("崩溃恢复：CLI {} 无活跃 Provider，跳过", cli_id);
+                continue;
+            }
+        };
+
+        match crate::storage::icloud::get_provider_in(providers_dir, &provider_id) {
+            Ok(real_provider) => match get_adapter_for_cli(cli_id, &settings) {
+                Ok(adapter) => {
+                    if let Err(e) = adapter.patch(&real_provider) {
+                        log::error!(
+                            "崩溃恢复：还原 CLI 配置失败: cli_id={}, err={}",
+                            cli_id,
+                            e
+                        );
+                    } else {
+                        log::info!("崩溃恢复：已还原 CLI 配置: cli_id={}", cli_id);
+                    }
+                }
+                Err(e) => {
+                    log::error!("崩溃恢复：获取 adapter 失败: cli_id={}, err={}", cli_id, e);
+                }
+            },
+            Err(e) => {
+                log::error!(
+                    "崩溃恢复：读取 Provider 失败: cli_id={}, provider_id={}, err={}",
+                    cli_id,
+                    provider_id,
+                    e
+                );
+            }
+        }
+    }
+
+    // 清除 takeover 标志
+    let mut settings = crate::storage::local::read_local_settings_from(local_settings_path)?;
+    settings.proxy_takeover = None;
+    crate::storage::local::write_local_settings_to(local_settings_path, &settings)?;
+
+    log::info!("崩溃恢复完成");
+    Ok(())
+}
+
+/// 启动时根据持久化的开关状态自动重新开启代理（UX-02）
+///
+/// async 函数。读取 proxy.global_enabled 和 proxy.cli_enabled，
+/// 对所有 enabled 的 CLI 重新启动代理。
+pub async fn restore_proxy_state(
+    providers_dir: &Path,
+    local_settings_path: &Path,
+    proxy_service: &ProxyService,
+) -> Result<(), AppError> {
+    let settings = crate::storage::local::read_local_settings_from(local_settings_path)?;
+
+    let proxy = match settings.proxy.as_ref() {
+        Some(p) => p,
+        None => return Ok(()),
+    };
+
+    if !proxy.global_enabled {
+        log::info!("代理状态恢复：全局开关关闭，跳过");
+        return Ok(());
+    }
+
+    let cli_ids_to_enable: Vec<String> = proxy
+        .cli_enabled
+        .iter()
+        .filter_map(|(cli_id, &enabled)| if enabled { Some(cli_id.clone()) } else { None })
+        .collect();
+
+    if cli_ids_to_enable.is_empty() {
+        log::info!("代理状态恢复：无需启用的 CLI");
+        return Ok(());
+    }
+
+    log::info!(
+        "代理状态恢复：准备恢复代理，cli_ids={:?}",
+        cli_ids_to_enable
+    );
+
+    for cli_id in &cli_ids_to_enable {
+        // 检查是否有活跃 Provider
+        let has_provider = settings
+            .active_providers
+            .get(cli_id.as_str())
+            .map_or(false, |pid| pid.is_some());
+
+        if !has_provider {
+            log::warn!(
+                "代理状态恢复：CLI {} 无活跃 Provider，跳过",
+                cli_id
+            );
+            continue;
+        }
+
+        if let Err(e) =
+            _proxy_enable_in(providers_dir, local_settings_path, cli_id, proxy_service, None).await
+        {
+            log::warn!("代理状态恢复：CLI {} 启动失败: {}", cli_id, e);
+        } else {
+            log::info!("代理状态恢复：CLI {} 代理已恢复", cli_id);
+        }
+    }
+
+    Ok(())
+}
+
 // --- 底层代理命令（Phase 8 保留） ---
 
 /// 启动指定 CLI 的代理服务器
@@ -583,5 +802,218 @@ mod tests {
         assert_eq!(proxy.api_key, "PROXY_MANAGED");
         assert_eq!(proxy.base_url, "http://127.0.0.1:15801");
         assert!(matches!(proxy.protocol_type, ProtocolType::OpenAiCompatible));
+    }
+
+    // --- 生命周期管理测试 ---
+
+    use crate::storage::local::LocalSettings;
+    use tempfile::TempDir;
+
+    /// 辅助函数：创建模拟的 providers 目录和 Provider 文件
+    fn setup_test_provider(
+        providers_dir: &std::path::Path,
+        provider_id: &str,
+        cli_id: &str,
+    ) -> Provider {
+        let provider = Provider {
+            id: provider_id.to_string(),
+            cli_id: cli_id.to_string(),
+            name: "Test Provider".to_string(),
+            protocol_type: ProtocolType::Anthropic,
+            api_key: "sk-real-key-12345".to_string(),
+            base_url: "https://api.anthropic.com".to_string(),
+            model: "claude-sonnet-4-20250514".to_string(),
+            model_config: None,
+            notes: None,
+            created_at: 1710000000000,
+            updated_at: 1710000000000,
+            schema_version: 1,
+        };
+
+        // 写入 Provider 文件
+        let provider_path = providers_dir.join(format!("{}.json", provider_id));
+        let json = serde_json::to_string_pretty(&provider).unwrap();
+        std::fs::write(&provider_path, json).unwrap();
+
+        provider
+    }
+
+    #[test]
+    fn test_recover_on_startup_clears_takeover() {
+        let tmp = TempDir::new().unwrap();
+        let providers_dir = tmp.path().join("providers");
+        std::fs::create_dir_all(&providers_dir).unwrap();
+        let local_path = tmp.path().join("local.json");
+
+        // 创建 Claude 配置目录
+        let claude_config_dir = tmp.path().join("claude-config");
+        std::fs::create_dir_all(&claude_config_dir).unwrap();
+
+        // 写入被代理接管的 Claude 配置（PROXY_MANAGED）
+        let proxy_settings = serde_json::json!({
+            "env": {
+                "ANTHROPIC_AUTH_TOKEN": "PROXY_MANAGED",
+                "ANTHROPIC_BASE_URL": "http://127.0.0.1:15800"
+            }
+        });
+        std::fs::write(
+            claude_config_dir.join("settings.json"),
+            serde_json::to_string_pretty(&proxy_settings).unwrap(),
+        )
+        .unwrap();
+
+        // 设置 Provider
+        let _provider = setup_test_provider(&providers_dir, "p1", "claude");
+
+        // 创建含 takeover 标志的 local.json
+        let mut active_providers = std::collections::HashMap::new();
+        active_providers.insert("claude".to_string(), Some("p1".to_string()));
+
+        let settings = LocalSettings {
+            active_providers,
+            cli_paths: crate::storage::local::CliPaths {
+                claude_config_dir: Some(claude_config_dir.to_string_lossy().to_string()),
+                codex_config_dir: None,
+            },
+            proxy_takeover: Some(ProxyTakeover {
+                cli_ids: vec!["claude".to_string()],
+            }),
+            ..LocalSettings::default()
+        };
+        crate::storage::local::write_local_settings_to(&local_path, &settings).unwrap();
+
+        // 执行崩溃恢复
+        let result = recover_on_startup(&providers_dir, &local_path);
+        assert!(result.is_ok(), "recover_on_startup 应成功: {:?}", result);
+
+        // 验证 takeover 被清除
+        let updated = crate::storage::local::read_local_settings_from(&local_path).unwrap();
+        assert!(
+            updated.proxy_takeover.is_none(),
+            "takeover 应被清除"
+        );
+
+        // 验证 CLI 配置被还原为真实凭据
+        let claude_settings: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(claude_config_dir.join("settings.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            claude_settings["env"]["ANTHROPIC_AUTH_TOKEN"],
+            "sk-real-key-12345",
+            "CLI 配置应被还原为真实 API key"
+        );
+    }
+
+    #[test]
+    fn test_recover_on_startup_noop_when_no_takeover() {
+        let tmp = TempDir::new().unwrap();
+        let providers_dir = tmp.path().join("providers");
+        std::fs::create_dir_all(&providers_dir).unwrap();
+        let local_path = tmp.path().join("local.json");
+
+        // 创建无 takeover 标志的 local.json
+        let settings = LocalSettings::default();
+        crate::storage::local::write_local_settings_to(&local_path, &settings).unwrap();
+
+        // 执行崩溃恢复
+        let result = recover_on_startup(&providers_dir, &local_path);
+        assert!(result.is_ok(), "无 takeover 时应成功返回");
+
+        // 验证 local.json 未被修改（仍为默认值）
+        let loaded = crate::storage::local::read_local_settings_from(&local_path).unwrap();
+        assert!(loaded.proxy_takeover.is_none());
+    }
+
+    #[test]
+    fn test_cleanup_on_exit_sync_restores_configs() {
+        let tmp = TempDir::new().unwrap();
+        let providers_dir = tmp.path().join("providers");
+        std::fs::create_dir_all(&providers_dir).unwrap();
+        let local_path = tmp.path().join("local.json");
+
+        // 创建 Claude 配置目录
+        let claude_config_dir = tmp.path().join("claude-config");
+        std::fs::create_dir_all(&claude_config_dir).unwrap();
+
+        // 写入被代理接管的 Claude 配置
+        let proxy_settings = serde_json::json!({
+            "env": {
+                "ANTHROPIC_AUTH_TOKEN": "PROXY_MANAGED",
+                "ANTHROPIC_BASE_URL": "http://127.0.0.1:15800"
+            }
+        });
+        std::fs::write(
+            claude_config_dir.join("settings.json"),
+            serde_json::to_string_pretty(&proxy_settings).unwrap(),
+        )
+        .unwrap();
+
+        // 设置 Provider
+        let _provider = setup_test_provider(&providers_dir, "p1", "claude");
+
+        // 创建含 takeover 标志的 local.json
+        let mut active_providers = std::collections::HashMap::new();
+        active_providers.insert("claude".to_string(), Some("p1".to_string()));
+
+        let settings = LocalSettings {
+            active_providers,
+            cli_paths: crate::storage::local::CliPaths {
+                claude_config_dir: Some(claude_config_dir.to_string_lossy().to_string()),
+                codex_config_dir: None,
+            },
+            proxy: Some(ProxySettings {
+                global_enabled: true,
+                cli_enabled: {
+                    let mut m = std::collections::HashMap::new();
+                    m.insert("claude".to_string(), true);
+                    m
+                },
+            }),
+            proxy_takeover: Some(ProxyTakeover {
+                cli_ids: vec!["claude".to_string()],
+            }),
+            ..LocalSettings::default()
+        };
+        crate::storage::local::write_local_settings_to(&local_path, &settings).unwrap();
+
+        // 执行退出清理
+        cleanup_on_exit_sync(&providers_dir, &local_path);
+
+        // 验证 takeover 被清除
+        let updated = crate::storage::local::read_local_settings_from(&local_path).unwrap();
+        assert!(
+            updated.proxy_takeover.is_none(),
+            "退出清理后 takeover 应被清除"
+        );
+
+        // 验证 CLI 配置被还原
+        let claude_settings: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(claude_config_dir.join("settings.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            claude_settings["env"]["ANTHROPIC_AUTH_TOKEN"],
+            "sk-real-key-12345",
+            "退出清理后 CLI 配置应被还原为真实 API key"
+        );
+    }
+
+    #[test]
+    fn test_cleanup_on_exit_sync_noop_when_no_takeover() {
+        let tmp = TempDir::new().unwrap();
+        let providers_dir = tmp.path().join("providers");
+        std::fs::create_dir_all(&providers_dir).unwrap();
+        let local_path = tmp.path().join("local.json");
+
+        // 创建无 takeover 的 local.json
+        let settings = LocalSettings::default();
+        crate::storage::local::write_local_settings_to(&local_path, &settings).unwrap();
+
+        // 执行退出清理 — 应无副作用
+        cleanup_on_exit_sync(&providers_dir, &local_path);
+
+        let loaded = crate::storage::local::read_local_settings_from(&local_path).unwrap();
+        assert!(loaded.proxy_takeover.is_none());
     }
 }
