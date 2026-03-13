@@ -16,6 +16,7 @@ pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(watcher::SelfWriteTracker::new())
+        .manage(proxy::ProxyService::new())
         .invoke_handler(tauri::generate_handler![
             commands::provider::list_providers,
             commands::provider::get_provider,
@@ -30,6 +31,10 @@ pub fn run() {
             commands::provider::refresh_tray_menu,
             commands::onboarding::scan_cli_configs,
             commands::onboarding::import_provider,
+            commands::proxy::proxy_start,
+            commands::proxy::proxy_stop,
+            commands::proxy::proxy_status,
+            commands::proxy::proxy_update_upstream,
         ]);
 
     #[cfg(desktop)]
