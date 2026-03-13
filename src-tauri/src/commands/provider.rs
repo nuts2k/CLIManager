@@ -3,7 +3,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use serde::Serialize;
-use tauri::Manager;
+use tauri::{Manager, State};
 
 use crate::adapter::claude::ClaudeAdapter;
 use crate::adapter::codex::CodexAdapter;
@@ -50,6 +50,14 @@ fn get_adapter_for_cli(
         }
         _ => Err(AppError::Validation(format!("Unknown CLI: {}", cli_id))),
     }
+}
+
+/// 公开的 adapter 获取函数，供 proxy 模式切换命令使用
+pub(crate) fn get_adapter_for_cli_pub(
+    cli_id: &str,
+    settings: &LocalSettings,
+) -> Result<Box<dyn CliAdapter>, AppError> {
+    get_adapter_for_cli(cli_id, settings)
 }
 
 /// Internal: list and filter providers
@@ -424,13 +432,51 @@ pub fn get_local_settings() -> Result<LocalSettings, AppError> {
 }
 
 #[tauri::command]
-pub fn set_active_provider(
+pub async fn set_active_provider(
     cli_id: String,
     provider_id: Option<String>,
+    proxy_service: State<'_, crate::proxy::ProxyService>,
 ) -> Result<LocalSettings, AppError> {
     let dir = crate::storage::icloud::get_icloud_providers_dir()?;
     let settings_path = crate::storage::local::get_local_settings_path();
-    _set_active_provider_in(&dir, &settings_path, cli_id, provider_id, None)
+    let settings = crate::storage::local::read_local_settings_from(&settings_path)?;
+
+    // 检查是否处于代理模式
+    let in_proxy_mode = settings
+        .proxy_takeover
+        .as_ref()
+        .map_or(false, |t| t.cli_ids.contains(&cli_id));
+
+    if in_proxy_mode {
+        // 代理模式下：跳过 adapter.patch()，只更新 active_providers + upstream
+        let mut settings = settings;
+        settings
+            .active_providers
+            .insert(cli_id.clone(), provider_id.clone());
+        crate::storage::local::write_local_settings_to(&settings_path, &settings)?;
+
+        // 如果有新的 provider_id，更新代理上游
+        if let Some(ref pid) = provider_id {
+            let provider = crate::storage::icloud::get_provider_in(&dir, pid)?;
+            let upstream = crate::proxy::UpstreamTarget {
+                api_key: provider.api_key.clone(),
+                base_url: provider.base_url.clone(),
+                protocol_type: provider.protocol_type.clone(),
+            };
+            if let Err(err) = proxy_service.update_upstream(&cli_id, upstream).await {
+                log::error!(
+                    "代理模式下更新上游失败: cli_id={}, err={}",
+                    cli_id,
+                    err
+                );
+            }
+        }
+
+        Ok(settings)
+    } else {
+        // 直连模式：保持现有行为
+        _set_active_provider_in(&dir, &settings_path, cli_id, provider_id, None)
+    }
 }
 
 pub fn sync_changed_active_providers(changed_provider_ids: &[String]) -> Result<bool, AppError> {

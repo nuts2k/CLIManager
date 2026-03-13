@@ -35,6 +35,10 @@ pub fn run() {
             commands::proxy::proxy_stop,
             commands::proxy::proxy_status,
             commands::proxy::proxy_update_upstream,
+            commands::proxy::proxy_enable,
+            commands::proxy::proxy_disable,
+            commands::proxy::proxy_set_global,
+            commands::proxy::proxy_get_mode_status,
         ]);
 
     #[cfg(desktop)]
