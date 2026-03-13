@@ -54,6 +54,14 @@ fn menu_err(e: impl std::fmt::Display) -> AppError {
     AppError::Validation(format!("menu: {e}"))
 }
 
+fn active_provider_changed_payload(cli_id: &str, provider_id: &str) -> serde_json::Value {
+    serde_json::json!({
+        "cli_id": cli_id,
+        "provider_id": provider_id,
+        "source": "tray",
+    })
+}
+
 /// Build the dynamic tray menu from live provider data and language settings.
 ///
 /// Layout per CONTEXT.md locked decision:
@@ -184,13 +192,11 @@ fn handle_provider_click(app: &AppHandle, cli_id: &str, provider_id: &str) {
             Ok(_) => {
                 log::info!("Tray: switched {cli_id} to {provider_id}");
                 update_tray_menu(&app_handle);
-                // Emit providers-changed event so frontend listeners pick up the change
+                // Use a dedicated event so the frontend can refresh without assuming
+                // this switch came from the file watcher payload shape.
                 let _ = app_handle.emit(
-                    "providers-changed",
-                    serde_json::json!({
-                        "changed_ids": [provider_id],
-                        "source": "tray"
-                    }),
+                    "active-provider-changed",
+                    active_provider_changed_payload(&cli_id, &provider_id),
                 );
             }
             Err(e) => {
@@ -312,5 +318,13 @@ mod tests {
     fn test_parse_provider_event_empty_suffix() {
         let result = parse_provider_event("claude_");
         assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_active_provider_changed_payload_shape() {
+        let payload = active_provider_changed_payload("claude", "provider-123");
+        assert_eq!(payload["cli_id"], "claude");
+        assert_eq!(payload["provider_id"], "provider-123");
+        assert_eq!(payload["source"], "tray");
     }
 }

@@ -440,10 +440,12 @@ pub fn sync_changed_active_providers(changed_provider_ids: &[String]) -> Result<
 }
 
 #[tauri::command]
-pub fn sync_active_providers() -> Result<(), AppError> {
+pub fn sync_active_providers(app: tauri::AppHandle) -> Result<(), AppError> {
     let dir = crate::storage::icloud::get_icloud_providers_dir()?;
     let settings_path = crate::storage::local::get_local_settings_path();
     _reconcile_active_providers_in(&dir, &settings_path, None)?;
+    #[cfg(desktop)]
+    crate::tray::update_tray_menu(&app);
     Ok(())
 }
 

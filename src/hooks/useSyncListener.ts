@@ -8,6 +8,12 @@ interface ProvidersChangedPayload {
   repatched: boolean;
 }
 
+interface ActiveProviderChangedPayload {
+  cli_id: string;
+  provider_id: string;
+  source: string;
+}
+
 export function useSyncListener(
   refreshProviders: () => Promise<void>,
   refreshSettings: () => Promise<void>,
@@ -40,6 +46,14 @@ export function useSyncListener(
       },
     );
 
+    const unlistenActiveProvider = listen<ActiveProviderChangedPayload>(
+      "active-provider-changed",
+      async (_event) => {
+        await refreshProviders();
+        await refreshSettings();
+      },
+    );
+
     const unlistenRepatchFail = listen<string>(
       "sync-repatch-failed",
       (event) => {
@@ -50,6 +64,7 @@ export function useSyncListener(
 
     return () => {
       unlistenProviders.then((fn) => fn());
+      unlistenActiveProvider.then((fn) => fn());
       unlistenRepatchFail.then((fn) => fn());
     };
   }, [refreshProviders, refreshSettings, t]);

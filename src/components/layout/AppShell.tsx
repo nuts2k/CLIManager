@@ -24,21 +24,44 @@ export function AppShell() {
 
   // Restore persisted language, sync active providers, and check onboarding on app startup
   useEffect(() => {
-    getLocalSettings().then((s) => {
-      const lang = s?.language;
-      if (lang && lang !== i18n.language) {
-        i18n.changeLanguage(lang);
-      }
-    }).catch(() => {});
-    syncActiveProviders().catch(() => {});
+    let cancelled = false;
 
-    // Onboarding check: if no providers exist, scan for CLI configs
-    async function checkOnboarding() {
+    async function bootstrap() {
+      try {
+        const settings = await getLocalSettings();
+        const lang = settings?.language;
+        if (!cancelled && lang && lang !== i18n.language) {
+          i18n.changeLanguage(lang);
+        }
+      } catch {
+        // Silently ignore persisted language failures
+      }
+
+      try {
+        await syncActiveProviders();
+      } catch {
+        // Silently ignore active provider sync failures
+      }
+
+      if (cancelled) {
+        return;
+      }
+
+      await refreshSettings();
+      await refreshAll();
+
+      // Onboarding check: if no providers exist, scan for CLI configs
       try {
         const claudeProviders = await listProviders("claude");
         const codexProviders = await listProviders("codex");
+        if (cancelled) {
+          return;
+        }
         if (claudeProviders.length === 0 && codexProviders.length === 0) {
           const configs = await scanCliConfigs();
+          if (cancelled) {
+            return;
+          }
           if (configs.length > 0) {
             setImportConfigs(configs);
             setShowImportDialog(true);
@@ -48,8 +71,13 @@ export function AppShell() {
         // Silently ignore onboarding check failures
       }
     }
-    checkOnboarding();
-  }, []);
+
+    bootstrap();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshAll, refreshSettings]);
 
   const handleImportComplete = useCallback(() => {
     setSyncKey((k) => k + 1);
