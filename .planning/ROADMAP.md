@@ -76,11 +76,11 @@ Plans:
   2. Clicking a Provider in the tray menu switches to it immediately (CLI config files are patched) without opening the main window
   3. When a Provider is added, edited, or deleted in the main window, or changed via iCloud sync, the tray menu updates automatically
   4. Tray menu labels display in the correct language matching the application's current language setting (Chinese or English)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 07-01: TBD
-- [ ] 07-02: TBD
+- [ ] 07-01-PLAN.md — Dynamic tray menu with provider listing, one-click switching, and i18n
+- [ ] 07-02-PLAN.md — Auto-refresh wiring (watcher + frontend CRUD + language) and end-to-end verification
 
 ## Progress
 
@@ -94,8 +94,8 @@ Plans:
 | 4. iCloud Sync and File Watching | v1.0 | 2/2 | Complete | 2026-03-11 |
 | 5. Onboarding | v1.0 | 2/2 | Complete | 2026-03-12 |
 | 6. Tray Foundation | v1.1 | 1/1 | Complete | 2026-03-13 |
-| 7. Provider Menu and Switching | v1.1 | 0/? | Not started | - |
+| 7. Provider Menu and Switching | v1.1 | 0/2 | Not started | - |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*
-*Last updated: 2026-03-13 (Phase 6 planned)*
+*Last updated: 2026-03-13 (Phase 7 planned)*
