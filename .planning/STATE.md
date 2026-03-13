@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: null
-milestone_name: null
-status: idle
-stopped_at: v1.1 System Tray milestone completed and archived
-last_updated: "2026-03-13T07:05:00.000Z"
-last_activity: 2026-03-13 -- v1.1 milestone archived
+milestone: v2.0
+milestone_name: Local Proxy
+status: defining_requirements
+stopped_at: null
+last_updated: "2026-03-13T08:00:00.000Z"
+last_activity: 2026-03-13 -- Milestone v2.0 started
 progress:
-  total_phases: 7
-  completed_phases: 7
-  total_plans: 15
-  completed_plans: 15
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -21,12 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-13)
 
 **Core value:** Surgical patch -- switch Provider only modifies credential and model fields, never rewrites other config content
-**Current focus:** Planning next milestone
+**Current focus:** v2.0 Local Proxy — defining requirements
 
 ## Current Position
 
-No active milestone. v1.0 MVP and v1.1 System Tray shipped.
-Run `/gsd:new-milestone` to start next milestone.
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-13 — Milestone v2.0 started
 
 ## Performance Metrics
 
@@ -59,5 +61,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-13
-Stopped at: v1.1 milestone completed and archived
+Stopped at: Defining v2.0 requirements
 Resume file: None
