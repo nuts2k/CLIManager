@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Local Proxy
 status: executing
-stopped_at: Completed 08-01-PLAN.md
-last_updated: "2026-03-13T11:24:04Z"
-last_activity: 2026-03-13 — Phase 8 Plan 1 complete
+stopped_at: Completed 08-02-PLAN.md
+last_updated: "2026-03-13T11:32:39Z"
+last_activity: 2026-03-13 — Phase 8 complete (2/2 plans)
 progress:
   total_phases: 3
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
-  percent: 17
+  completed_plans: 2
+  percent: 33
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-13)
 
 **Core value:** 切换 Provider 时只做 surgical patch（精确修改凭据和模型字段），绝不重写配置文件的其他内容
-**Current focus:** Phase 8 - 代理核心
+**Current focus:** Phase 9 - 模式切换与持久化
 
 ## Current Position
 
-Phase: 8 of 10 (代理核心)
-Plan: 1 of 2 in current phase
+Phase: 9 of 10 (模式切换与持久化)
+Plan: 0 of ? in current phase
 Status: Executing
-Last activity: 2026-03-13 — Phase 8 Plan 1 complete
+Last activity: 2026-03-13 — Phase 8 complete (2/2 plans)
 
-Progress: [█░░░░░░░░░] 17% (v2.0 milestone: 0/3 phases)
+Progress: [███░░░░░░░] 33% (v2.0 milestone: 1/3 phases)
 
 ## Performance Metrics
 
@@ -43,7 +43,7 @@ Progress: [█░░░░░░░░░] 17% (v2.0 milestone: 0/3 phases)
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 8. 代理核心 | 1/2 | 10min | 10min |
+| 8. 代理核心 | 2/2 | 14min | 7min |
 | 9. 模式切换与持久化 | - | - | - |
 | 10. 实时切换与 UI 集成 | - | - | - |
 
@@ -61,6 +61,9 @@ Recent decisions affecting current work:
 - [08-01]: 健康自检使用 no_proxy 客户端，避免系统代理拦截本地请求
 - [08-01]: 凭据注入仅在检测到 PROXY_MANAGED 占位值时触发，非占位值原样保留
 - [08-01]: reqwest Client 由外部传入 ProxyServer，便于测试和 Client 复用
+- [08-02]: ProxyService 使用 tokio::sync::Mutex 管理多实例，因为启停操作涉及 async
+- [08-02]: stop_all 未暴露 Tauri 命令，留给 Phase 9 内部退出清理调用
+- [08-02]: protocol_type 命令参数使用字符串传入，命令层负责解析
 
 ### Pending Todos
 
@@ -75,6 +78,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-13T11:24:04Z
-Stopped at: Completed 08-01-PLAN.md
-Resume file: .planning/phases/08-proxy-core/08-02-PLAN.md
+Last session: 2026-03-13T11:32:39Z
+Stopped at: Completed 08-02-PLAN.md (Phase 8 complete)
+Resume file: Phase 9 planning needed

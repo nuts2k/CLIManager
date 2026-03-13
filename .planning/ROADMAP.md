@@ -31,7 +31,7 @@
 
 **Milestone Goal:** 在应用内运行本地代理服务，CLI 指向 localhost 实现实时 Provider 切换，无需修改配置文件或重启 CLI。
 
-- [ ] **Phase 8: 代理核心** - axum HTTP 代理服务器，支持请求转发、SSE 流式透传、动态上游切换
+- [x] **Phase 8: 代理核心** - axum HTTP 代理服务器，支持请求转发、SSE 流式透传、动态上游切换 (completed 2026-03-13)
 - [ ] **Phase 9: 模式切换与持久化** - 直连 vs 代理双模式切换，CLI 配置联动 patch，崩溃恢复，设置持久化
 - [ ] **Phase 10: 实时切换与 UI 集成** - Provider 变更实时更新代理内存，前端开关控件，端口冲突检测
 
@@ -97,7 +97,7 @@ Plans:
 | 5. Onboarding | v1.0 | 2/2 | Complete | 2026-03-12 |
 | 6. Tray Foundation | v1.1 | 1/1 | Complete | 2026-03-13 |
 | 7. Provider Menu and Switching | v1.1 | 2/2 | Complete | 2026-03-13 |
-| 8. 代理核心 | v2.0 | 1/2 | In Progress | - |
+| 8. 代理核心 | 2/2 | Complete   | 2026-03-13 | - |
 | 9. 模式切换与持久化 | v2.0 | 0/? | Not started | - |
 | 10. 实时切换与 UI 集成 | v2.0 | 0/? | Not started | - |
 

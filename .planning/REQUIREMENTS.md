@@ -12,7 +12,7 @@ Requirements for Local Proxy milestone. Each maps to roadmap phases.
 - [x] **PROXY-01**: 用户开启代理后，CLI 的 API 请求经本地 HTTP 代理转发到上游 Provider
 - [x] **PROXY-02**: 代理支持 SSE 流式响应逐 chunk 透传（AI API 的核心交互模式）
 - [x] **PROXY-03**: 代理拦截请求中的占位 API key，替换为当前活跃 Provider 的真实 key 后转发上游
-- [ ] **PROXY-04**: 每个 CLI 监听独立固定端口（Claude Code: 15800, Codex: 15801）
+- [x] **PROXY-04**: 每个 CLI 监听独立固定端口（Claude Code: 15800, Codex: 15801）
 - [x] **PROXY-05**: 上游不可达时代理返回 502 + JSON 结构化错误，而非让 CLI 收到 connection refused
 
 ### 模式切换 (Mode Switching)
@@ -88,7 +88,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PROXY-01 | Phase 8 | Complete |
 | PROXY-02 | Phase 8 | Complete |
 | PROXY-03 | Phase 8 | Complete |
-| PROXY-04 | Phase 8 | Pending |
+| PROXY-04 | Phase 8 | Complete |
 | PROXY-05 | Phase 8 | Complete |
 | MODE-01 | Phase 9 | Pending |
 | MODE-02 | Phase 9 | Pending |
