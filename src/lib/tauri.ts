@@ -56,3 +56,7 @@ export async function importProvider(input: {
 }): Promise<Provider> {
   return invoke("import_provider", { ...input });
 }
+
+export async function refreshTrayMenu(): Promise<void> {
+  return invoke("refresh_tray_menu");
+}

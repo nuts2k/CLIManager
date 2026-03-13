@@ -69,6 +69,10 @@ fn process_events(events: Vec<DebouncedEvent>, app_handle: &AppHandle) {
     if let Err(e) = app_handle.emit("providers-changed", &payload) {
         log::error!("Failed to emit providers-changed event: {:?}", e);
     }
+
+    // Rebuild tray menu to reflect provider changes from iCloud sync
+    #[cfg(desktop)]
+    crate::tray::update_tray_menu(app_handle);
 }
 
 /// Pure function: filter events to .json files, exclude self-writes, deduplicate by file stem.

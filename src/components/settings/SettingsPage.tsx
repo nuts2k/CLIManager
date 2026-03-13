@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useSettings } from "@/hooks/useSettings";
+import { refreshTrayMenu } from "@/lib/tauri";
 import i18n from "@/i18n";
 
 interface SettingsPageProps {
@@ -80,6 +81,7 @@ export function SettingsPage({ onBack, onShowImport }: SettingsPageProps) {
   const handleLanguageChange = async (lang: string) => {
     await i18n.changeLanguage(lang);
     await updateSettings({ language: lang });
+    await refreshTrayMenu();
   };
 
   return (

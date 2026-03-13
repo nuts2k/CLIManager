@@ -8,6 +8,7 @@ import {
   setActiveProvider,
   testProvider,
   updateProvider,
+  refreshTrayMenu,
 } from "@/lib/tauri";
 import type { Provider, CreateProviderInput } from "@/types/provider";
 
@@ -39,6 +40,7 @@ export function useProviders(cliId: string) {
         await setActiveProvider(cliIdRef.current, providerId);
         if (refreshSettings) await refreshSettings();
         await refresh();
+        refreshTrayMenu().catch(() => {});
         toast.success(t("status.switchSuccess", { name: provider?.name }));
       } catch (err) {
         toast.error(
@@ -59,6 +61,7 @@ export function useProviders(cliId: string) {
         await deleteProvider(id);
         if (refreshSettings) await refreshSettings();
         await refresh();
+        refreshTrayMenu().catch(() => {});
         toast.success(t("status.deleteSuccess", { name: provider?.name }));
       } catch (err) {
         toast.error(String(err));
@@ -90,6 +93,7 @@ export function useProviders(cliId: string) {
           });
         }
         await refresh();
+        refreshTrayMenu().catch(() => {});
         toast.success(t("status.copySuccess", { name: provider.name }));
       } catch (err) {
         toast.error(String(err));
@@ -123,6 +127,7 @@ export function useProviders(cliId: string) {
         if (targetCliId === cliIdRef.current) {
           await refresh();
         }
+        refreshTrayMenu().catch(() => {});
         toast.success(t("status.copySuccess", { name: provider.name }));
       } catch (err) {
         toast.error(String(err));

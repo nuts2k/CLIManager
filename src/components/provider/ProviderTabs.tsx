@@ -12,7 +12,7 @@ import {
 import { DeleteConfirmDialog } from "@/components/provider/DeleteConfirmDialog";
 import { useProviders } from "@/hooks/useProviders";
 import { useSettings } from "@/hooks/useSettings";
-import { createProvider, updateProvider } from "@/lib/tauri";
+import { createProvider, updateProvider, refreshTrayMenu } from "@/lib/tauri";
 import type { Provider } from "@/types/provider";
 
 const CLI_TABS = [
@@ -144,6 +144,7 @@ export function ProviderTabs({ refreshTrigger }: ProviderTabsProps) {
 
       await refreshSettings();
       await refresh();
+      refreshTrayMenu().catch(() => {});
     } catch (err) {
       toast.error(String(err));
     } finally {
