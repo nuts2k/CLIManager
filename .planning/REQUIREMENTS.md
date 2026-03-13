@@ -1,0 +1,114 @@
+# Requirements: CLIManager
+
+**Defined:** 2026-03-13
+**Core Value:** 切换 Provider 时只做 surgical patch（精确修改凭据和模型字段），绝不重写配置文件的其他内容
+
+## v2.0 Requirements
+
+Requirements for Local Proxy milestone. Each maps to roadmap phases.
+
+### 代理核心 (Proxy Core)
+
+- [ ] **PROXY-01**: 用户开启代理后，CLI 的 API 请求经本地 HTTP 代理转发到上游 Provider
+- [ ] **PROXY-02**: 代理支持 SSE 流式响应逐 chunk 透传（AI API 的核心交互模式）
+- [ ] **PROXY-03**: 代理拦截请求中的占位 API key，替换为当前活跃 Provider 的真实 key 后转发上游
+- [ ] **PROXY-04**: 每个 CLI 监听独立固定端口（Claude Code: 15800, Codex: 15801）
+- [ ] **PROXY-05**: 上游不可达时代理返回 502 + JSON 结构化错误，而非让 CLI 收到 connection refused
+
+### 模式切换 (Mode Switching)
+
+- [ ] **MODE-01**: 用户可在设置页切换全局代理总开关（开/关）
+- [ ] **MODE-02**: 总开关开启后，用户可在每个 CLI 的 Tab 内独立开关该 CLI 的代理模式
+- [ ] **MODE-03**: 开启某 CLI 代理模式时，自动 patch 该 CLI 配置指向 localhost:port + 占位 key
+- [ ] **MODE-04**: 关闭某 CLI 代理模式时，自动还原该 CLI 配置为当前活跃 Provider 的真实凭据和 base_url
+- [ ] **MODE-05**: 应用正常退出时，停止代理并还原所有已开启代理的 CLI 配置
+- [ ] **MODE-06**: 应用异常退出后下次启动时，检测到未清理的 takeover 标志则自动还原 CLI 配置（崩溃恢复）
+
+### 实时切换 (Live Switching)
+
+- [ ] **LIVE-01**: 代理模式下切换 Provider，只更新代理内存中的上游目标，CLI 无需重启、无感知中断
+- [ ] **LIVE-02**: 代理模式下 iCloud 同步的 Provider 变更（内容修改）自动更新代理内存
+- [ ] **LIVE-03**: 代理模式下 Provider CRUD 操作自动更新代理内存
+- [ ] **LIVE-04**: 代理设置（开关状态、端口）存储在本地设备层（不通过 iCloud 同步）
+
+### 体验 (User Experience)
+
+- [ ] **UX-01**: 启动代理时检测端口占用，端口冲突给出清晰错误提示
+- [ ] **UX-02**: 应用重启后自动恢复之前的代理开关状态
+- [ ] **UX-03**: 代理启动后执行健康自检（GET /health），确认监听正常
+
+## Future Requirements
+
+Deferred to v2.x+ milestones. Tracked but not in current roadmap.
+
+### 协议转换 (Protocol Conversion)
+
+- **PROTO-01**: 代理支持 Anthropic ↔ OpenAI 协议格式互转
+- **PROTO-02**: Claude Code 可通过代理使用 OpenAI 兼容的 Provider
+
+### OAuth 桥接 (OAuth Bridge)
+
+- **OAUTH-01**: 代理支持 OpenAI OAuth 认证并转换为 Anthropic 协议
+- **OAUTH-02**: 代理支持 Google OAuth 认证
+
+### 流量监控 (Traffic Monitoring)
+
+- **TRAF-01**: 代理记录请求日志（时间、CLI、Provider、状态码、延迟）
+- **TRAF-02**: 前端可视化代理流量统计
+
+### 高级代理 (Advanced Proxy)
+
+- **ADV-01**: 自动 Failover（上游故障时自动切换到备选 Provider）
+- **ADV-02**: 熔断器（Circuit Breaker）保护
+- **ADV-03**: 代理状态托盘图标指示
+- **ADV-04**: 托盘菜单显示当前代理模式
+- **ADV-05**: 用户可自定义代理端口
+
+## Out of Scope
+
+Explicitly excluded. Documented to prevent scope creep.
+
+| Feature | Reason |
+|---------|--------|
+| 负载均衡 / 多 Provider 轮询 | 单用户桌面应用不需要负载均衡 |
+| 请求缓存 | AI 生成结果具有随机性，不适合缓存 |
+| 速率限制 / 配额管理 | 属于上游 Provider 侧职责 |
+| 多用户认证 | 本地代理只服务当前用户，绑定 127.0.0.1 |
+| MCP 服务器代理 | 与 Provider 代理是不同维度的功能 |
+| 自定义中间件/插件系统 | 过度设计，v2.0 使用场景明确 |
+| 远程代理（非 localhost） | 绑定 0.0.0.0 有安全风险（API key 暴露） |
+| 自动寻找可用端口 | 端口不确定性导致配置难以追踪和调试 |
+
+## Traceability
+
+Which phases cover which requirements. Updated during roadmap creation.
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| PROXY-01 | — | Pending |
+| PROXY-02 | — | Pending |
+| PROXY-03 | — | Pending |
+| PROXY-04 | — | Pending |
+| PROXY-05 | — | Pending |
+| MODE-01 | — | Pending |
+| MODE-02 | — | Pending |
+| MODE-03 | — | Pending |
+| MODE-04 | — | Pending |
+| MODE-05 | — | Pending |
+| MODE-06 | — | Pending |
+| LIVE-01 | — | Pending |
+| LIVE-02 | — | Pending |
+| LIVE-03 | — | Pending |
+| LIVE-04 | — | Pending |
+| UX-01 | — | Pending |
+| UX-02 | — | Pending |
+| UX-03 | — | Pending |
+
+**Coverage:**
+- v2.0 requirements: 18 total
+- Mapped to phases: 0
+- Unmapped: 18
+
+---
+*Requirements defined: 2026-03-13*
+*Last updated: 2026-03-13 after initial definition*
