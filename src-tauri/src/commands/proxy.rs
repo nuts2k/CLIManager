@@ -5,7 +5,9 @@ use tauri::{Emitter, State};
 
 use crate::adapter::CliAdapter;
 use crate::error::AppError;
-use crate::provider::{normalize_origin_base_url, ProtocolType, Provider};
+use crate::provider::{
+    extract_origin_base_url, normalize_origin_base_url, ProtocolType, Provider,
+};
 use crate::proxy::{proxy_port_for_cli, ProxyService, ProxyStatusInfo, UpstreamTarget};
 use crate::storage::local::{ProxySettings, ProxyTakeover};
 
@@ -34,6 +36,142 @@ fn build_upstream_target(
         base_url: normalized_base_url,
         protocol_type: pt,
     })
+}
+
+fn build_upstream_target_from_provider(provider: &Provider) -> Result<UpstreamTarget, AppError> {
+    Ok(UpstreamTarget {
+        api_key: provider.api_key.clone(),
+        base_url: extract_origin_base_url(&provider.base_url).map_err(AppError::Validation)?,
+        protocol_type: provider.protocol_type.clone(),
+    })
+}
+
+type AdapterFactory = fn(
+    &str,
+    &crate::storage::local::LocalSettings,
+) -> Result<Box<dyn CliAdapter>, AppError>;
+
+fn patch_cli_with_adapter(
+    cli_id: &str,
+    settings: &crate::storage::local::LocalSettings,
+    provider: &Provider,
+    adapter: Option<&dyn CliAdapter>,
+    adapter_factory: AdapterFactory,
+) -> Result<(), AppError> {
+    if let Some(adapter) = adapter {
+        adapter.patch(provider)?;
+    } else {
+        let adapter = adapter_factory(cli_id, settings)?;
+        adapter.patch(provider)?;
+    }
+    Ok(())
+}
+
+fn clear_cli_with_adapter(
+    cli_id: &str,
+    settings: &crate::storage::local::LocalSettings,
+    adapter: Option<&dyn CliAdapter>,
+    adapter_factory: AdapterFactory,
+) -> Result<(), AppError> {
+    if let Some(adapter) = adapter {
+        adapter.clear()?;
+    } else {
+        let adapter = adapter_factory(cli_id, settings)?;
+        adapter.clear()?;
+    }
+    Ok(())
+}
+
+fn restore_or_clear_cli_config_with_factory(
+    providers_dir: &Path,
+    settings: &crate::storage::local::LocalSettings,
+    cli_id: &str,
+    adapter: Option<&dyn CliAdapter>,
+    context: &str,
+    adapter_factory: AdapterFactory,
+) -> Result<(), AppError> {
+    let provider_id = settings
+        .active_providers
+        .get(cli_id)
+        .and_then(|pid| pid.as_deref());
+
+    let primary_err = if let Some(pid) = provider_id {
+        match crate::storage::icloud::get_provider_in(providers_dir, pid) {
+            Ok(real_provider) => match patch_cli_with_adapter(
+                cli_id,
+                settings,
+                &real_provider,
+                adapter,
+                adapter_factory,
+            ) {
+                Ok(()) => return Ok(()),
+                Err(err) => {
+                    log::error!(
+                        "{}：还原 CLI 配置失败，尝试 clear: cli_id={}, provider_id={}, err={}",
+                        context,
+                        cli_id,
+                        pid,
+                        err
+                    );
+                    Some(err)
+                }
+            },
+            Err(err) => {
+                log::warn!(
+                    "{}：读取 Provider 失败，尝试 clear: cli_id={}, provider_id={}, err={}",
+                    context,
+                    cli_id,
+                    pid,
+                    err
+                );
+                Some(err)
+            }
+        }
+    } else {
+        let err = AppError::Validation(format!("CLI {} 无活跃 Provider", cli_id));
+        log::warn!("{}：{}，尝试 clear", context, err);
+        Some(err)
+    };
+
+    match clear_cli_with_adapter(cli_id, settings, adapter, adapter_factory) {
+        Ok(()) => {
+            log::warn!("{}：已 clear CLI 配置作为回退: cli_id={}", context, cli_id);
+            Ok(())
+        }
+        Err(clear_err) => {
+            log::error!(
+                "{}：clear CLI 配置也失败: cli_id={}, err={}",
+                context,
+                cli_id,
+                clear_err
+            );
+            let detail = match primary_err {
+                Some(primary_err) => format!("{}；clear 也失败: {}", primary_err, clear_err),
+                None => clear_err.to_string(),
+            };
+            Err(AppError::Validation(format!(
+                "{}未完成，CLI 可能仍处于代理接管状态: cli_id={}, {}",
+                context, cli_id, detail
+            )))
+        }
+    }
+}
+
+fn restore_or_clear_cli_config(
+    providers_dir: &Path,
+    settings: &crate::storage::local::LocalSettings,
+    cli_id: &str,
+    adapter: Option<&dyn CliAdapter>,
+    context: &str,
+) -> Result<(), AppError> {
+    restore_or_clear_cli_config_with_factory(
+        providers_dir,
+        settings,
+        cli_id,
+        adapter,
+        context,
+        get_adapter_for_cli,
+    )
 }
 
 // --- 模式切换返回类型 ---
@@ -141,11 +279,7 @@ pub(crate) async fn _proxy_enable_in(
         real_adapter.patch(&proxy_provider)?;
 
         // 5. 构造 UpstreamTarget（真实凭据）
-        let upstream = UpstreamTarget {
-            api_key: real_provider.api_key.clone(),
-            base_url: real_provider.base_url.clone(),
-            protocol_type: real_provider.protocol_type.clone(),
-        };
+        let upstream = build_upstream_target_from_provider(&real_provider)?;
 
         (port, upstream, real_provider, settings)
         // real_adapter 在此处 drop
@@ -198,49 +332,17 @@ pub(crate) async fn _proxy_disable_in(
     adapter: Option<Box<dyn CliAdapter + Send>>,
 ) -> Result<(), AppError> {
     // 所有同步 adapter 操作在 block 内完成
-    {
+    let restore_result = {
         let settings = crate::storage::local::read_local_settings_from(local_settings_path)?;
-
-        // 1. 读取当前活跃 Provider 并还原 CLI 配置
-        let provider_id = settings
-            .active_providers
-            .get(cli_id)
-            .and_then(|pid| pid.as_ref());
-
-        if let Some(pid) = provider_id {
-            match crate::storage::icloud::get_provider_in(providers_dir, pid) {
-                Ok(real_provider) => {
-                    let real_adapter = if let Some(a) = adapter {
-                        a
-                    } else {
-                        get_adapter_for_cli(cli_id, &settings)?
-                    };
-                    if let Err(patch_err) = real_adapter.patch(&real_provider) {
-                        log::error!(
-                            "还原 CLI 配置失败，尝试 clear: cli_id={}, err={}",
-                            cli_id,
-                            patch_err
-                        );
-                        // 尝试 clear 作为回退
-                        if let Ok(fallback_adapter) = get_adapter_for_cli(cli_id, &settings) {
-                            if let Err(clear_err) = fallback_adapter.clear() {
-                                log::error!("clear 也失败: {}", clear_err);
-                            }
-                        }
-                    }
-                }
-                Err(err) => {
-                    log::warn!(
-                        "无法读取 Provider 还原 CLI 配置: cli_id={}, provider_id={}, err={}",
-                        cli_id,
-                        pid,
-                        err
-                    );
-                }
-            }
-        }
-        // adapter 在此处 drop
-    }
+        let adapter_ref = adapter.as_ref().map(|a| a.as_ref() as &dyn CliAdapter);
+        restore_or_clear_cli_config(
+            providers_dir,
+            &settings,
+            cli_id,
+            adapter_ref,
+            "关闭代理",
+        )
+    };
 
     // 2. 停止代理（best-effort，async）
     if let Err(stop_err) = proxy_service.stop(cli_id).await {
@@ -254,8 +356,17 @@ pub(crate) async fn _proxy_disable_in(
     // 3. 更新 local.json
     let mut settings = crate::storage::local::read_local_settings_from(local_settings_path)?;
 
-    if let Some(ref mut takeover) = settings.proxy_takeover {
-        takeover.cli_ids.retain(|id| id != cli_id);
+    if restore_result.is_ok() {
+        if let Some(ref mut takeover) = settings.proxy_takeover {
+            takeover.cli_ids.retain(|id| id != cli_id);
+        }
+        if settings
+            .proxy_takeover
+            .as_ref()
+            .is_some_and(|takeover| takeover.cli_ids.is_empty())
+        {
+            settings.proxy_takeover = None;
+        }
     }
 
     if let Some(ref mut proxy) = settings.proxy {
@@ -264,8 +375,13 @@ pub(crate) async fn _proxy_disable_in(
 
     crate::storage::local::write_local_settings_to(local_settings_path, &settings)?;
 
-    log::info!("代理模式已关闭: cli_id={}", cli_id);
-    Ok(())
+    match restore_result {
+        Ok(()) => {
+            log::info!("代理模式已关闭: cli_id={}", cli_id);
+            Ok(())
+        }
+        Err(err) => Err(err),
+    }
 }
 
 // --- 生命周期管理（退出清理 / 崩溃恢复 / 启动自动恢复） ---
@@ -274,7 +390,11 @@ pub(crate) async fn _proxy_disable_in(
 ///
 /// 读取 proxy_takeover.cli_ids，对每个 CLI 调用 adapter.patch(real_provider) 还原配置，
 /// 清除 takeover 标志后写回 local.json。代理停止（async）由调用方另行处理。
-pub fn cleanup_on_exit_sync(providers_dir: &Path, local_settings_path: &Path) {
+fn cleanup_on_exit_sync_in(
+    providers_dir: &Path,
+    local_settings_path: &Path,
+    adapter_factory: AdapterFactory,
+) {
     let settings = match crate::storage::local::read_local_settings_from(local_settings_path) {
         Ok(s) => s,
         Err(e) => {
@@ -294,49 +414,22 @@ pub fn cleanup_on_exit_sync(providers_dir: &Path, local_settings_path: &Path) {
         return;
     }
 
+    let mut unresolved_cli_ids = Vec::new();
     for cli_id in &cli_ids {
-        // 获取该 CLI 的活跃 Provider ID
-        let provider_id = match settings
-            .active_providers
-            .get(cli_id.as_str())
-            .and_then(|pid| pid.as_ref())
-        {
-            Some(pid) => pid.clone(),
-            None => {
-                log::warn!("退出清理：CLI {} 无活跃 Provider，跳过", cli_id);
-                continue;
-            }
-        };
-
-        // 从 iCloud 读取真实 Provider
-        let real_provider =
-            match crate::storage::icloud::get_provider_in(providers_dir, &provider_id) {
-                Ok(p) => p,
-                Err(e) => {
-                    log::error!(
-                        "退出清理：读取 Provider 失败: cli_id={}, provider_id={}, err={}",
-                        cli_id,
-                        provider_id,
-                        e
-                    );
-                    continue;
-                }
-            };
-
-        // 获取 adapter 并还原配置
-        match get_adapter_for_cli(cli_id, &settings) {
-            Ok(adapter) => {
-                if let Err(e) = adapter.patch(&real_provider) {
-                    log::error!("退出清理：还原 CLI 配置失败: cli_id={}, err={}", cli_id, e);
-                }
-            }
-            Err(e) => {
-                log::error!("退出清理：获取 adapter 失败: cli_id={}, err={}", cli_id, e);
-            }
+        if let Err(err) = restore_or_clear_cli_config_with_factory(
+            providers_dir,
+            &settings,
+            cli_id,
+            None,
+            "退出清理",
+            adapter_factory,
+        ) {
+            log::error!("退出清理：保留 takeover 标记: cli_id={}, err={}", cli_id, err);
+            unresolved_cli_ids.push(cli_id.clone());
         }
     }
 
-    // 清除 takeover 标志并写回
+    // 仅清除已成功还原/clear 的 takeover 标志，失败项保留给下次启动恢复。
     let mut settings = match crate::storage::local::read_local_settings_from(local_settings_path) {
         Ok(s) => s,
         Err(e) => {
@@ -344,20 +437,44 @@ pub fn cleanup_on_exit_sync(providers_dir: &Path, local_settings_path: &Path) {
             return;
         }
     };
-    settings.proxy_takeover = None;
+
+    if unresolved_cli_ids.is_empty() {
+        settings.proxy_takeover = None;
+    } else if let Some(ref mut takeover) = settings.proxy_takeover {
+        takeover
+            .cli_ids
+            .retain(|id| unresolved_cli_ids.iter().any(|pending| pending == id));
+    }
+    if settings
+        .proxy_takeover
+        .as_ref()
+        .is_some_and(|takeover| takeover.cli_ids.is_empty())
+    {
+        settings.proxy_takeover = None;
+    }
+
     if let Err(e) = crate::storage::local::write_local_settings_to(local_settings_path, &settings) {
         log::error!("退出清理：写回 local.json 失败: {}", e);
     }
 
-    log::info!("退出清理完成：已还原 {} 个 CLI 的配置", cli_ids.len());
+    log::info!(
+        "退出清理完成：成功处理 {} 个 CLI，保留 {} 个 takeover 标记",
+        cli_ids.len().saturating_sub(unresolved_cli_ids.len()),
+        unresolved_cli_ids.len()
+    );
+}
+
+pub fn cleanup_on_exit_sync(providers_dir: &Path, local_settings_path: &Path) {
+    cleanup_on_exit_sync_in(providers_dir, local_settings_path, get_adapter_for_cli);
 }
 
 /// 崩溃恢复：启动时检测遗留 takeover 标志并还原 CLI 配置
 ///
 /// 同步函数。如果上次崩溃导致 takeover 未清除，则对每个 cli_id 还原配置。
-pub fn recover_on_startup(
+fn recover_on_startup_in(
     providers_dir: &Path,
     local_settings_path: &Path,
+    adapter_factory: AdapterFactory,
 ) -> Result<(), AppError> {
     let settings = crate::storage::local::read_local_settings_from(local_settings_path)?;
 
@@ -373,54 +490,53 @@ pub fn recover_on_startup(
 
     log::info!("崩溃恢复：检测到遗留 takeover 标志，cli_ids={:?}", cli_ids);
 
+    let mut unresolved_cli_ids = Vec::new();
     for cli_id in &cli_ids {
-        let provider_id = match settings
-            .active_providers
-            .get(cli_id.as_str())
-            .and_then(|pid| pid.as_ref())
-        {
-            Some(pid) => pid.clone(),
-            None => {
-                log::warn!("崩溃恢复：CLI {} 无活跃 Provider，跳过", cli_id);
-                continue;
+        match restore_or_clear_cli_config_with_factory(
+            providers_dir,
+            &settings,
+            cli_id,
+            None,
+            "崩溃恢复",
+            adapter_factory,
+        ) {
+            Ok(()) => {
+                log::info!("崩溃恢复：已处理 CLI 配置: cli_id={}", cli_id);
             }
-        };
-
-        match crate::storage::icloud::get_provider_in(providers_dir, &provider_id) {
-            Ok(real_provider) => match get_adapter_for_cli(cli_id, &settings) {
-                Ok(adapter) => {
-                    if let Err(e) = adapter.patch(&real_provider) {
-                        log::error!(
-                            "崩溃恢复：还原 CLI 配置失败: cli_id={}, err={}",
-                            cli_id,
-                            e
-                        );
-                    } else {
-                        log::info!("崩溃恢复：已还原 CLI 配置: cli_id={}", cli_id);
-                    }
-                }
-                Err(e) => {
-                    log::error!("崩溃恢复：获取 adapter 失败: cli_id={}, err={}", cli_id, e);
-                }
-            },
-            Err(e) => {
-                log::error!(
-                    "崩溃恢复：读取 Provider 失败: cli_id={}, provider_id={}, err={}",
-                    cli_id,
-                    provider_id,
-                    e
-                );
+            Err(err) => {
+                log::error!("崩溃恢复：保留 takeover 标记: cli_id={}, err={}", cli_id, err);
+                unresolved_cli_ids.push(cli_id.clone());
             }
         }
     }
 
-    // 清除 takeover 标志
+    // 仅移除恢复成功的 takeover 标记，失败项保留给后续继续修复。
     let mut settings = crate::storage::local::read_local_settings_from(local_settings_path)?;
-    settings.proxy_takeover = None;
+    if unresolved_cli_ids.is_empty() {
+        settings.proxy_takeover = None;
+    } else if let Some(ref mut takeover) = settings.proxy_takeover {
+        takeover
+            .cli_ids
+            .retain(|id| unresolved_cli_ids.iter().any(|pending| pending == id));
+    }
+    if settings
+        .proxy_takeover
+        .as_ref()
+        .is_some_and(|takeover| takeover.cli_ids.is_empty())
+    {
+        settings.proxy_takeover = None;
+    }
     crate::storage::local::write_local_settings_to(local_settings_path, &settings)?;
 
     log::info!("崩溃恢复完成");
     Ok(())
+}
+
+pub fn recover_on_startup(
+    providers_dir: &Path,
+    local_settings_path: &Path,
+) -> Result<(), AppError> {
+    recover_on_startup_in(providers_dir, local_settings_path, get_adapter_for_cli)
 }
 
 /// 启动时根据持久化的开关状态自动重新开启代理（UX-02）
@@ -714,7 +830,12 @@ pub async fn proxy_get_mode_status(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::adapter::claude::ClaudeAdapter;
+    use crate::adapter::codex::CodexAdapter;
+    use crate::adapter::{CliAdapter, PatchResult};
+    use crate::error::AppError;
     use crate::proxy::{PROXY_PORT_CLAUDE, PROXY_PORT_CODEX};
+    use std::path::PathBuf;
 
     #[test]
     fn test_build_upstream_target_normalizes_base_url() {
@@ -742,6 +863,27 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(err, "Provider base URL must not contain a path");
+    }
+
+    #[test]
+    fn test_build_upstream_target_from_provider_strips_legacy_path() {
+        let provider = Provider {
+            id: "p-legacy".to_string(),
+            cli_id: "codex".to_string(),
+            name: "Legacy".to_string(),
+            protocol_type: ProtocolType::OpenAiCompatible,
+            api_key: "sk-test".to_string(),
+            base_url: "https://api.openai.com/v1/chat/completions".to_string(),
+            model: "o4-mini".to_string(),
+            model_config: None,
+            notes: None,
+            created_at: 0,
+            updated_at: 0,
+            schema_version: 1,
+        };
+
+        let upstream = build_upstream_target_from_provider(&provider).unwrap();
+        assert_eq!(upstream.base_url, "https://api.openai.com");
     }
 
     #[test]
@@ -808,6 +950,63 @@ mod tests {
 
     use crate::storage::local::LocalSettings;
     use tempfile::TempDir;
+
+    struct FailingRestoreAdapter;
+
+    impl CliAdapter for FailingRestoreAdapter {
+        fn cli_name(&self) -> &str {
+            "failing-restore"
+        }
+
+        fn patch(&self, _provider: &Provider) -> Result<PatchResult, AppError> {
+            Err(AppError::Validation("patch failed".to_string()))
+        }
+
+        fn clear(&self) -> Result<PatchResult, AppError> {
+            Err(AppError::Validation("clear failed".to_string()))
+        }
+    }
+
+    fn get_test_adapter_for_cli(
+        cli_id: &str,
+        settings: &LocalSettings,
+    ) -> Result<Box<dyn CliAdapter>, AppError> {
+        match cli_id {
+            "claude" => {
+                let config_dir = PathBuf::from(
+                    settings
+                        .cli_paths
+                        .claude_config_dir
+                        .as_ref()
+                        .expect("claude config dir required"),
+                );
+                let backup_dir = config_dir
+                    .parent()
+                    .expect("config parent required")
+                    .join("claude-backup");
+                Ok(Box::new(ClaudeAdapter::new_with_paths(
+                    config_dir, backup_dir,
+                )))
+            }
+            "codex" => {
+                let config_dir = PathBuf::from(
+                    settings
+                        .cli_paths
+                        .codex_config_dir
+                        .as_ref()
+                        .expect("codex config dir required"),
+                );
+                let backup_dir = config_dir
+                    .parent()
+                    .expect("config parent required")
+                    .join("codex-backup");
+                Ok(Box::new(CodexAdapter::new_with_paths(
+                    config_dir, backup_dir,
+                )))
+            }
+            _ => Err(AppError::Validation(format!("Unknown CLI: {}", cli_id))),
+        }
+    }
 
     /// 辅助函数：创建模拟的 providers 目录和 Provider 文件
     fn setup_test_provider(
@@ -883,7 +1082,7 @@ mod tests {
         crate::storage::local::write_local_settings_to(&local_path, &settings).unwrap();
 
         // 执行崩溃恢复
-        let result = recover_on_startup(&providers_dir, &local_path);
+        let result = recover_on_startup_in(&providers_dir, &local_path, get_test_adapter_for_cli);
         assert!(result.is_ok(), "recover_on_startup 应成功: {:?}", result);
 
         // 验证 takeover 被清除
@@ -923,6 +1122,47 @@ mod tests {
         // 验证 local.json 未被修改（仍为默认值）
         let loaded = crate::storage::local::read_local_settings_from(&local_path).unwrap();
         assert!(loaded.proxy_takeover.is_none());
+    }
+
+    #[test]
+    fn test_recover_on_startup_keeps_failed_takeover() {
+        let tmp = TempDir::new().unwrap();
+        let providers_dir = tmp.path().join("providers");
+        std::fs::create_dir_all(&providers_dir).unwrap();
+        let local_path = tmp.path().join("local.json");
+
+        let claude_config_dir = tmp.path().join("claude-config");
+        std::fs::create_dir_all(&claude_config_dir).unwrap();
+        std::fs::write(claude_config_dir.join("settings.json"), "{invalid json").unwrap();
+
+        let _provider = setup_test_provider(&providers_dir, "p1", "claude");
+
+        let mut active_providers = std::collections::HashMap::new();
+        active_providers.insert("claude".to_string(), Some("p1".to_string()));
+
+        let settings = LocalSettings {
+            active_providers,
+            cli_paths: crate::storage::local::CliPaths {
+                claude_config_dir: Some(claude_config_dir.to_string_lossy().to_string()),
+                codex_config_dir: None,
+            },
+            proxy_takeover: Some(ProxyTakeover {
+                cli_ids: vec!["claude".to_string()],
+            }),
+            ..LocalSettings::default()
+        };
+        crate::storage::local::write_local_settings_to(&local_path, &settings).unwrap();
+
+        let result = recover_on_startup(&providers_dir, &local_path);
+        assert!(result.is_ok(), "恢复应保留失败标记而不是整体报错: {:?}", result);
+
+        let updated = crate::storage::local::read_local_settings_from(&local_path).unwrap();
+        assert_eq!(
+            updated.proxy_takeover,
+            Some(ProxyTakeover {
+                cli_ids: vec!["claude".to_string()]
+            })
+        );
     }
 
     #[test]
@@ -978,7 +1218,7 @@ mod tests {
         crate::storage::local::write_local_settings_to(&local_path, &settings).unwrap();
 
         // 执行退出清理
-        cleanup_on_exit_sync(&providers_dir, &local_path);
+        cleanup_on_exit_sync_in(&providers_dir, &local_path, get_test_adapter_for_cli);
 
         // 验证 takeover 被清除
         let updated = crate::storage::local::read_local_settings_from(&local_path).unwrap();
@@ -1015,5 +1255,104 @@ mod tests {
 
         let loaded = crate::storage::local::read_local_settings_from(&local_path).unwrap();
         assert!(loaded.proxy_takeover.is_none());
+    }
+
+    #[test]
+    fn test_cleanup_on_exit_sync_keeps_failed_takeover() {
+        let tmp = TempDir::new().unwrap();
+        let providers_dir = tmp.path().join("providers");
+        std::fs::create_dir_all(&providers_dir).unwrap();
+        let local_path = tmp.path().join("local.json");
+
+        let claude_config_dir = tmp.path().join("claude-config");
+        std::fs::create_dir_all(&claude_config_dir).unwrap();
+        std::fs::write(claude_config_dir.join("settings.json"), "{invalid json").unwrap();
+
+        let _provider = setup_test_provider(&providers_dir, "p1", "claude");
+
+        let mut active_providers = std::collections::HashMap::new();
+        active_providers.insert("claude".to_string(), Some("p1".to_string()));
+
+        let settings = LocalSettings {
+            active_providers,
+            cli_paths: crate::storage::local::CliPaths {
+                claude_config_dir: Some(claude_config_dir.to_string_lossy().to_string()),
+                codex_config_dir: None,
+            },
+            proxy_takeover: Some(ProxyTakeover {
+                cli_ids: vec!["claude".to_string()],
+            }),
+            ..LocalSettings::default()
+        };
+        crate::storage::local::write_local_settings_to(&local_path, &settings).unwrap();
+
+        cleanup_on_exit_sync(&providers_dir, &local_path);
+
+        let updated = crate::storage::local::read_local_settings_from(&local_path).unwrap();
+        assert_eq!(
+            updated.proxy_takeover,
+            Some(ProxyTakeover {
+                cli_ids: vec!["claude".to_string()]
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn test_proxy_disable_keeps_takeover_when_restore_fails() {
+        let tmp = TempDir::new().unwrap();
+        let providers_dir = tmp.path().join("providers");
+        std::fs::create_dir_all(&providers_dir).unwrap();
+        let local_path = tmp.path().join("local.json");
+
+        let _provider = setup_test_provider(&providers_dir, "p1", "claude");
+
+        let mut active_providers = std::collections::HashMap::new();
+        active_providers.insert("claude".to_string(), Some("p1".to_string()));
+
+        let settings = LocalSettings {
+            active_providers,
+            proxy: Some(ProxySettings {
+                global_enabled: true,
+                cli_enabled: {
+                    let mut m = std::collections::HashMap::new();
+                    m.insert("claude".to_string(), true);
+                    m
+                },
+            }),
+            proxy_takeover: Some(ProxyTakeover {
+                cli_ids: vec!["claude".to_string()],
+            }),
+            ..LocalSettings::default()
+        };
+        crate::storage::local::write_local_settings_to(&local_path, &settings).unwrap();
+
+        let proxy_service = ProxyService::new();
+        let err = _proxy_disable_in(
+            &providers_dir,
+            &local_path,
+            "claude",
+            &proxy_service,
+            Some(Box::new(FailingRestoreAdapter)),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(err, AppError::Validation(_)));
+
+        let updated = crate::storage::local::read_local_settings_from(&local_path).unwrap();
+        assert_eq!(
+            updated.proxy_takeover,
+            Some(ProxyTakeover {
+                cli_ids: vec!["claude".to_string()]
+            })
+        );
+        assert_eq!(
+            updated
+                .proxy
+                .as_ref()
+                .and_then(|proxy| proxy.cli_enabled.get("claude"))
+                .copied(),
+            Some(false)
+        );
     }
 }

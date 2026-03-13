@@ -40,6 +40,40 @@ pub fn normalize_origin_base_url(input: &str) -> Result<String, String> {
     Ok(url.as_str().trim_end_matches('/').to_string())
 }
 
+/// 从任意绝对 URL 中提取 origin，兼容旧版本遗留的 path/query/fragment。
+///
+/// 用于代理上游这类只需要 origin 的场景，不用于用户输入校验。
+pub fn extract_origin_base_url(input: &str) -> Result<String, String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Err("Provider base URL cannot be empty".to_string());
+    }
+
+    let mut url = reqwest::Url::parse(trimmed)
+        .map_err(|_| "Provider base URL must be a valid absolute URL".to_string())?;
+
+    match url.scheme() {
+        "http" | "https" => {}
+        _ => {
+            return Err("Provider base URL must start with http:// or https://".to_string());
+        }
+    }
+
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err("Provider base URL must not include username or password".to_string());
+    }
+
+    if url.host_str().is_none() {
+        return Err("Provider base URL must include a host".to_string());
+    }
+
+    url.set_path("");
+    url.set_query(None);
+    url.set_fragment(None);
+
+    Ok(url.as_str().trim_end_matches('/').to_string())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ProtocolType {
@@ -270,5 +304,12 @@ mod tests {
     fn test_normalize_origin_base_url_rejects_query() {
         let err = normalize_origin_base_url("https://api.openai.com?foo=bar").unwrap_err();
         assert_eq!(err, "Provider base URL must not contain a query string");
+    }
+
+    #[test]
+    fn test_extract_origin_base_url_strips_legacy_path_query_and_fragment() {
+        let normalized =
+            extract_origin_base_url("https://api.openai.com/v1/chat?foo=bar#frag").unwrap();
+        assert_eq!(normalized, "https://api.openai.com");
     }
 }

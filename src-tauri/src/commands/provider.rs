@@ -9,7 +9,7 @@ use crate::adapter::claude::ClaudeAdapter;
 use crate::adapter::codex::CodexAdapter;
 use crate::adapter::CliAdapter;
 use crate::error::AppError;
-use crate::provider::{normalize_origin_base_url, ProtocolType, Provider};
+use crate::provider::{extract_origin_base_url, normalize_origin_base_url, ProtocolType, Provider};
 use crate::storage::local::{read_local_settings, write_local_settings, LocalSettings};
 
 #[derive(Debug, Clone, Serialize)]
@@ -448,35 +448,57 @@ pub async fn set_active_provider(
         .map_or(false, |t| t.cli_ids.contains(&cli_id));
 
     if in_proxy_mode {
-        // 代理模式下：跳过 adapter.patch()，只更新 active_providers + upstream
-        let mut settings = settings;
-        settings
-            .active_providers
-            .insert(cli_id.clone(), provider_id.clone());
-        crate::storage::local::write_local_settings_to(&settings_path, &settings)?;
-
-        // 如果有新的 provider_id，更新代理上游
-        if let Some(ref pid) = provider_id {
-            let provider = crate::storage::icloud::get_provider_in(&dir, pid)?;
-            let upstream = crate::proxy::UpstreamTarget {
-                api_key: provider.api_key.clone(),
-                base_url: provider.base_url.clone(),
-                protocol_type: provider.protocol_type.clone(),
-            };
-            if let Err(err) = proxy_service.update_upstream(&cli_id, upstream).await {
-                log::error!(
-                    "代理模式下更新上游失败: cli_id={}, err={}",
-                    cli_id,
-                    err
-                );
-            }
-        }
-
-        Ok(settings)
+        _set_active_provider_in_proxy_mode(
+            &dir,
+            &settings_path,
+            cli_id,
+            provider_id,
+            &proxy_service,
+        )
+        .await
     } else {
         // 直连模式：保持现有行为
         _set_active_provider_in(&dir, &settings_path, cli_id, provider_id, None)
     }
+}
+
+pub(crate) async fn _set_active_provider_in_proxy_mode(
+    providers_dir: &Path,
+    local_settings_path: &Path,
+    cli_id: String,
+    provider_id: Option<String>,
+    proxy_service: &crate::proxy::ProxyService,
+) -> Result<LocalSettings, AppError> {
+    // 先验证 provider，避免把坏的 provider_id 持久化到 active_providers。
+    let upstream = if let Some(ref pid) = provider_id {
+        let provider = crate::storage::icloud::get_provider_in(providers_dir, pid)?;
+        Some(crate::proxy::UpstreamTarget {
+            api_key: provider.api_key.clone(),
+            base_url: extract_origin_base_url(&provider.base_url)
+                .map_err(AppError::Validation)?,
+            protocol_type: provider.protocol_type.clone(),
+        })
+    } else {
+        None
+    };
+
+    let mut settings = crate::storage::local::read_local_settings_from(local_settings_path)?;
+    settings
+        .active_providers
+        .insert(cli_id.clone(), provider_id.clone());
+    crate::storage::local::write_local_settings_to(local_settings_path, &settings)?;
+
+    if let Some(upstream) = upstream {
+        if let Err(err) = proxy_service.update_upstream(&cli_id, upstream).await {
+            log::error!(
+                "代理模式下更新上游失败: cli_id={}, err={}",
+                cli_id,
+                err
+            );
+        }
+    }
+
+    Ok(settings)
 }
 
 pub fn sync_changed_active_providers(changed_provider_ids: &[String]) -> Result<bool, AppError> {
@@ -907,6 +929,39 @@ mod tests {
             Some("missing".to_string()),
             None,
         )
+        .unwrap_err();
+
+        assert!(matches!(err, AppError::NotFound(ref id) if id == "missing"));
+
+        let loaded = read_local_settings_from(&settings_path).unwrap();
+        assert_eq!(
+            loaded.active_providers.get("claude"),
+            Some(&Some("old-id".to_string()))
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_active_provider_in_proxy_mode_missing_id_does_not_persist() {
+        let tmp = TempDir::new().unwrap();
+        let providers_dir = tmp.path().join("providers");
+        let settings_path = tmp.path().join("local.json");
+        std::fs::create_dir_all(&providers_dir).unwrap();
+
+        let mut initial = LocalSettings::default();
+        initial
+            .active_providers
+            .insert("claude".to_string(), Some("old-id".to_string()));
+        write_local_settings_to(&settings_path, &initial).unwrap();
+
+        let proxy_service = crate::proxy::ProxyService::new();
+        let err = _set_active_provider_in_proxy_mode(
+            &providers_dir,
+            &settings_path,
+            "claude".to_string(),
+            Some("missing".to_string()),
+            &proxy_service,
+        )
+        .await
         .unwrap_err();
 
         assert!(matches!(err, AppError::NotFound(ref id) if id == "missing"));
