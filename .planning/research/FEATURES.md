@@ -1,192 +1,259 @@
-# Feature Research: System Tray (v1.1)
+# Feature Landscape
 
-**Domain:** Desktop system tray for CLI config-switching app
-**Researched:** 2026-03-12
-**Confidence:** HIGH
+**Domain:** 本地 API 代理服务 — AI CLI 工具与上游 Provider 之间的透明转发层
+**Researched:** 2026-03-13
+**Confidence:** HIGH（基于竞品分析 cc-switch v3.9+、CLIProxyAPI、LiteLLM，以及 Claude Code / Codex 官方配置文档）
 
-## Feature Landscape
+## Table Stakes
 
-### Table Stakes (Users Expect These)
+用户对"本地代理模式"的基本预期。缺少任何一项 = 功能不完整，不如不做。
 
-Features users assume exist once a tray icon is present. Missing any of these = the tray feels broken or pointless.
+| Feature | 为何必须 | 复杂度 | 备注 |
+|---------|---------|--------|------|
+| HTTP 反向代理核心 | 代理的本质：接收请求、转发上游、透传响应。没有它一切特性无从谈起 | Med | Rust 端用 axum 监听 + reqwest/hyper_util 转发；必须支持 SSE 流式响应逐块透传 |
+| SSE 流式响应透传 | AI API 的核心交互模式是 Server-Sent Events 流式输出，非流式代理 = 无法使用 | Med | 不能缓冲整个响应再发回，需逐 chunk 透传；axum 的 `Body` 流可直接转发 |
+| 请求头注入（API Key 替换） | 代理模式下 CLI 发的是占位 key，代理需要替换为真实 API key 后转发上游 | Med | 拦截请求头，替换 `x-api-key`/`anthropic-api-key`（Claude）或 `Authorization: Bearer`（Codex） |
+| 按 CLI 固定端口监听 | Claude Code 和 Codex 各自需要独立端口，互不干扰 | Low | Claude Code 端口如 15800，Codex 端口如 15801；端口配置写入 local.json 不同步 |
+| 代理模式下自动 patch CLI 配置指向 localhost | 开启代理后 CLI 必须知道请求应该发往 localhost:port | Med | 复用现有 `CliAdapter::patch`，base_url 改为 `http://127.0.0.1:{port}`，api_key 设置为占位值 |
+| 关闭代理时还原 CLI 配置 | 关闭代理后必须恢复直连 Provider 凭据，否则 CLI 请求打到空端口 | Med | 复用现有 `CliAdapter::patch`，写回当前活跃 Provider 的真实凭据和上游 base_url |
+| Provider 实时热切换（代理模式核心价值） | 代理模式的核心差异化：切换 Provider 时不动配置文件、不需重启 CLI 会话 | Med | 代理进程内部 `ArcSwap` / `RwLock` 持有当前活跃 Provider 的上游 URL 和 API key，切换只更新内存 |
+| 双模式切换 UI（直连 vs 代理） | 用户需要明确知道当前处于哪种模式，并能在两者之间切换 | Low | 全局总开关放设置页；每 CLI 独立开关放对应 Tab 内显示 |
+| 代理启停随应用生命周期 | 应用关闭时代理必须停止，否则 CLI 请求打到已关闭的端口会 connection refused | Med | Tauri app 退出事件中停止 HTTP server；需 graceful shutdown（tokio CancellationToken） |
+| 上游不可达时透传错误 | CLI 工具需要收到有意义的错误（JSON 格式）而非空响应或连接重置 | Low | 上游返回非 2xx → 直接透传原始响应；connect 失败 → 返回 502 + 结构化 JSON 错误体 |
+| 代理设置本地存储 | 代理配置（端口、开关状态）不应跨设备同步，避免端口冲突和状态紊乱 | Low | 存入 `~/.cli-manager/local.json`（扩展现有 `LocalSettings`），不放 iCloud 同步目录 |
 
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Tray icon with app identity | Any tray-resident app shows a recognizable icon. Without it the app appears not running. | LOW | Use macOS template image (monochrome, auto dark/light). Tauri 2 `TrayIconBuilder` supports `icon_as_template(true)`. cc-switch has `statusbar_template_3x.png` as reference. |
-| Provider list in tray menu | The entire value of tray = quick switching without opening the window. Must list all providers grouped by CLI. | MEDIUM | Use `CheckMenuItem` with radio-style semantics (one checked at a time per CLI section). Group by CLI (Claude header, then providers; Codex header, then providers). Flat layout, no nested submenus. cc-switch does exactly this pattern. |
-| Current active provider indicated | Users need to know which provider is active at a glance. Without this, the menu is a list with no context. | LOW | `CheckMenuItem` with `is_checked = true` for the active provider per CLI section. Proven pattern in cc-switch's `append_provider_section`. |
-| One-click provider switching | Click a provider name in tray menu -> it becomes active immediately. No confirmation dialog, no opening the main window. | MEDIUM | Reuse existing `set_active_provider` command logic. The tray click handler calls the same surgical-patch pipeline. Must emit events so the main window (if open) stays in sync. |
-| "Open main window" menu item | Users need a way to get back to the full UI for CRUD operations. Standard pattern in every tray app. | LOW | `MenuItem::with_id("show_main", ...)`. On click: `window.show()`, `window.unminimize()`, `window.set_focus()`. On macOS also `set_activation_policy(Regular)` + `set_dock_visibility(true)`. |
-| "Quit" menu item | Without explicit quit, users cannot exit the app since closing the window no longer terminates it. Critical UX requirement. | LOW | `MenuItem::with_id("quit", ...)`. On click: `app.exit(0)`. |
-| Close-to-tray behavior | The core reason for having a tray. Users expect the app to keep running after closing the window. Without this, the tray icon is just decoration. | MEDIUM | Intercept `on_window_event` for `CloseRequested`. Call `event.prevent_default()`, then `window.hide()`. On macOS: switch to `ActivationPolicy::Accessory` to hide from Dock and Cmd+Tab. |
-| Menu updates after provider changes | If user adds/edits/deletes providers in the main window, the tray menu must reflect changes immediately. Stale menus destroy trust. | MEDIUM | After any provider mutation (create/update/delete/switch), rebuild and re-set the tray menu via `tray.set_menu(Some(new_menu))`. Triggered by Tauri events or direct function call. |
-| i18n in tray menu | App already supports zh/en. Tray menu items in mixed languages = broken feel. | LOW | Read language from local settings at menu build time. Only a few static strings: "Open main window", "Quit". Provider names are user-defined, no translation needed. Use `TrayTexts` struct pattern from cc-switch. |
+## Differentiators
 
-### Differentiators (Competitive Advantage)
+让产品在众多 CLI Provider 管理工具中脱颖而出的特性。不是必需，但能显著提升体验。
 
-Features that make CLIManager's tray experience notably better. Not required for launch, but low-effort and high-value.
+| Feature | 价值主张 | 复杂度 | 备注 |
+|---------|---------|--------|------|
+| 端口冲突自动检测 | 启动代理时如果端口被占用，给出清晰提示而非静默失败 | Low | 绑定前用 `TcpListener::bind` 探测；失败时 UI 提示用户改端口或关闭占用进程 |
+| 代理健康自检 | 启动后自动验证代理是否可达，快速发现绑定失败 | Low | 绑定成功后向自己发一个 GET `/health`，确认监听正常 |
+| 代理状态实时指示（托盘图标） | 用户无需打开主窗口即可知道代理是否运行 | Med | 托盘图标变化（如绿点 = 代理运行中）；复用现有 `TrayIconBuilder`；cc-switch 已验证此模式 |
+| 自定义端口配置 | 高级用户可能有端口冲突需要改端口 | Low | 设置页或 Tab 内提供端口输入框，保存到 local.json |
+| 启动时自动恢复代理状态 | 应用重启后自动恢复之前的代理开关状态，无需手动重新开启 | Low | local.json 中记录 `proxy_enabled` per CLI，app 启动时读取并自动启动代理 |
+| 托盘菜单显示当前模式 | 快速查看每个 CLI 当前是"直连"还是"代理"，不必打开主窗口 | Low | 在已有的托盘菜单 Provider 列表旁标注模式（如 "[代理]"） |
 
-| Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| Active provider name in tray tooltip | Hovering over the tray icon shows "CLIManager - Claude: MyProvider / Codex: AnotherProvider". Saves a click to check status. | LOW | `TrayIconBuilder::tooltip(...)`. Update tooltip whenever active provider changes. Very low effort, high information density. |
-| Tray icon visual state indicator | Different tray icon variants (normal vs dimmed/hollow) to show whether a provider is active or none configured. Quick visual feedback without clicking the menu. | LOW | 2-3 icon variants, swap with `tray.set_icon()`. macOS template icons auto-adapt to dark/light mode. |
-| Provider protocol/model in menu label | Show "My Provider (opus-4)" not just "My Provider" next to each provider. Helps distinguish providers with similar names. | LOW | Append model info to the `CheckMenuItem` label string. No extra API needed, just string formatting from provider data. |
-| Global keyboard shortcut | Hotkey (e.g., Cmd+Shift+P) to open the tray menu or trigger a provider switch without touching the mouse. | HIGH | Requires `tauri-plugin-global-shortcut`. Registration, conflict handling, and cross-platform differences add significant complexity. Defer to v1.2+. |
+## Anti-Features
 
-### Anti-Features (Commonly Requested, Often Problematic)
+明确不做的特性及原因。这些特性属于 2.x+ 全功能网关里程碑或根本不适合本产品。
 
-Features that seem useful for tray but create problems in practice.
-
-| Feature | Why Requested | Why Problematic | Alternative |
-|---------|---------------|-----------------|-------------|
-| Provider CRUD in tray menu | "Let me add/edit providers without opening the window" | Tray menus are constrained to simple items (text, checkboxes, separators). Forms, text inputs, validation, and error display cannot be done in native menus. Attempting workarounds (popup windows, webview menus) produces a worse experience than the main UI. | Keep "Open main window" prominent. Tray = view + switch only. This is explicitly stated in PROJECT.md's Out of Scope. |
-| Nested submenus per CLI | "Group Claude providers in a submenu, Codex in another" | Submenus add an extra click and feel sluggish on macOS. With typical provider counts (2-5 per CLI), flat list with section headers is faster and clearer. cc-switch deliberately chose flat layout as "more simple and reliable". | Use disabled `MenuItem` as section header + `CheckMenuItem` list. Separators between CLI sections. |
-| Auto-switch on network/location | "Switch provider when I change WiFi or VPN" | Requires background network monitoring, complex rule engine, and handling edge cases (VPN flapping, captive portals). Enormous scope for a niche use case. | Manual one-click switching is fast enough for the actual frequency of provider changes. |
-| Notification on switch success | "Show a macOS notification when provider switches" | Notification fatigue. Users switch intentionally and can see the checkmark move in the menu. Notifications add noise for a synchronous action the user just performed. | Visual feedback in the tray menu (checkmark moves) is sufficient. Log errors to console only. |
-| Tray-only mode (no main window) | "I set up providers once, then only use the tray" | Removing the main window means no way to edit providers, view details, or handle errors. Complicates onboarding and error recovery. | Close-to-tray already achieves this: window stays hidden until explicitly opened. |
-| Dynamic tray icon showing provider initial | "Show 'A' for Anthropic, 'O' for OpenAI in the icon" | Generating icons dynamically at runtime requires Core Graphics/Core Text on macOS. Results look inconsistent with other tray icons. Template icons must be pre-rendered PNGs. | Use tooltip for provider names. Keep icon simple and recognizable. |
+| Anti-Feature | 为何不做 | 替代方案 |
+|--------------|---------|---------|
+| 协议转换（Anthropic <-> OpenAI 格式互转） | v2.0 是透明转发，不是协议网关。协议转换需要完整的请求/响应 schema 映射，复杂度极高 | 2.x+ 里程碑；当前每个 CLI 使用自己的原生协议，代理原样透传 |
+| OAuth 桥接（如 OpenAI OAuth 转 Anthropic 协议） | OAuth 涉及浏览器重定向、token 刷新、会话管理，超出透明代理层职责 | 2.x+ 里程碑 |
+| 流量监控与可视化（请求日志、token 计数、成本追踪） | 需要持久化存储层、统计聚合和专门的 UI 页面，投入巨大 | 2.x+ 里程碑 |
+| 自动 Failover（故障时自动切换到备选 Provider） | 需要完整的健康检查 + 故障判定逻辑 + Provider 优先级队列 + 回退策略 | 2.x+ 里程碑；v2.0 手动切换完全够用 |
+| 负载均衡 / 多 Provider 轮询 | 单用户桌面应用场景不需要负载均衡 | 不做，非目标场景 |
+| 请求缓存 | AI 生成结果具有随机性，不适合缓存 | 不做 |
+| 速率限制 / 配额管理 | 属于上游 Provider 侧职责，本地代理不应越权管理 | 不做 |
+| 多用户认证 | 本地代理只服务于当前用户，绑定 127.0.0.1 | 不做 |
+| MCP 服务器代理 | 与 Provider 代理是不同维度的功能，有独立的通信协议 | 后续独立里程碑 |
+| 自定义中间件/插件系统 | 过度设计，v2.0 使用场景明确 | 不做 |
+| 远程代理（非 localhost 监听） | 绑定 0.0.0.0 有安全风险（API key 暴露给局域网），且非目标场景 | 只绑定 127.0.0.1 |
+| 自动寻找可用端口 | 端口不确定性会导致配置难以追踪和调试 | 固定默认端口 + 手动修改 |
 
 ## Feature Dependencies
 
 ```
-[Tray Icon Setup]
-    |
-    +--requires--> [Close-to-Tray Behavior]
-    |                  +--requires--> [macOS ActivationPolicy management]
-    |
-    +--requires--> [Tray Menu with Provider List]
-    |                  +--requires--> [Provider data access from tray context]
-    |                  |                  +--uses--> [existing iCloud storage: list_providers_in()]
-    |                  |
-    |                  +--requires--> [Active provider indicator (CheckMenuItem)]
-    |                                     +--uses--> [existing LocalSettings.active_providers]
-    |
-    +--enables---> [One-Click Switching from Tray]
-                       +--reuses--> [existing set_active_provider / surgical patch pipeline]
-                       |
-                       +--requires--> [Menu rebuild after switch]
-                                          +--requires--> [Frontend sync via Tauri events]
+HTTP 反向代理核心 → SSE 流式响应透传（流式是 AI API 的基本交互模式）
+HTTP 反向代理核心 → 请求头注入 / API Key 替换
+HTTP 反向代理核心 → 上游不可达错误透传
 
-[Provider mutations in main window] --triggers--> [Tray menu rebuild]
-[iCloud file watcher detects change] --triggers--> [Tray menu rebuild]
+按 CLI 固定端口监听 → 端口冲突检测
+按 CLI 固定端口监听 → 自定义端口配置
+
+双模式切换 UI → 代理启停随应用生命周期
+双模式切换 UI → 代理模式下自动 patch CLI 配置
+双模式切换 UI → 关闭代理时还原 CLI 配置
+
+代理模式下自动 patch 指向 localhost → Provider 实时热切换（代理模式下不再 patch 文件，改为内存切换）
+
+代理设置本地存储 → 启动时自动恢复代理状态
+
+代理状态实时指示（托盘） → 代理健康自检
+
+[现有] CliAdapter::patch ← 代理模式开关触发的配置变更（复用）
+[现有] LocalSettings (local.json) ← 代理设置存储（扩展字段）
+[现有] TrayIconBuilder / update_tray_menu ← 托盘模式指示（扩展）
+[现有] Provider 数据模型 (base_url + api_key) ← Provider 实时热切换（读取）
+[现有] providers-changed 事件 ← 代理内存中的 Provider 热更新触发
+[现有] SelfWriteTracker ← 代理开关触发的 CLI 配置写入（避免 FSEvents 无限循环）
+[现有] watcher (FSEvents) ← 代理模式下 iCloud 同步的 Provider 变更需更新代理内存（而非 patch 文件）
 ```
 
-### Dependency Notes
+## MVP Recommendation
 
-- **Tray Icon Setup requires Close-to-Tray:** Without close-to-tray, the tray icon disappears when the user closes the window, defeating the purpose. These must ship together.
-- **One-Click Switching reuses set_active_provider:** The existing `_set_active_provider_in` function in `commands/provider.rs` handles all surgical patch logic. The tray handler calls the same pipeline, not a duplicate. This keeps switching behavior consistent whether done from the UI or the tray.
-- **Menu rebuild triggered by multiple sources:** Provider CRUD in the main window, provider switch from tray itself, and iCloud watcher detecting external changes all need to trigger a tray menu rebuild. Build a centralized `rebuild_tray_menu(app_handle)` function.
-- **Frontend sync via events:** When switching from the tray, emit a `provider-switched` event so the main window (if open) updates its UI. cc-switch does this with `app.emit("provider-switched", ...)`. The main window already handles provider list refresh via the watcher; the event ensures immediate UI update without waiting for FSEvents debounce.
+按优先级排列，依据依赖关系分层：
 
-## MVP Definition
+### P1: 必做（v2.0 核心功能）
 
-### Launch With (v1.1)
+1. **HTTP 反向代理核心 + SSE 流式透传 + 请求头注入**
+   - 整个功能的基础。没有它其他特性无从谈起。
+   - axum HTTP server 在 Tauri Rust 后端启动，接收 CLI 请求，替换 API key 后转发给上游 Provider，SSE 流式响应逐块透传。
+   - 含 `/health` 端点用于自检。
 
-All table stakes must ship together. This is the minimum viable tray experience.
+2. **按 CLI 固定端口监听 + 端口冲突检测**
+   - Claude Code 和 Codex 各自一个端口。端口冲突检测是防止启动失败后用户困惑的最小安全网。
 
-- [ ] Tray icon with template image (macOS) -- app identity in menu bar
-- [ ] Tray menu: "Open main window" item -- escape hatch to full UI
-- [ ] Tray menu: Provider list grouped by CLI with section headers -- core value
-- [ ] Tray menu: Active provider indicated with checkmark -- status at a glance
-- [ ] Tray menu: One-click switching via CheckMenuItem click -- primary use case
-- [ ] Tray menu: "Quit" item -- explicit app termination
-- [ ] Close-to-tray: window close hides instead of exits -- reason the tray exists
-- [ ] macOS ActivationPolicy: Accessory when hidden, Regular when shown -- proper Dock/Cmd+Tab behavior
-- [ ] Menu rebuild on provider mutations from main window -- keeps tray in sync
-- [ ] Menu rebuild on iCloud watcher events -- keeps tray in sync across devices
-- [ ] i18n support in tray menu strings -- consistent with existing zh/en support
+3. **代理模式下自动 patch CLI 配置 + 关闭时还原**
+   - 复用现有 `CliAdapter` 系统。开启代理时 base_url 改为 localhost:port + 占位 key；关闭时恢复真实 Provider 凭据。
 
-### Add After Validation (v1.1.x)
+4. **Provider 实时热切换（代理模式核心价值）**
+   - 代理进程内用 `ArcSwap` 持有当前 Provider 的上游信息。切换 Provider 时只更新内存，CLI 完全无感知、无中断。
 
-Features to add once core tray is working and tested.
+5. **双模式切换 UI + 代理启停 + 设置存储**
+   - 全局总开关在设置页；每 CLI 独立开关在对应 Tab 内。
+   - 状态存 local.json。应用退出时 graceful shutdown。
 
-- [ ] Tooltip showing active provider names per CLI -- low effort, high info density
-- [ ] Tray icon state variants (active vs. no-provider) -- visual feedback improvement
-- [ ] Provider model name in menu item label -- disambiguation for similar provider names
+6. **上游错误透传**
+   - 上游不可达时返回 502 + JSON 错误体，而非让 CLI 收到 connection refused。
 
-### Future Consideration (v2+)
+### P2: 应做（v2.0 完善体验）
 
-Features to defer until tray UX is proven.
+- **启动时自动恢复代理状态** — 便利性功能，避免每次重启应用后手动开启代理
+- **代理健康自检** — 启动后快速确认绑定成功
 
-- [ ] Global keyboard shortcut for tray menu -- requires plugin, conflict handling
-- [ ] Additional CLI sections in tray (Gemini, OpenCode) -- when those adapters are built
-- [ ] Visible apps filtering (hide certain CLI sections) -- only relevant with 3+ CLIs
+### P3: 延后（v2.0.x 或 v2.1）
 
-## Feature Prioritization Matrix
+- **代理状态托盘图标** — 有价值但非 MVP；可在 v2.0 完成后快速迭代
+- **托盘菜单显示当前模式** — 锦上添花
+- **自定义端口配置** — 默认端口先用着，高级用户需求后续加
 
-| Feature | User Value | Implementation Cost | Priority |
-|---------|------------|---------------------|----------|
-| Tray icon + basic menu structure | HIGH | LOW | P1 |
-| Provider list with active indicator | HIGH | MEDIUM | P1 |
-| One-click switching from tray | HIGH | MEDIUM | P1 |
-| Close-to-tray behavior | HIGH | MEDIUM | P1 |
-| macOS ActivationPolicy management | HIGH | LOW | P1 |
-| Menu rebuild on mutations/watcher | HIGH | MEDIUM | P1 |
-| i18n in tray strings | MEDIUM | LOW | P1 |
-| Tooltip with active provider names | MEDIUM | LOW | P2 |
-| Tray icon state variants | LOW | LOW | P2 |
-| Provider model in menu label | LOW | LOW | P3 |
-| Global keyboard shortcut | MEDIUM | HIGH | P3 |
+## Detailed Feature Notes
 
-**Priority key:**
-- P1: Must have for v1.1 launch (all table stakes)
-- P2: Should have, add in v1.1 if time permits or v1.1.x patch
-- P3: Nice to have, future consideration
+### HTTP 反向代理核心
 
-## Existing Code Dependencies
+**请求流转示意：**
+```
+Claude Code → POST http://127.0.0.1:15800/v1/messages
+  代理服务拦截请求
+  → 读取内存中当前活跃 Provider 的 api_key 和 base_url
+  → 替换 Authorization / x-api-key 头为真实 API key
+  → 转发到上游，如 https://api.anthropic.com/v1/messages
+  → 上游 SSE 响应逐 chunk 透传回 Claude Code
+```
 
-The tray feature depends heavily on existing CLIManager infrastructure. Here is what exists and what needs to be built.
+```
+Codex → POST http://127.0.0.1:15801/v1/responses
+  代理服务拦截请求
+  → 读取内存中当前活跃 Provider 的 api_key 和 base_url
+  → 替换 Authorization: Bearer 头为真实 API key
+  → 转发到上游，如 https://api.openai.com/v1/responses
+  → 上游 SSE 响应逐 chunk 透传回 Codex
+```
 
-### Reusable As-Is
+**关键技术点：**
+- Claude Code 通过 `ANTHROPIC_BASE_URL` 环境变量（写入 `settings.json` 的 `env` 块）指定 base URL
+- Codex 通过 `base_url` 配置项（在 `config.toml` 的 `model_providers` 表中）或 `OPENAI_BASE_URL` 环境变量指定
+- 两者的 API key 在不同的 header 中：Claude 用 `x-api-key` 或 `anthropic-api-key`，Codex 用 `Authorization: Bearer ...`
+- SSE 流式响应必须逐块转发，不能缓冲整个响应后再发回
+- 代理必须透传所有请求路径（如 `/v1/messages`、`/v1/responses`），不做路径重写
 
-| Existing Code | Location | How Tray Uses It |
-|--------------|----------|------------------|
-| `set_active_provider` / `_set_active_provider_in` | `commands/provider.rs` | Tray click handler calls this to perform surgical patch switching |
-| `list_providers_in` / provider storage | `storage/icloud.rs` | Tray menu builder reads provider list to populate menu items |
-| `read_local_settings` / `LocalSettings` | `storage/local.rs` | Tray reads `active_providers` map for checkmark state and `language` for i18n |
-| `SelfWriteTracker` | `watcher/self_write.rs` | Prevents tray-triggered writes from re-triggering the file watcher |
-| iCloud file watcher | `watcher/mod.rs` | Already watches for changes; needs hook to also trigger tray menu rebuild |
-| CLI adapters | `adapter/claude.rs`, `adapter/codex.rs` | Used by the switching pipeline, no changes needed for tray |
+**信心来源：**
+- cc-switch v3.9+ 已验证 Claude Code -> localhost -> 上游 的架构可行 [HIGH]
+- Claude Code 官方文档确认 `ANTHROPIC_BASE_URL` 支持自定义端点 [HIGH]
+- Codex 官方文档确认 `base_url` 和 `OPENAI_BASE_URL` 支持 localhost 端点 [HIGH]
+- axum 官方示例提供了完整的反向代理模式参考 [HIGH]
 
-### Needs Modification
+### 双模式切换
 
-| Existing Code | What Changes | Why |
-|--------------|-------------|-----|
-| `lib.rs` (the `run()` function) | Add `TrayIconBuilder` setup in `.setup()`, add `on_window_event` for close-to-tray, register tray menu event handler | This is where Tauri app lifecycle is configured |
-| `watcher/mod.rs` | After processing iCloud changes and emitting frontend events, also call `rebuild_tray_menu()` | Tray menu must reflect provider changes from other devices |
-| `Cargo.toml` dependencies | Add `"tray-icon"` to Tauri features | Enables `tauri::tray` module |
-| `tauri.conf.json` | Potentially update window close behavior or permissions | May need `"withGlobalTauri"` or tray-related config |
+**直连模式（现有行为，不变）：**
+- `CliAdapter::patch` 将真实 Provider 凭据（api_key, base_url）直接写入 CLI 配置文件
+- CLI 直接请求上游 API
+- 切换 Provider 需要改文件，正在运行的 CLI 会话可能需要重启或手动刷新
 
-### Needs to Be Built (New Code)
+**代理模式（新增）：**
+- `CliAdapter::patch` 将 base_url 改为 `http://127.0.0.1:{port}`，api_key 写入固定占位值
+- CLI 请求打到本地代理
+- 切换 Provider 只更新代理内存中的上游信息，CLI 完全无感知、无中断
 
-| New Code | Purpose | Estimated Size |
-|----------|---------|---------------|
-| `src-tauri/src/tray.rs` | Tray module: `create_tray_menu()`, `handle_tray_menu_event()`, `rebuild_tray_menu()`, `TrayTexts` i18n struct, `apply_tray_policy()` | ~200-300 lines (cc-switch's is ~450 but includes failover/proxy logic we skip) |
-| Tray icon assets | Template PNG for macOS status bar (monochrome, @1x/@2x/@3x) in `src-tauri/icons/tray/` | 3 PNG files |
-| Tauri command: `update_tray_menu` | Exposed command so frontend can trigger tray rebuild after provider CRUD | ~10 lines (thin wrapper) |
+**模式切换状态机：**
+1. 用户开启代理 → 启动 HTTP server → patch CLI 配置指向 localhost → 代理加载当前活跃 Provider
+2. 用户在代理模式下切换 Provider → 只更新内存中的上游信息（不改 CLI 配置文件）
+3. 用户关闭代理 → 停止 HTTP server → 用当前活跃 Provider 的真实凭据 patch 回 CLI 配置
+4. 用户在直连模式下切换 Provider → 使用现有 surgical patch 行为（行为不变）
 
-## Competitor Feature Analysis
+### API Key 处理策略
 
-| Feature | cc-switch (reference) | CLIManager v1.1 (our approach) |
-|---------|----------------------|-------------------------------|
-| Tray menu structure | Flat list with CLI section headers, `CheckMenuItem` per provider | Same pattern -- proven to work, simple and reliable |
-| Provider switching from tray | Calls `switch_provider`, rebuilds menu, emits events to frontend | Same pattern -- reuse `set_active_provider`, rebuild menu, emit events |
-| Close-to-tray | `CloseRequested` -> `prevent_default()` + `window.hide()` + `ActivationPolicy::Accessory` | Same pattern -- this is the standard macOS approach |
-| Tray i18n | `TrayTexts` struct with hardcoded zh/en/ja strings | Same pattern, zh/en only (matching existing i18n scope) |
-| Auto/Failover in tray | Has "Auto (Failover)" mode toggle per CLI section | Not applicable -- CLIManager has no proxy/failover feature. Simplifies the menu. |
-| Visible apps filtering | Settings to hide certain CLI sections from tray | Defer -- only 2 CLIs (Claude, Codex), not enough to warrant filtering |
-| Tray icon | macOS template image with `icon_as_template(true)` | Same approach -- must create our own icon asset |
-| Menu rebuild trigger | Frontend calls `update_tray_menu` command; also rebuilds internally after tray-initiated switch | Same approach -- centralized rebuild function called from multiple trigger points |
+**代理模式下的 API Key 流转：**
+```
+CLI 配置中的占位 key → CLI 请求带占位 key → 代理拦截 → 替换为真实 key → 发往上游
+```
+
+**占位 key 设计：**
+- 不能用空字符串（CLI 可能报错拒绝启动）
+- 不能用全零或明显无效格式（某些 CLI 会在发请求前做格式校验）
+- 建议用固定前缀 `cli-manager-proxy-xxxx`，格式上模拟真实 key 的长度和前缀模式
+- Claude Code 占位: `sk-ant-cli-manager-proxy-placeholder-key`
+- Codex 占位: `sk-cli-manager-proxy-placeholder-key`
+
+**安全优势：**
+- 真实 API key 只在代理进程内存中，不需要写入 CLI 配置文件
+- 代理只绑定 127.0.0.1，外部无法访问
+- 这比直连模式更安全（直连模式下 API key 以明文存在 CLI 配置文件中）
+
+### 端口策略
+
+**默认端口分配：**
+- Claude Code: 15800
+- Codex: 15801
+
+**端口选择依据：**
+- cc-switch 用 15721（曾因 macOS AirPlay Receiver 冲突从 5000 改过来）
+- 15800-15899 范围不常见冲突，且直观好记
+- 每个 CLI 独立端口，便于独立启停和故障隔离
+- 不用 1024 以下端口（需 root 权限）
+
+**端口冲突处理流程：**
+1. 启动前 `TcpListener::bind("127.0.0.1:{port}")` 探测
+2. 绑定失败 → 返回错误给 UI，提示"端口 {port} 被占用"
+3. 不自动寻找可用端口（会导致配置不确定性，调试困难）
+4. 用户可在设置中修改端口
+
+### 与现有系统的集成点
+
+| 现有模块 | 代理功能如何集成 | 改动量 |
+|---------|----------------|--------|
+| `CliAdapter::patch` | 代理模式开启/关闭时复用，修改 base_url + api_key | 无需改动，直接调用 |
+| `LocalSettings` (local.json) | 扩展字段：`proxy_global_enabled`、`proxy_cli_settings: HashMap<String, ProxyCliConfig>` | 小改动，新增字段 |
+| `TrayIconBuilder` / `update_tray_menu` | 菜单项中标注模式、新增代理启停操作（P3 延后） | 小改动 |
+| `providers-changed` 事件 | 代理模式下监听此事件，更新内存中的上游 Provider 信息 | 新增监听逻辑 |
+| `SelfWriteTracker` | 代理模式开关触发的 CLI 配置写入需纳入自写追踪 | 无需改动，现有机制自动生效 |
+| `watcher` (FSEvents) | 代理模式下 iCloud 同步的 Provider 变更需特殊处理：更新代理内存而非 patch 文件 | 中等改动，需条件分支 |
+| `commands/provider.rs` (`set_active_provider`) | 代理模式下切换 Provider 的逻辑分支：更新代理内存而非 patch 文件 | 中等改动，需模式判断 |
+| 前端 `ProviderTabs` | Tab 内新增代理开关 UI 组件 | 小改动 |
+| 前端 `SettingsPage` | 新增全局代理总开关 section | 小改动 |
+
+### Claude Code 配置可靠性注意事项
+
+Claude Code 在 v2.0.x 系列中对 `settings.json` 的 `env` 块读取存在已知 bug：
+
+1. **v2.0.65+ 首次安装问题**：如果用户从未运行过旧版本（无 `~/.claude.json`），首次运行时不会读取 `settings.json` 中的环境变量。解决方案：确保占位 key 不会触发登录流程，或在文档中提示用户先登录一次。
+2. **v2.0.1 环境变量优先级回归**：环境变量不再正确覆盖 `settings.json`。对代理模式影响不大（我们通过 `settings.json` 设置，不依赖 shell 环境变量覆盖）。
+3. **v2.0.7x env 加载变更**：建议标准化使用 shell profile 环境变量。但对我们的场景，通过 `settings.json` 的 `env` 块设置 `ANTHROPIC_BASE_URL` 是最可靠的（与 Codex 的 `config.toml` patch 一致，都是文件级别的修改）。
+
+**结论：** 通过 `settings.json` 的 `env.ANTHROPIC_BASE_URL` 设置代理地址是可行且可靠的，但需要在集成测试中覆盖首次安装场景。[HIGH confidence]
 
 ## Sources
 
-- cc-switch tray implementation: `cc-switch/src-tauri/src/tray.rs` (447 lines, complete reference with menu creation, event handling, i18n, ActivationPolicy)
-- cc-switch tray setup: `cc-switch/src-tauri/src/lib.rs` (TrayIconBuilder config, window close interception, dock visibility)
-- Tauri 2 tray API: `tauri::tray::TrayIconBuilder`, `tauri::menu::{Menu, MenuBuilder, MenuItem, CheckMenuItem}` (used directly in cc-switch, proven with Tauri 2.10)
-- CLIManager provider pipeline: `src-tauri/src/commands/provider.rs` (`set_active_provider`, `_set_active_provider_in`, surgical patch flow)
-- CLIManager app setup: `src-tauri/src/lib.rs` (current `run()` function, watcher setup, command registration)
-- PROJECT.md: Out of Scope section explicitly states "tray only does view + switch, CRUD stays in main window"
+- [cc-switch (farion1231)](https://github.com/farion1231/cc-switch) — 竞品参考，v3.9+ 实现了本地代理 + 热切换 + 故障检测 + 断路器 [HIGH]
+- [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) — CLI 代理方案参考，Go 实现的多 Provider 代理 [MEDIUM]
+- [ai-cli-proxy-api / OmniRoute](https://github.com/ben-vargas/ai-cli-proxy-api) — 多 Provider 智能路由网关参考 [MEDIUM]
+- [Claude Code 企业网络配置文档](https://docs.anthropic.com/en/docs/claude-code/corporate-proxy) — ANTHROPIC_BASE_URL 官方文档 [HIGH]
+- [Codex 高级配置文档](https://developers.openai.com/codex/config-advanced/) — OPENAI_BASE_URL 官方文档 [HIGH]
+- [Codex 配置参考](https://developers.openai.com/codex/config-reference/) — model_providers / base_url 配置结构 [HIGH]
+- [Codex 配置示例](https://developers.openai.com/codex/config-sample/) — config.toml 示例 [HIGH]
+- [axum-reverse-proxy crate](https://crates.io/crates/axum-reverse-proxy) — Rust 反向代理库参考 [MEDIUM]
+- [axum reverse proxy 官方示例](https://github.com/tokio-rs/axum/blob/main/examples/reverse-proxy/src/main.rs) — axum 转发模式参考 [HIGH]
+- [LiteLLM](https://github.com/BerriAI/litellm) — AI API 网关领域标杆，功能边界参考 [MEDIUM]
+- [Claude Code settings.json Bug #8500](https://github.com/anthropics/claude-code/issues/8500) — 环境变量优先级问题 [HIGH]
+- [Claude Code settings.json Bug #13827](https://github.com/anthropics/claude-code/issues/13827) — 首次安装时 settings.json 不生效 [HIGH]
+- [ProxyTray (Windows)](https://github.com/Lingxi-Li/ProxyTray) — 托盘代理切换 UX 模式参考 [LOW]
+- [menubar-proxy-switch (macOS)](https://github.com/dddd-zdf/menubar-proxy-switch) — macOS 状态栏代理切换参考 [LOW]
+- [Kong AI Gateway + Codex 集成指南](https://developer.konghq.com/how-to/use-codex-with-ai-gateway/) — Codex 代理集成模式参考 [MEDIUM]
 
 ---
-*Feature research for: System Tray (v1.1 milestone)*
-*Researched: 2026-03-12*
+*Feature research for: Local Proxy Service (v2.0 milestone)*
+*Researched: 2026-03-13*

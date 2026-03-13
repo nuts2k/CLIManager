@@ -1,163 +1,84 @@
 # Project Research Summary
 
-**Project:** CLIManager v1.1 System Tray
-**Domain:** System tray integration for existing Tauri 2 desktop app (macOS)
-**Researched:** 2026-03-12
+**Project:** CLIManager v2.0 Local Proxy
+**Domain:** 桌面应用内嵌 HTTP 反向代理（AI CLI 配置切换加速）
+**Researched:** 2026-03-13
 **Confidence:** HIGH
 
 ## Executive Summary
 
-CLIManager v1.1 adds a system tray to the existing Tauri 2 desktop app, enabling users to view and switch CLI providers directly from the macOS menu bar without opening the main window. This is a well-understood pattern in the Tauri ecosystem: the entire tray feature is built into the `tauri` crate behind two feature flags (`tray-icon`, `image-png`), requiring zero new dependencies. A proven reference implementation exists in cc-switch, and all four research tracks converge on the same architecture: a single new Rust module (`tray.rs`) that reads from existing storage and reuses existing switching logic, with no new data paths or state stores.
+CLIManager v2.0 的核心功能是在 Tauri 桌面应用内运行本地 HTTP 代理服务器，使 AI CLI 工具（Claude Code、Codex）通过代理访问上游 API Provider。这解决了 v1.x 直连模式下切换 Provider 需要修改配置文件并重启 CLI 的痛点——代理模式下切换 Provider 只需更新内存中的上游目标，对 CLI 完全透明，下一个请求立即生效。
 
-The recommended approach is a two-phase build: first establish the tray foundation (icon, close-to-tray lifecycle, basic menu with Quit), then layer on the provider menu with one-click switching and bidirectional sync. This order is dictated by hard dependencies -- close-to-tray must work before provider features matter, and the tray icon must appear before anything else can be validated. The architecture is deliberately conservative: the tray module is a thin UI surface over existing infrastructure, calling `_set_active_provider_in()` for switching and `list_providers()`/`read_local_settings()` for menu construction.
+技术栈选型极为有利：Tauri 2 内部已携带 tokio 1.50、hyper 1.8.1、tower 0.5.3、tower-http 0.6.8 等关键依赖，新增 axum 0.8 作为 HTTP 框架几乎不引入新的传递依赖。代理核心逻辑（请求转发 + SSE 流式透传 + 动态上游切换）在 cc-switch 中已有成熟的参考实现，且 CLIManager v2.0 的范围远比 cc-switch 精简——不做协议转换、熔断器、Usage 统计，预计核心代码量 300-500 行。
 
-The primary risks are (1) stale tray menus from missed rebuild triggers across three change sources (UI, tray, iCloud), (2) incorrect window close-vs-hide lifecycle breaking the "close to tray" contract, and (3) tray icon silently not appearing due to dual configuration or missing template mode. All three have well-documented prevention patterns from Tauri GitHub issues and the cc-switch reference. The mitigation strategy is centralized: one `rebuild_tray_menu()` function called from all mutation paths, programmatic-only tray setup via `TrayIconBuilder`, and explicit `ActivationPolicy` toggling on every show/hide transition.
+主要风险点在于：(1) Tauri tokio runtime 与 axum 服务器的生命周期管理（启动、停机、端口占用），(2) 代理模式与直连模式的双模式切换需要精确协调 CLI 配置 patch，(3) SSE 流式转发必须逐 chunk 透传不能缓冲。这些都是工程实现层面的问题，无技术不可行性。
 
 ## Key Findings
 
-### Recommended Stack
+**Stack:** 仅需新增 axum 0.8（1 个真正新增 crate），显式声明 tokio 和 tower-http（均为已有传递依赖），reqwest 增加 `stream` feature。axum 与 Tauri 的 tokio runtime 完全兼容，通过 `tauri::async_runtime::spawn()` 启动。不需要 axum-reverse-proxy、pingora、actix-web 等第三方方案。
 
-No new dependencies. The entire tray feature ships via two Cargo feature flags on the existing `tauri` crate:
+**Architecture:** 每个 CLI 类型独立端口运行 axum 服务器，共享 `Arc<RwLock<>>` 状态实现动态上游切换。SSE 流式转发使用 `reqwest::Response::bytes_stream()` + `axum::body::Body::from_stream()` 逐 chunk 透传。
 
-- **`tray-icon` feature on `tauri`**: Enables `TrayIconBuilder`, `TrayIconEvent`, and tray menu APIs -- required for any tray functionality in Tauri 2
-- **`image-png` feature on `tauri`**: Enables `Image::from_bytes()` for PNG parsing -- required to load custom tray icons via `include_bytes!`
-- **Tray icon assets**: 22x22 and 44x44 monochrome template PNGs for macOS menu bar -- must call `icon_as_template(true)` for dark/light mode adaptation
-
-No npm packages needed. All tray logic belongs in Rust because the tray must function when the webview is hidden.
-
-See [STACK.md](STACK.md) for full API reference and anti-patterns.
-
-### Expected Features
-
-**Must have (table stakes -- all ship together in v1.1):**
-- Tray icon with macOS template image (app identity in menu bar)
-- Provider list grouped by CLI with section headers and CheckMenuItem active indicator
-- One-click provider switching from tray menu (reuses existing `_set_active_provider_in`)
-- Close-to-tray: window close hides instead of exits, with ActivationPolicy toggle
-- "Open Main Window" and "Quit" menu items
-- Menu rebuilds on provider mutations from UI, tray, and iCloud sync
-- i18n support in tray menu strings (zh/en)
-
-**Should have (add in v1.1.x if not in initial release):**
-- Tooltip showing active provider names per CLI
-- Tray icon state variants (active vs no-provider)
-- Provider model name in menu item label
-
-**Defer (v2+):**
-- Global keyboard shortcut (requires plugin, conflict handling)
-- Provider CRUD from tray (anti-feature -- tray menus cannot do forms)
-- Nested submenus per CLI (unnecessary with only 2 CLI types)
-
-See [FEATURES.md](FEATURES.md) for full prioritization matrix and anti-features analysis.
-
-### Architecture Approach
-
-The tray module is a new UI surface that sits alongside the existing Rust backend, consuming the same storage and adapter layers. It introduces no new data paths, no new state stores, and no new persistence. One new file (`tray.rs`, ~200-300 lines) with three public functions (`create_tray_menu`, `update_tray_menu`, `handle_tray_menu_event`), plus modifications to `lib.rs` (TrayIconBuilder setup, on_window_event handler) and one line added to `watcher/mod.rs`.
-
-**Major components:**
-1. **`tray.rs`** -- Menu construction from storage state, menu event dispatch, i18n labels, ActivationPolicy helper
-2. **`lib.rs` modifications** -- TrayIconBuilder setup in `.setup()`, `on_window_event` for close-to-tray, `refresh_tray_menu` command registration
-3. **`watcher/mod.rs` modification** -- Single line: call `tray::update_tray_menu()` after processing iCloud sync events
-
-**Key patterns:**
-- Menu-as-Snapshot: Rebuild entire menu from disk on every change (Tauri 2 menus are immutable after build)
-- Shared Internal Functions: Tray calls `_set_active_provider_in()` directly -- no logic duplication
-- Event-Driven Cross-Surface Sync: Tray emits `provider-switched` to frontend; frontend calls `refresh_tray_menu` after CRUD
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for data flow diagrams, implementation skeleton, and build order.
-
-### Critical Pitfalls
-
-1. **Stale tray menu after provider changes** -- Three change sources (UI, tray, iCloud) must all trigger menu rebuild. Build a centralized `rebuild_tray_menu()` function and call it from every mutation path. This is the most likely bug.
-2. **Window close vs hide lifecycle** -- Must intercept `CloseRequested`, call `api.prevent_close()` + `window.hide()`, and toggle `ActivationPolicy`. Getting this wrong means the app either dies on close or leaves a ghost dock icon.
-3. **Tray icon not appearing** -- Configure tray ONLY via `TrayIconBuilder` in Rust (never in `tauri.conf.json`). Use `include_bytes!` for the icon and `icon_as_template(true)` for dark mode. Silent failure is common.
-4. **FSEvents watcher race condition** -- Tray rebuild must happen AFTER `sync_changed_active_providers` completes, not before or in parallel. Place within the existing debounced handler.
-5. **Tray switch bypassing command pipeline** -- Call `_set_active_provider_in()` (same function the UI command uses), emit events to frontend, and record writes in `SelfWriteTracker`.
-
-See [PITFALLS.md](PITFALLS.md) for full prevention strategies, warning signs, and "looks done but isn't" checklist.
+**Critical pitfall:** 代理模式和直连模式的切换必须原子性地协调——关闭代理前必须先将 CLI 配置 patch 回直连地址，否则 CLI 指向已关闭的 localhost 端口会完全不可用。另外 macOS 防火墙弹窗可通过绑定 `127.0.0.1`（而非 `0.0.0.0`）完全避免。
 
 ## Implications for Roadmap
 
-Based on research, the feature decomposes into two phases with a clear dependency boundary.
+Based on research, suggested phase structure:
 
-### Phase 1: Tray Foundation
+1. **Phase 1: 代理核心（最小可用）** - 先让代理能跑起来
+   - Addresses: axum 服务器启动/停机、请求转发（含 SSE 流式）、动态上游切换、健康检查端点
+   - Avoids: 过早做 UI 或双模式切换逻辑，先验证核心代理功能
+   - Stack: axum 0.8 + reqwest (stream) + tokio (net, sync, time) + tower-http (cors)
 
-**Rationale:** The tray icon and close-to-tray lifecycle are hard prerequisites for everything else. If the icon does not appear or the app dies on window close, no menu features matter. This phase also contains the highest-risk pitfalls (icon not appearing, close-vs-hide lifecycle) that should be validated early.
+2. **Phase 2: 代理设置持久化 + 模式切换** - 让代理状态可管理
+   - Addresses: local.json 存储代理开关/端口配置、直连 vs 代理模式切换、CLI 配置 patch 联动、watcher 模式感知
+   - Avoids: 在核心未验证前做 UI
 
-**Delivers:** Tray icon visible in macOS menu bar. Closing the window hides to tray instead of quitting. "Open Main Window" restores the window. "Quit" exits the app. Dock icon toggles correctly with ActivationPolicy.
+3. **Phase 3: UI 集成 + 完善** - 让用户能操作
+   - Addresses: 设置页全局开关、Tab 内独立开关、托盘菜单联动、错误提示、启动时状态恢复
+   - Avoids: 在模式切换逻辑未完善前做 UI
 
-**Addresses features:** Tray icon with app identity, close-to-tray behavior, macOS ActivationPolicy management, "Open Main Window" item, "Quit" item.
+**Phase ordering rationale:**
+- Phase 1 必须先行，因为代理服务器是后续所有功能的基础
+- Phase 2 在核心稳定后加入持久化和模式切换，这是最复杂的业务逻辑层
+- Phase 3 最后做 UI，因为 UI 只是现有逻辑的展示层，且可以在 Phase 1-2 期间用 Tauri 命令手动测试
 
-**Avoids pitfalls:** Tray icon not appearing (Pitfall 3), window close vs hide (Pitfall 2), Cmd+Q vs close button differentiation.
-
-**Stack changes:** Add `tray-icon` and `image-png` features to Cargo.toml. Create tray icon PNG assets. Create minimal `tray.rs` with menu skeleton. Add `on_window_event` to `lib.rs`.
-
-### Phase 2: Provider Menu and Switching
-
-**Rationale:** With the tray foundation proven, this phase adds the core value: viewing providers and switching with one click. It depends on Phase 1 for the tray to exist and the app to survive window close. This phase contains the most integration complexity (three sync sources, shared switching logic, watcher hookup).
-
-**Delivers:** Full provider list in tray menu grouped by CLI. CheckMenuItem with active indicator. One-click switching that reuses existing pipeline. Bidirectional sync between tray, frontend, and iCloud watcher. i18n in tray labels.
-
-**Addresses features:** Provider list with section headers, active provider indicator, one-click switching, menu rebuild on mutations/watcher, i18n in tray strings.
-
-**Avoids pitfalls:** Stale tray menu (Pitfall 1), FSEvents race condition (Pitfall 4), tray switch bypassing pipeline (Pitfall 5).
-
-**Key integration:** Make `_set_active_provider_in` pub(crate). Add `tray::update_tray_menu()` call to watcher. Add `refresh_tray_menu` Tauri command. Emit `provider-switched` events from tray handler.
-
-### Phase Ordering Rationale
-
-- **Phase 1 before Phase 2** is a hard dependency: the tray must exist and close-to-tray must work before provider menu features are meaningful. Architecture research confirms this with a 6-step build order where steps 1-2 (icon + lifecycle) precede steps 3-6 (providers + sync).
-- **Two phases, not three or four:** The feature is small enough that further splitting would create artificial boundaries. All table-stakes features ship within these two phases. The total new code is ~200-300 lines of Rust plus icon assets.
-- **No separate "polish" phase:** i18n and edge cases (Cmd+Q differentiation, release build testing) belong in Phase 2 rather than a separate phase, because they are tightly coupled to the provider menu implementation.
-
-### Research Flags
-
-Phases with standard patterns (skip `/gsd:research-phase`):
-- **Phase 1 (Tray Foundation):** Well-documented Tauri 2 APIs, proven cc-switch reference, exact code patterns available in ARCHITECTURE.md skeleton. No additional research needed.
-- **Phase 2 (Provider Menu):** Architecture research provides a complete implementation skeleton including `create_tray_menu`, `handle_tray_menu_event`, and all integration points. Pitfalls research covers every known gotcha. No additional research needed.
-
-Both phases have HIGH confidence research with working reference code. The implementation can proceed directly from the research documents.
+**Research flags for phases:**
+- Phase 1: 标准模式，不需要额外调研（axum + reqwest 文档充足，cc-switch 有完整参考）
+- Phase 2: 需要关注模式切换的边界情况（CLI 正在使用代理时切换模式的处理）
+- Phase 3: 标准 React UI 开发，不需要调研
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Zero new dependencies. Feature flags verified against cc-switch Cargo.toml and official Tauri 2 docs. Single-line Cargo.toml change. |
-| Features | HIGH | Table stakes clearly defined with cc-switch as direct comparison. Anti-features well-justified. Feature dependency graph is complete. |
-| Architecture | HIGH | Full implementation skeleton provided. Data flows mapped for all 6 scenarios. Integration points with existing code identified at function-level specificity. |
-| Pitfalls | HIGH | 5 critical pitfalls sourced from Tauri GitHub issues (with issue numbers), official docs, and cc-switch battle-testing. Prevention patterns are concrete, not theoretical. |
+| Stack | HIGH | axum + tokio + reqwest 组合成熟，cc-switch 已验证，Cargo.lock 确认依赖兼容。仅 1 个真正新增 crate。 |
+| Features | HIGH | 功能需求明确（PROJECT.md Active 列表），cc-switch 有完整参考实现。明确的 Anti-Features 边界（不做协议转换/熔断/统计）。 |
+| Architecture | HIGH | Tauri 内 spawn axum 服务器的模式有官方文档和社区验证。`Arc<RwLock<>>` 动态上游切换是标准模式。 |
+| Pitfalls | HIGH | 7 个已识别的关键陷阱均有明确的预防策略和阶段分配。Tauri 生命周期管理的坑已通过 GitHub Issues 验证。 |
 
-**Overall confidence:** HIGH
+## Gaps to Address
 
-### Gaps to Address
-
-- **Tray icon asset creation:** Research specifies requirements (22x22 monochrome template PNG) but the actual icon files need to be designed and created. This is a design task, not a research gap.
-- **Cmd+Q vs close button differentiation:** Pitfalls research flags this as important UX but the exact Tauri 2 API for distinguishing Cmd+Q from the red close button needs validation during Phase 1 implementation. The `CloseRequested` event may not distinguish the source.
-- **`_set_active_provider_in` signature compatibility:** Architecture assumes this function can be called from tray context with `None` for the adapter parameter (letting it resolve internally). Verify this works or adjust the call site during Phase 2.
-- **Release build tray behavior:** Multiple Tauri GitHub issues report tray differences between dev and release builds. Phase 1 must include a release build verification step.
+- **端口冲突检测策略：** 如何处理用户系统上默认端口已被占用的情况（建议：启动失败时返回明确错误，不自动寻找端口）
+- **macOS 防火墙权限：** 即使绑定 127.0.0.1，首次运行是否仍需网络权限 entitlement（需在打包时测试）
+- **代理模式下 CLI 配置 patch 的具体字段映射：** Claude Code 的 `ANTHROPIC_BASE_URL` 通过 `settings.json` 的 `env` 块设置，Codex 的 `base_url` 通过 `config.toml` 设置——需确认占位 API key 的具体格式要求
+- **应用退出时的顺序：** 先 patch 回直连配置 -> 再停代理 -> 最后退出。但 Tauri 的 `app.exit()` 调用 `std::process::exit()` 不触发 drop——需要在退出逻辑中显式执行
+- **cc-switch 使用 axum 0.7 而我们使用 0.8：** 路径语法从 `/:param` 变为 `/{param}`，需注意迁移，但核心 API 不变
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- [Tauri 2 System Tray Guide](https://v2.tauri.app/learn/system-tray/) -- official documentation
-- [Tauri 2 TrayIconBuilder API](https://docs.rs/tauri/2.0.0/tauri/tray/struct.TrayIconBuilder.html) -- API reference
-- cc-switch `src-tauri/src/tray.rs` -- 447-line working tray implementation
-- cc-switch `src-tauri/src/lib.rs` -- TrayIconBuilder setup, on_window_event, ActivationPolicy
-- CLIManager codebase -- direct inspection of `lib.rs`, `commands/provider.rs`, `watcher/mod.rs`
+- [Tauri async_runtime 文档](https://docs.rs/tauri/latest/tauri/async_runtime/index.html)
+- [axum GitHub](https://github.com/tokio-rs/axum) + [0.8.0 公告](https://tokio.rs/blog/2025-01-01-announcing-axum-0-8-0)
+- [axum 官方 reverse-proxy 示例](https://github.com/tokio-rs/axum/blob/main/examples/reverse-proxy/src/main.rs)
+- cc-switch 代理实现：`proxy/server.rs`、`proxy/forwarder.rs`、`proxy/response_processor.rs`
+- CLIManager `Cargo.lock` 直接依赖版本验证
 
-### Secondary (HIGH confidence)
-- [Issue #9280](https://github.com/tauri-apps/tauri/issues/9280) -- no in-place menu update API
-- [Issue #10912](https://github.com/tauri-apps/tauri/issues/10912) -- duplicate tray icon from dual config
-- [Issue #11931](https://github.com/tauri-apps/tauri/issues/11931) -- config vs programmatic conflict
-- [Discussion #11489](https://github.com/tauri-apps/tauri/discussions/11489) -- ExitRequested infinite loop
-- [Discussion #6038](https://github.com/tauri-apps/tauri/discussions/6038) -- ActivationPolicy toggle pattern
-- [Discussion #2684](https://github.com/tauri-apps/tauri/discussions/2684) -- close-to-tray community pattern
-
-### Tertiary (MEDIUM confidence)
-- [Discussion #9365](https://github.com/orgs/tauri-apps/discussions/9365) -- tray icon on external display only
-- [Issue #12060](https://github.com/tauri-apps/tauri/issues/12060) -- tray instability on macOS Sequoia
-- [Issue #13770](https://github.com/tauri-apps/tauri/issues/13770) -- icon regression in Tauri 2.6.x
+### Secondary (MEDIUM confidence)
+- [Tauri + Async Rust Process](https://rfdonnelly.github.io/posts/tauri-async-rust-process/)
+- [Static streams for faster async proxies](https://blog.adamchalmers.com/streaming-proxy/)
+- [axum + reqwest 代理讨论](https://github.com/tokio-rs/axum/discussions/1821)
 
 ---
-*Research completed: 2026-03-12*
+*Research completed: 2026-03-13*
 *Ready for roadmap: yes*

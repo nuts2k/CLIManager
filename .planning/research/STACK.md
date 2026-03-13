@@ -1,209 +1,304 @@
 # Technology Stack
 
-**Project:** CLIManager v1.1 System Tray
-**Researched:** 2026-03-12
+**Project:** CLIManager v2.0 Local Proxy
+**Researched:** 2026-03-13
 
 ## Scope
 
-This document covers ONLY the incremental stack additions needed for system tray support in v1.1. The existing v1.0 stack (Tauri 2.10, React 19, Vite 7, shadcn/ui, Tailwind CSS v4, i18next, Rust backend with serde/toml_edit/notify/etc.) is validated and shipped -- it is NOT re-evaluated here.
+本文档只覆盖 v2.0 本地代理功能所需的**增量**技术栈。现有 v1.1 技术栈（Tauri 2.10, React 19, Vite 7, shadcn/ui, Tailwind CSS v4, i18next, Rust 后端 serde/toml_edit/notify 等）已验证并上线，不在此重新评估。
 
 ---
 
-## Recommended Stack Additions
+## 核心发现：依赖复用率极高
 
-### Cargo Feature Flags (No New Crates)
+Tauri 2 内部已经携带了构建 HTTP 代理所需的绝大部分底层依赖。当前 `Cargo.lock` 中已存在：
 
-| Feature | On Crate | Purpose | Why | Confidence |
-|---------|----------|---------|-----|------------|
-| `tray-icon` | `tauri` | Enables `TrayIconBuilder`, `TrayIconEvent`, tray menu APIs | Required for any system tray functionality in Tauri 2. This is the renamed `system-tray` feature from Tauri v1. Without it, `tauri::tray` module is not available. | HIGH |
-| `image-png` | `tauri` | Enables `Image::from_bytes()` for PNG parsing | Required to load custom tray icons from embedded PNG bytes via `include_bytes!`. Without it, runtime panics on PNG decode. | HIGH |
+| 依赖 | 当前版本 | 来源 |
+|------|---------|------|
+| tokio | 1.50.0 | Tauri 2 async runtime |
+| hyper | 1.8.1 | Tauri/reqwest 传递依赖 |
+| hyper-util | 0.1.20 | Tauri/reqwest 传递依赖 |
+| tower | 0.5.3 | Tauri 传递依赖 |
+| tower-http | 0.6.8 | Tauri 传递依赖 |
+| bytes | 1.11.1 | Tauri/reqwest 传递依赖 |
+| http | 1.x | Tauri/reqwest 传递依赖 |
+| reqwest | 0.12.28 | 已在 Cargo.toml（用于 test_provider） |
 
-**No new crate dependencies are needed.** Everything required for tray support is built into the `tauri` crate behind feature flags.
+这意味着新增的 crate 不会引入大量新的传递依赖，编译时间和产物体积影响极小。
 
-### Cargo.toml Change (Single Line)
+**置信度:** HIGH -- 通过直接检查 `Cargo.lock` 验证。
+
+---
+
+## 推荐新增依赖
+
+### 核心 HTTP 服务器框架
+
+| Technology | Version | Purpose | Why |
+|------------|---------|---------|-----|
+| axum | 0.8 | HTTP 路由和请求处理 | axum 是 tokio 官方生态的 HTTP 框架，基于 hyper 1.x + tower 0.5 构建。**与 Tauri 2 的 tokio runtime 完全兼容**（共享同一 tokio 实例），无需创建独立 runtime。cc-switch 已验证此方案可行（使用 axum 0.7 + Tauri 2）。axum 0.8 是当前稳定版（0.8.8，2025-12-20 发布），相比 cc-switch 的 0.7 更新了路径语法但核心 API 稳定。 |
+
+**置信度:** HIGH
+
+**为什么选 axum 而不是其他：**
+- **vs hyper 直接使用：** axum 在 hyper 之上提供路由、提取器、中间件组合，代码量减少 60%+。axum 本身开销极小，性能与直接使用 hyper 相当。
+- **vs actix-web：** actix 有自己的 async runtime，与 Tauri 的 tokio runtime 不兼容，需要开独立线程运行，增加复杂度和通信开销。
+- **vs warp：** warp 维护活跃度下降，且 filter 组合模式对于代理场景不如 axum 的 handler + State 模式直观。
+- **vs axum-reverse-proxy 第三方 crate：** 该 crate 带来了负载均衡、DNS 服务发现、WebSocket 转发等 v2.0 不需要的功能。我们的需求是动态切换单一上游目标，用 `Arc<RwLock<>>` + 自定义 handler 更简洁可控。
+- **vs Pingora/Rama：** 生产级代理框架，为 Cloudflare 规模设计，对桌面应用本地代理严重过度工程化。
+
+### reqwest 功能扩展（非新 crate）
+
+| Technology | Version | Purpose | Why |
+|------------|---------|---------|-----|
+| reqwest `stream` feature | 0.12 (已有) | 启用 `Response::bytes_stream()` 方法 | SSE 流式转发的关键：上游返回 `text/event-stream` 响应时，用 `bytes_stream()` 逐 chunk 读取，再通过 `axum::body::Body::from_stream()` 零缓冲转发给客户端。不启用此 feature 则无法流式代理，必须缓冲完整响应才能返回——对 AI API 的长流式响应不可接受。cc-switch 也使用了此 feature。 |
+
+**置信度:** HIGH -- cc-switch 的 `reqwest` 配置验证了 `stream` feature 用于 SSE 代理。
+
+### tower-http CORS 中间件
+
+| Technology | Version | Purpose | Why |
+|------------|---------|---------|-----|
+| tower-http `cors` feature | 0.6 (已在 lock) | 代理服务器 CORS 支持 | CLI 工具直接 HTTP 连接不需要 CORS，但预留此中间件成本为零（tower-http 已在依赖树中）。cc-switch 在代理服务器上也配置了 `CorsLayer`。 |
+
+**置信度:** HIGH
+
+---
+
+## 完整 Cargo.toml 变更
 
 ```toml
-# Before (v1.0)
-tauri = { version = "2", features = [] }
+# src-tauri/Cargo.toml
 
-# After (v1.1)
-tauri = { version = "2", features = ["tray-icon", "image-png"] }
+[dependencies]
+# ... 现有依赖保持不变 ...
+
+# 修改：reqwest 增加 stream feature
+reqwest = { version = "0.12", features = ["json", "stream"] }
+
+# 新增：HTTP 服务器框架（用于本地代理）
+axum = "0.8"
+
+# 新增：CORS 中间件（tower-http 已在依赖树中，只需显式声明使用 cors feature）
+tower-http = { version = "0.6", features = ["cors"] }
+
+# 新增：tokio 显式声明（Tauri 已携带 tokio 1.50，显式声明确保编译器可见 net/sync/time API）
+tokio = { version = "1", features = ["net", "sync", "time"] }
 ```
 
-Confidence: **HIGH** -- verified against cc-switch's working `Cargo.toml` which uses `tauri = { version = "2.8.2", features = ["tray-icon", "protocol-asset", "image-png"] }`, and confirmed by the [official Tauri 2 system tray documentation](https://v2.tauri.app/learn/system-tray/).
+### 为什么需要显式声明 tokio
 
-### Frontend Changes: None
+Tauri 2 内部依赖 tokio 但不对外暴露所有 feature flags。代理服务器需要：
+- `net`：`TcpListener::bind()` 绑定端口
+- `sync`：`RwLock`, `oneshot` 通道
+- `time`：`timeout()` 用于优雅停机
 
-No new npm packages are needed. The existing `@tauri-apps/api` v2 package already includes `tray` and `menu` namespaces, but **all tray logic should be implemented in Rust** because:
+通过在 `Cargo.toml` 中显式声明 tokio，Cargo 的 feature unification 机制会合并所有 feature，不会引入新的 tokio 实例。
 
-1. The tray must work when the window is hidden (no webview running JS).
-2. Provider switching triggers Rust-side file I/O (surgical patch via existing commands).
-3. cc-switch does it entirely in Rust -- this is the correct and proven pattern.
-
-The frontend only needs to call a single new Tauri command (`update_tray_menu`) after provider data changes, to keep the tray menu in sync.
-
-### Icon Assets Needed
-
-| Asset | Spec | Purpose |
-|-------|------|---------|
-| `src-tauri/icons/tray/macos/statusbar_template.png` | 22x22px, monochrome black on transparent | macOS status bar icon (1x) |
-| `src-tauri/icons/tray/macos/statusbar_template@2x.png` | 44x44px, monochrome black on transparent | macOS status bar icon (2x Retina) |
-
-**Why template icons:** On macOS, menu bar icons must be "template images" (monochrome with alpha channel). Tauri 2 exposes `.icon_as_template(true)` on `TrayIconBuilder`, which tells AppKit to auto-tint for light/dark mode. Using a colored or full-resolution app icon would look wrong and violate macOS HIG.
-
-cc-switch stores these at `icons/tray/macos/statusbar_template_3x.png` and loads via `include_bytes!`.
+**置信度:** HIGH -- cc-switch 和 Tauri 社区文档均显式声明 tokio。
 
 ---
 
-## Key Tauri 2 APIs
+## 不需要新增的依赖
 
-All APIs are from the `tauri` crate. No external plugins involved.
+| 类别 | 不需要的 | 原因 |
+|------|---------|------|
+| HTTP 框架 | actix-web, warp, rocket | axum 与 Tauri tokio runtime 原生兼容，无需额外 runtime |
+| 代理库 | axum-reverse-proxy, hyper-reverse-proxy | 自定义 handler 更简洁；这些库带来不需要的负载均衡/DNS 发现功能 |
+| 生产级代理 | pingora, rama, sozu | 为 CDN/云规模设计，桌面应用不需要 |
+| SSE 解析 | reqwest-eventsource, eventsource-stream | v2.0 做透明转发不解析 SSE 事件内容，`bytes_stream()` 逐 chunk 透传即可 |
+| 额外序列化 | serde_yaml, json5, regex | v2.0 代理不需要新的格式解析 |
+| 数据库 | rusqlite, sqlx | v2.0 代理设置存 `local.json`（现有存储层），不需要数据库 |
+| 异步流工具 | futures, async-stream | `bytes_stream()` 返回的 `impl Stream<Item=Result<Bytes>>` 可直接传给 `Body::from_stream()`，无需额外的 stream 组合器 |
+| 连接池 | deadpool, bb8 | reqwest 内置连接池，桌面应用单用户不需要外部池 |
 
-### Tray Construction (`tauri::tray`)
+---
 
-| API | Purpose |
-|-----|---------|
-| `TrayIconBuilder::with_id("main")` | Create named tray icon (ID used for `tray_by_id()` lookup later) |
-| `.icon(Image::from_bytes(include_bytes!(...))?)` | Set the tray icon from embedded PNG |
-| `.icon_as_template(true)` | macOS: treat as template image for auto light/dark tinting |
-| `.menu(&menu)` | Attach a `Menu` to the tray |
-| `.show_menu_on_left_click(true)` | Show menu on left click (macOS convention for utility apps) |
-| `.on_menu_event(\|app, event\| { ... })` | Handle menu item clicks by `event.id` |
-| `.on_tray_icon_event(\|tray, event\| { ... })` | Handle tray icon clicks/hover (optional) |
-| `.build(app)?` | Finalize and register the tray icon |
+## 架构集成：Tauri tokio Runtime 内启动 axum
 
-### Menu Construction (`tauri::menu`)
+### 启动模式
 
-| API | Purpose |
-|-----|---------|
-| `MenuBuilder::new(app)` | Start building a menu |
-| `MenuItem::with_id(app, id, label, enabled, accel)` | Non-checkable item ("Show Window", "Quit", section headers) |
-| `CheckMenuItem::with_id(app, id, label, enabled, checked, accel)` | Checkable item (providers -- shows native checkmark for active provider) |
-| `.separator()` | Visual separator between menu sections |
-| `.item(&item)` | Add an item to the builder |
-| `.build()?` | Finalize the menu |
-
-### Dynamic Menu Updates
-
-| API | Purpose |
-|-----|---------|
-| `app.tray_by_id("main")` | Get existing tray icon by ID |
-| `tray.set_menu(Some(new_menu))` | Replace the entire menu |
-
-**Critical pattern:** Tauri 2 menus are immutable after `.build()`. You cannot add/remove/modify individual items. The correct approach is to rebuild the entire `Menu` and call `set_menu()`. This is exactly what cc-switch does in `create_tray_menu()` + `set_menu()`.
-
-### Window Lifecycle -- Close-to-Tray
-
-| API | Purpose |
-|-----|---------|
-| `Builder::on_window_event(\|window, event\| { ... })` | Intercept window events globally |
-| `WindowEvent::CloseRequested { api, .. }` | Fired when user clicks window close button |
-| `api.prevent_close()` | Prevent the window from actually being destroyed |
-| `window.hide()` | Hide the window (process stays alive, tray remains) |
-| `window.show()` | Restore hidden window |
-| `window.set_focus()` | Bring window to front |
-| `window.unminimize()` | Restore from minimized state |
-
-**The close-to-tray pattern:**
+在 `lib.rs` 的 `.setup()` 钩子中使用 `tauri::async_runtime::spawn()` 启动 axum 服务器：
 
 ```rust
-.on_window_event(|window, event| {
-    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-        api.prevent_close();
-        let _ = window.hide();
-        #[cfg(target_os = "macos")]
-        {
-            tray::apply_tray_policy(window.app_handle(), false);
-        }
+// lib.rs setup() 中
+let proxy_state = Arc::new(ProxyManager::new());
+app.manage(proxy_state.clone());
+
+tauri::async_runtime::spawn(async move {
+    if let Err(e) = proxy_manager.start_if_enabled().await {
+        log::error!("代理服务器启动失败: {}", e);
     }
-})
+});
 ```
 
-Confidence: **HIGH** -- this is the standard pattern documented by Tauri and used by cc-switch. The `api.prevent_close()` + `window.hide()` combination is the recommended approach per [community discussion](https://github.com/tauri-apps/tauri/discussions/2684) and official docs.
+**关键点：**
+1. `tauri::async_runtime::spawn()` 在 Tauri 管理的 tokio runtime 中调度任务。
+2. **不需要** `#[tokio::main]` 或独立 `tokio::runtime::Runtime::new()`。
+3. **不需要** `std::thread::spawn` + 独立 runtime（那是 actix 等不兼容 runtime 的 workaround）。
+4. axum 的 `serve()` 是一个异步函数，天然运行在 tokio executor 上。
 
-### macOS Dock Visibility
+**置信度:** HIGH -- [Tauri 官方文档](https://docs.rs/tauri/latest/tauri/async_runtime/index.html)和 cc-switch 代码均验证此模式。
 
-| API | Purpose |
-|-----|---------|
-| `app.set_activation_policy(ActivationPolicy::Accessory)` | Hide app from Dock (tray-only mode) |
-| `app.set_activation_policy(ActivationPolicy::Regular)` | Show app in Dock (normal mode) |
-| `app.set_dock_visibility(bool)` | Show/hide Dock icon |
+### SSE 流式转发模式
 
-**Pattern:** When window hides, switch to `Accessory` to remove Dock icon. When window shows, switch to `Regular` to restore Dock presence. cc-switch wraps this in `tray::apply_tray_policy()` with error handling.
+```rust
+// 代理 handler 核心逻辑（伪代码）
+async fn proxy_handler(
+    State(state): State<Arc<ProxyState>>,
+    req: axum::extract::Request,
+) -> axum::response::Response {
+    // 1. 从共享状态读取当前上游目标
+    let upstream = state.get_current_upstream(&cli_type).await;
 
-**Note:** `ActivationPolicy` is macOS-only. Wrap with `#[cfg(target_os = "macos")]`.
+    // 2. 构造 reqwest 请求，注入上游 API key 和 base URL
+    let client = &state.http_client;
+    let upstream_resp = client
+        .post(&format!("{}{}", upstream.base_url, path))
+        .headers(forward_headers(&req))
+        .header("Authorization", format!("Bearer {}", upstream.api_key))
+        .body(reqwest::Body::from(body_bytes))
+        .send()
+        .await?;
+
+    // 3. 流式转发响应（SSE 和非 SSE 统一处理）
+    let mut builder = axum::response::Response::builder()
+        .status(upstream_resp.status());
+    for (k, v) in upstream_resp.headers() {
+        builder = builder.header(k, v);
+    }
+    let body = axum::body::Body::from_stream(
+        upstream_resp.bytes_stream()
+    );
+    builder.body(body).unwrap()
+}
+```
+
+**关键设计决策：透明转发而非 SSE 解析**
+
+v2.0 代理不需要理解 SSE 事件的语义内容（那是 2.x 流量监控的事）。只需要：
+1. 保持 `Content-Type: text/event-stream` header 原样传递
+2. 用 `bytes_stream()` 逐 chunk 流式转发，不缓冲
+3. 不加压缩层（或排除 `text/event-stream` MIME type）
+
+这使得实现极其简单，且对所有 API 协议（Anthropic、OpenAI）通用。
+
+**置信度:** HIGH -- 这正是 cc-switch `response_processor.rs` 的核心模式。
+
+### 动态上游切换模式
+
+```rust
+struct ProxyState {
+    // 每个 CLI 类型的当前上游目标
+    upstreams: RwLock<HashMap<CliType, UpstreamTarget>>,
+    // 共享 HTTP 客户端（连接池复用）
+    http_client: reqwest::Client,
+}
+
+struct UpstreamTarget {
+    base_url: String,
+    api_key: String,
+    // 其他需要注入的字段
+}
+
+impl ProxyState {
+    /// Provider 切换时调用，立即生效
+    async fn switch_upstream(&self, cli_type: CliType, target: UpstreamTarget) {
+        let mut upstreams = self.upstreams.write().await;
+        upstreams.insert(cli_type, target);
+        // 下一个请求自动使用新目标，无需重启服务器
+    }
+}
+```
+
+**为什么用 `tokio::sync::RwLock` 而不是 `std::sync::RwLock`：**
+- 读操作（每个代理请求都会读）远多于写操作（只在 Provider 切换时写）
+- `tokio::sync::RwLock` 的 `.read().await` 不阻塞 tokio worker thread
+- `std::sync::RwLock` 在异步上下文中可能导致 thread 阻塞，影响其他任务
+
+**置信度:** HIGH -- 标准 Rust 异步模式，cc-switch 广泛使用此模式。
 
 ---
 
-## tauri.conf.json Changes
+## 端口分配策略
 
-**None required.** The `tray-icon` feature is a Cargo feature flag, not a Tauri capability/permission. The existing `tauri.conf.json` remains unchanged.
+| CLI | 默认端口 | 说明 |
+|-----|---------|------|
+| Claude Code | 9960 | 固定端口，代理模式下 CLI 配置 patch 为 `http://127.0.0.1:9960` |
+| Codex | 9961 | 固定端口，代理模式下 CLI 配置 patch 为 `http://127.0.0.1:9961` |
 
----
+**实现方式：** 每个 CLI 类型一个独立的 `TcpListener` + axum `Router`，各自 `tokio::spawn` 运行。不使用单一服务器 + 路径前缀区分的原因是：
+1. CLI 工具配置的 base URL 格式固定（如 Claude Code 期望 `/v1/messages` 路径），加前缀需要 CLI 修改配置
+2. 独立端口使每个 CLI 可以独立启停，互不影响
+3. 与 cc-switch 的单端口 + 路径前缀方案相比，独立端口更简单——不需要处理 `/claude/v1/messages` vs `/codex/v1/chat/completions` 的路由歧义
 
-## What NOT to Do
-
-| Anti-Pattern | Why |
-|-------------|-----|
-| Use Tauri v1 `SystemTray` / `SystemTrayMenu` / `CustomMenuItem` | Removed in Tauri 2. Use `TrayIconBuilder` / `Menu` / `MenuItem`. |
-| Implement tray logic in JavaScript | Tray must work when webview is hidden. All tray logic belongs in Rust. |
-| Add any `tauri-plugin-*` for tray | No plugin needed. Tray is built into `tauri` core behind `tray-icon` feature. |
-| Mutate individual menu items after build | Tauri 2 menus are immutable. Rebuild entire menu + `set_menu()`. |
-| Use `Submenu` for provider grouping | CLIManager only has 2 CLI types (Claude Code, Codex). Flat menu with disabled `MenuItem` headers and `CheckMenuItem` providers is simpler and more accessible. |
-| Add `protocol-asset` feature | Only needed for `asset://` protocol. Not needed for tray. cc-switch uses it for other features. |
-| Skip `icon_as_template(true)` on macOS | Without template mode, icon won't adapt to light/dark menu bar. |
-| Use `app.default_window_icon()` as tray icon | App icons are colored and too large for menu bar. Use a dedicated 22x22 template icon. |
+**置信度:** MEDIUM -- 端口号为参考值，需确认不与常见服务冲突。独立端口 vs 单端口 + 前缀的取舍需在实现阶段确认。
 
 ---
 
 ## Alternatives Considered
 
-| Category | Recommended | Alternative | Why Not |
-|----------|-------------|-------------|---------|
-| Tray implementation layer | Rust-only (`tauri::tray`) | JS-side (`@tauri-apps/api/tray`) | Tray must function when window is hidden; Rust is the correct layer |
-| Menu updates | Full rebuild + `set_menu()` | Individual item mutation | Tauri 2 menus are immutable post-build; rebuild is the only option |
-| Active provider display | `CheckMenuItem` with native checkmark | `MenuItem` with emoji/text prefix | `CheckMenuItem` is semantic, native, handles check state automatically |
-| Dock icon behavior | Toggle Accessory/Regular on hide/show | Always hide dock icon | Users expect dock icon when window is visible; toggling matches macOS convention |
-| Tray icon asset | Monochrome template PNG | Colored app icon | macOS HIG mandates monochrome template icons in menu bar |
-| Menu structure | Flat with section headers | Nested submenus per CLI | Flat is faster to navigate; only 2 CLI types don't warrant nesting |
+| 类别 | 推荐 | 备选 | 不选原因 |
+|------|-----|------|---------|
+| HTTP 框架 | axum 0.8 | actix-web 4 | actix 有独立 runtime，与 Tauri tokio 不兼容 |
+| HTTP 框架 | axum 0.8 | warp 0.3 | warp 维护活跃度下降，filter 模式对代理场景不直观 |
+| 代理实现 | 自定义 handler | axum-reverse-proxy 1.0 | 第三方 crate 引入不需要的负载均衡/DNS 发现；我们需要动态 upstream 切换，自己写更可控 |
+| SSE 转发 | bytes_stream() 透传 | SSE 事件解析再发射 | v2.0 不需要理解事件内容，透传更简单更高效 |
+| 共享状态 | `Arc<RwLock<HashMap>>` | 每次从文件重读 | RwLock 读取纳秒级，文件 I/O 毫秒级；代理路径不应有磁盘 I/O |
+| 端口模式 | 每 CLI 独立端口 | 单端口 + 路径前缀 | 独立端口避免路径重写，CLI 配置更简单 |
+| 上游 HTTP 客户端 | reqwest 0.12 (已有) | hyper client 直接使用 | reqwest 是 hyper 的高层封装，已在项目中，API 更友好 |
 
 ---
 
-## Integration Points with Existing v1.0 Code
-
-The tray feature integrates with existing code at these points:
-
-| Existing Code | Integration |
-|---------------|-------------|
-| `lib.rs` `run()` function | Add `.on_window_event()` for close-to-tray; add tray builder in `.setup()` |
-| `commands::provider::set_active_provider` | After switching, call tray menu rebuild |
-| `watcher::start_file_watcher` | When iCloud sync triggers provider refresh, also rebuild tray menu |
-| `storage` module | Tray reads provider list + active provider via existing storage APIs |
-| i18next translations | Add tray-specific strings: "Show Window", "Quit", "No providers" |
-
-No changes needed to: `adapter`, `provider` (model), `error`, `commands::onboarding`.
-
----
-
-## Installation Summary
+## 安装总结
 
 ```toml
-# src-tauri/Cargo.toml -- single dependency line change
-tauri = { version = "2", features = ["tray-icon", "image-png"] }
+# src-tauri/Cargo.toml 变更
+
+# 修改（增加 stream feature）:
+reqwest = { version = "0.12", features = ["json", "stream"] }
+
+# 新增:
+axum = "0.8"
+tower-http = { version = "0.6", features = ["cors"] }
+tokio = { version = "1", features = ["net", "sync", "time"] }
 ```
 
-No `npm install`. No new Rust crates. No config changes. Two icon assets to create.
+**新增 crate 数量：** 1 个直接新增（axum），2 个显式声明已有传递依赖（tower-http, tokio）。实际新增传递依赖极少，因为 axum 依赖的 hyper/tower/tokio/bytes/http 全部已在 Cargo.lock 中。
+
+**无新增 npm 包。** 前端只需增加代理开关的 UI 组件和对应的 Tauri 命令调用。
+
+---
+
+## 与 cc-switch 的对比
+
+| 维度 | cc-switch | CLIManager v2.0 | 原因 |
+|------|----------|-----------------|------|
+| axum 版本 | 0.7 | 0.8 | 0.8 是当前稳定版，路径语法更新但核心 API 同 |
+| 端口模式 | 单端口 + 路径前缀 | 每 CLI 独立端口 | 避免路径重写复杂度 |
+| 数据库 | rusqlite | 无（local.json） | v2.0 只存开关状态和端口，JSON 足够 |
+| 协议转换 | Anthropic ↔ OpenAI 双向 | 无（透传） | 明确标记为 Out of Scope（2.x 里程碑） |
+| 熔断器 | 有（CircuitBreaker） | 无 | v2.0 不做 failover |
+| Usage 统计 | 有（解析流并统计 token） | 无 | v2.0 不做流量监控 |
+| SSE 处理 | 解析事件、统计 token、协议转换 | 透明转发 | v2.0 代理只做路由，不做内容处理 |
+
+**cc-switch 代理模块约 2000+ 行 Rust 代码，CLIManager v2.0 代理核心预计 300-500 行**——因为我们只做透传，不做协议转换/熔断/统计。
 
 ---
 
 ## Sources
 
-- [Tauri 2 System Tray Guide](https://v2.tauri.app/learn/system-tray/) -- official documentation (HIGH confidence)
-- [Tauri 2 Tray JS API Reference](https://v2.tauri.app/reference/javascript/api/namespacetray/) -- official API reference
-- [Tauri Feature Flags](https://lib.rs/crates/tauri/features) -- Cargo feature reference
-- [Tauri GitHub Discussion #2684 -- Close to Tray](https://github.com/tauri-apps/tauri/discussions/2684) -- community pattern for close-to-tray
-- [Tauri GitHub Discussion #6038 -- macOS Dock Hide](https://github.com/tauri-apps/tauri/discussions/6038) -- ActivationPolicy pattern
-- [Tauri GitHub Discussion #10774 -- Dock Toggle](https://github.com/tauri-apps/tauri/discussions/10774) -- dynamic dock visibility toggle
-- cc-switch `src-tauri/src/tray.rs` -- working reference: CheckMenuItem, dynamic menu rebuild, ActivationPolicy, i18n tray texts
-- cc-switch `src-tauri/src/lib.rs` -- working reference: TrayIconBuilder setup, on_window_event close-to-tray, macOS template icon loading
-- cc-switch `src-tauri/Cargo.toml` -- confirmed features: `tray-icon`, `image-png`
+- [Tauri async_runtime 文档](https://docs.rs/tauri/latest/tauri/async_runtime/index.html) -- 在 Tauri 内 spawn 异步任务的官方 API (HIGH)
+- [axum GitHub](https://github.com/tokio-rs/axum) -- HTTP 框架官方仓库 (HIGH)
+- [axum 0.8.0 公告](https://tokio.rs/blog/2025-01-01-announcing-axum-0-8-0) -- 版本发布说明 (HIGH)
+- [axum 官方 reverse-proxy 示例](https://github.com/tokio-rs/axum/blob/main/examples/reverse-proxy/src/main.rs) -- reqwest + axum 代理模式 (HIGH)
+- [axum 官方 SSE 示例](https://github.com/tokio-rs/axum/blob/main/examples/sse/src/main.rs) -- SSE 响应支持 (HIGH)
+- [Tauri + Async Rust Process](https://rfdonnelly.github.io/posts/tauri-async-rust-process/) -- 在 Tauri 内运行异步任务的模式 (MEDIUM)
+- [Tauri GitHub Discussion #2942](https://github.com/tauri-apps/tauri/discussions/2942) -- 在 Tauri 内运行 HTTP 服务器 (MEDIUM)
+- [Static streams for faster async proxies](https://blog.adamchalmers.com/streaming-proxy/) -- 流式代理架构决策 (MEDIUM)
+- [axum + reqwest 代理讨论](https://github.com/tokio-rs/axum/discussions/1821) -- 大文件/流式代理最佳实践 (MEDIUM)
+- cc-switch `src-tauri/src/proxy/server.rs` -- 工作参考：axum + Tauri 代理服务器实现 (HIGH)
+- cc-switch `src-tauri/src/proxy/response_processor.rs` -- 工作参考：`bytes_stream()` SSE 透传 (HIGH)
+- cc-switch `src-tauri/src/proxy/forwarder.rs` -- 工作参考：reqwest 请求转发 (HIGH)
+- cc-switch `src-tauri/Cargo.toml` -- 验证依赖：axum 0.7, reqwest stream, tokio features (HIGH)
+- CLIManager `src-tauri/Cargo.lock` -- 直接验证已有传递依赖版本 (HIGH)
