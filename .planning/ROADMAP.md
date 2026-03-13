@@ -97,10 +97,10 @@ Plans:
 | 5. Onboarding | v1.0 | 2/2 | Complete | 2026-03-12 |
 | 6. Tray Foundation | v1.1 | 1/1 | Complete | 2026-03-13 |
 | 7. Provider Menu and Switching | v1.1 | 2/2 | Complete | 2026-03-13 |
-| 8. 代理核心 | v2.0 | 0/2 | Planning | - |
+| 8. 代理核心 | v2.0 | 1/2 | In Progress | - |
 | 9. 模式切换与持久化 | v2.0 | 0/? | Not started | - |
 | 10. 实时切换与 UI 集成 | v2.0 | 0/? | Not started | - |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*
-*Last updated: 2026-03-13 (v2.0 Phase 8 planned)*
+*Last updated: 2026-03-13 (v2.0 Phase 8 Plan 1 complete)*

@@ -9,11 +9,11 @@ Requirements for Local Proxy milestone. Each maps to roadmap phases.
 
 ### 代理核心 (Proxy Core)
 
-- [ ] **PROXY-01**: 用户开启代理后，CLI 的 API 请求经本地 HTTP 代理转发到上游 Provider
-- [ ] **PROXY-02**: 代理支持 SSE 流式响应逐 chunk 透传（AI API 的核心交互模式）
-- [ ] **PROXY-03**: 代理拦截请求中的占位 API key，替换为当前活跃 Provider 的真实 key 后转发上游
+- [x] **PROXY-01**: 用户开启代理后，CLI 的 API 请求经本地 HTTP 代理转发到上游 Provider
+- [x] **PROXY-02**: 代理支持 SSE 流式响应逐 chunk 透传（AI API 的核心交互模式）
+- [x] **PROXY-03**: 代理拦截请求中的占位 API key，替换为当前活跃 Provider 的真实 key 后转发上游
 - [ ] **PROXY-04**: 每个 CLI 监听独立固定端口（Claude Code: 15800, Codex: 15801）
-- [ ] **PROXY-05**: 上游不可达时代理返回 502 + JSON 结构化错误，而非让 CLI 收到 connection refused
+- [x] **PROXY-05**: 上游不可达时代理返回 502 + JSON 结构化错误，而非让 CLI 收到 connection refused
 
 ### 模式切换 (Mode Switching)
 
@@ -35,7 +35,7 @@ Requirements for Local Proxy milestone. Each maps to roadmap phases.
 
 - [ ] **UX-01**: 启动代理时检测端口占用，端口冲突给出清晰错误提示
 - [ ] **UX-02**: 应用重启后自动恢复之前的代理开关状态
-- [ ] **UX-03**: 代理启动后执行健康自检（GET /health），确认监听正常
+- [x] **UX-03**: 代理启动后执行健康自检（GET /health），确认监听正常
 
 ## Future Requirements
 
@@ -85,11 +85,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PROXY-01 | Phase 8 | Pending |
-| PROXY-02 | Phase 8 | Pending |
-| PROXY-03 | Phase 8 | Pending |
+| PROXY-01 | Phase 8 | Complete |
+| PROXY-02 | Phase 8 | Complete |
+| PROXY-03 | Phase 8 | Complete |
 | PROXY-04 | Phase 8 | Pending |
-| PROXY-05 | Phase 8 | Pending |
+| PROXY-05 | Phase 8 | Complete |
 | MODE-01 | Phase 9 | Pending |
 | MODE-02 | Phase 9 | Pending |
 | MODE-03 | Phase 9 | Pending |
@@ -102,7 +102,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LIVE-04 | Phase 9 | Pending |
 | UX-01 | Phase 10 | Pending |
 | UX-02 | Phase 9 | Pending |
-| UX-03 | Phase 8 | Pending |
+| UX-03 | Phase 8 | Complete |
 
 **Coverage:**
 - v2.0 requirements: 18 total
