@@ -544,6 +544,14 @@ pub async fn test_provider(provider_id: String) -> Result<TestResult, AppError> 
     }
 }
 
+/// Tauri command: rebuild the tray menu from current storage state.
+/// Called by the frontend after provider CRUD operations and language changes.
+#[tauri::command]
+pub fn refresh_tray_menu(app: tauri::AppHandle) {
+    #[cfg(desktop)]
+    crate::tray::update_tray_menu(&app);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

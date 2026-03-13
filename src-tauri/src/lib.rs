@@ -26,6 +26,7 @@ pub fn run() {
             commands::provider::update_local_settings,
             commands::provider::sync_active_providers,
             commands::provider::test_provider,
+            commands::provider::refresh_tray_menu,
             commands::onboarding::scan_cli_configs,
             commands::onboarding::import_provider,
         ]);
