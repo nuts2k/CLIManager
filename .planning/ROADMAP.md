@@ -65,7 +65,7 @@
 **Plans**: 1 plan
 
 Plans:
-- [ ] 06-01-PLAN.md — Tray icon, menu, close-to-tray lifecycle, and ActivationPolicy toggling
+- [x] 06-01-PLAN.md — Tray icon, menu, close-to-tray lifecycle, and ActivationPolicy toggling
 
 ### Phase 7: Provider Menu and Switching
 **Goal**: Users can view and switch Providers directly from the tray menu without opening the main window
@@ -93,7 +93,7 @@ Plans:
 | 3. Provider Management UI | v1.0 | 4/4 | Complete | 2026-03-11 |
 | 4. iCloud Sync and File Watching | v1.0 | 2/2 | Complete | 2026-03-11 |
 | 5. Onboarding | v1.0 | 2/2 | Complete | 2026-03-12 |
-| 6. Tray Foundation | v1.1 | 0/1 | Planning | - |
+| 6. Tray Foundation | v1.1 | 1/1 | Complete | 2026-03-13 |
 | 7. Provider Menu and Switching | v1.1 | 0/? | Not started | - |
 
 ---

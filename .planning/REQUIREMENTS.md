@@ -9,9 +9,9 @@ Requirements for v1.1 System Tray milestone. Each maps to roadmap phases.
 
 ### 托盘基础 (TRAY)
 
-- [ ] **TRAY-01**: 应用启动后在 macOS 菜单栏显示托盘图标（模板图标，自适应暗色/亮色模式）
-- [ ] **TRAY-02**: 关闭主窗口时应用不退出，隐藏窗口并驻留在托盘
-- [ ] **TRAY-03**: 窗口隐藏时切换为 Accessory 模式（不显示在 Dock 和 Cmd+Tab），窗口显示时恢复 Regular 模式
+- [x] **TRAY-01**: 应用启动后在 macOS 菜单栏显示托盘图标（模板图标，自适应暗色/亮色模式）
+- [x] **TRAY-02**: 关闭主窗口时应用不退出，隐藏窗口并驻留在托盘
+- [x] **TRAY-03**: 窗口隐藏时切换为 Accessory 模式（不显示在 Dock 和 Cmd+Tab），窗口显示时恢复 Regular 模式
 
 ### Provider 切换 (PROV)
 
@@ -21,8 +21,8 @@ Requirements for v1.1 System Tray milestone. Each maps to roadmap phases.
 
 ### 菜单项 (MENU)
 
-- [ ] **MENU-01**: 托盘菜单包含"打开主窗口"选项，点击后显示并聚焦主窗口
-- [ ] **MENU-02**: 托盘菜单包含"退出"选项，点击后完全退出应用
+- [x] **MENU-01**: 托盘菜单包含"打开主窗口"选项，点击后显示并聚焦主窗口
+- [x] **MENU-02**: 托盘菜单包含"退出"选项，点击后完全退出应用
 - [ ] **MENU-03**: 托盘菜单文字跟随应用语言设置（中/英）
 
 ## v2 Requirements
@@ -57,14 +57,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TRAY-01 | Phase 6 | Pending |
-| TRAY-02 | Phase 6 | Pending |
-| TRAY-03 | Phase 6 | Pending |
+| TRAY-01 | Phase 6 | Complete |
+| TRAY-02 | Phase 6 | Complete |
+| TRAY-03 | Phase 6 | Complete |
 | PROV-01 | Phase 7 | Pending |
 | PROV-02 | Phase 7 | Pending |
 | PROV-03 | Phase 7 | Pending |
-| MENU-01 | Phase 6 | Pending |
-| MENU-02 | Phase 6 | Pending |
+| MENU-01 | Phase 6 | Complete |
+| MENU-02 | Phase 6 | Complete |
 | MENU-03 | Phase 7 | Pending |
 
 **Coverage:**
