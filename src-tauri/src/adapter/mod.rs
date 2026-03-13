@@ -312,7 +312,7 @@ mod tests {
             name: "Test Provider".to_string(),
             protocol_type: ProtocolType::OpenAiCompatible,
             api_key: "sk-integration-test-key".to_string(),
-            base_url: "https://proxy.integration.test/v1".to_string(),
+            base_url: "https://proxy.integration.test".to_string(),
             model: "o4-mini".to_string(),
             model_config: None,
             notes: None,
@@ -410,7 +410,7 @@ sandbox = true
             doc["model_providers"]["openai"]["base_url"]
                 .as_str()
                 .unwrap(),
-            "https://proxy.integration.test/v1"
+            "https://proxy.integration.test"
         );
         assert_eq!(
             doc["model_providers"]["openai"]["model"].as_str().unwrap(),

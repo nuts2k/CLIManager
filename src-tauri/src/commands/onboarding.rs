@@ -3,7 +3,7 @@ use std::path::Path;
 use serde::Serialize;
 use tauri::Manager;
 
-use crate::commands::provider::{normalize_provider_fields, validate_provider};
+use crate::commands::provider::normalize_and_validate_provider;
 use crate::error::AppError;
 use crate::provider::{ProtocolType, Provider};
 
@@ -187,9 +187,7 @@ pub fn import_provider_to(
         String::new(), // model is empty for imports (only API key + base URL)
         cli_id,
     );
-
-    normalize_provider_fields(&mut provider);
-    validate_provider(&provider)?;
+    provider = normalize_and_validate_provider(provider)?;
 
     crate::storage::icloud::save_provider_to(dir, &provider)?;
     Ok(provider)
@@ -214,9 +212,7 @@ pub fn import_provider(
         String::new(),
         cli_id,
     );
-
-    normalize_provider_fields(&mut provider);
-    validate_provider(&provider)?;
+    provider = normalize_and_validate_provider(provider)?;
 
     // Record self-write BEFORE the file operation so the watcher ignores this change
     let tracker = app_handle.state::<crate::watcher::SelfWriteTracker>();
@@ -501,6 +497,40 @@ base_url = "https://azure.openai.com/v1"
             "codex".to_string(),
         );
         assert!(matches!(result, Err(AppError::Validation(_))));
+    }
+
+    #[test]
+    fn test_import_provider_rejects_base_url_with_path() {
+        let tmp = TempDir::new().unwrap();
+        let result = import_provider_to(
+            tmp.path(),
+            "Codex Import".to_string(),
+            ProtocolType::OpenAiCompatible,
+            "sk-test-key".to_string(),
+            "https://api.openai.com/v1".to_string(),
+            "codex".to_string(),
+        );
+        assert!(matches!(
+            result,
+            Err(AppError::Validation(ref message))
+                if message == "Provider base URL must not contain a path"
+        ));
+    }
+
+    #[test]
+    fn test_import_provider_normalizes_trailing_slash() {
+        let tmp = TempDir::new().unwrap();
+        let provider = import_provider_to(
+            tmp.path(),
+            "Slash Import".to_string(),
+            ProtocolType::Anthropic,
+            "sk-ant-full-key".to_string(),
+            "https://custom.api.com/".to_string(),
+            "claude".to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(provider.base_url, "https://custom.api.com");
     }
 
     #[test]

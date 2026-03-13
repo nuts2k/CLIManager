@@ -357,7 +357,7 @@ mod tests {
             name: "Test Provider".to_string(),
             protocol_type: ProtocolType::OpenAiCompatible,
             api_key: "sk-openai-new-key-456".to_string(),
-            base_url: "https://new-proxy.example.com/v1".to_string(),
+            base_url: "https://new-proxy.example.com".to_string(),
             model: "o4-mini".to_string(),
             model_config: None,
             notes: None,
@@ -419,7 +419,7 @@ temperature = 0.7
         // Target field updated
         assert_eq!(
             doc["base_url"].as_str().unwrap(),
-            "https://new-proxy.example.com/v1"
+            "https://new-proxy.example.com"
         );
         // Other fields survive
         assert_eq!(doc["model"].as_str().unwrap(), "o4-mini");
@@ -455,7 +455,7 @@ base_url = "https://keep.example.com"
             doc["model_providers"]["openai"]["base_url"]
                 .as_str()
                 .unwrap(),
-            "https://new-proxy.example.com/v1"
+            "https://new-proxy.example.com"
         );
         assert_eq!(
             doc["model_providers"]["anthropic"]["base_url"]
@@ -562,7 +562,7 @@ level = "info"
 
         assert_eq!(
             doc["base_url"].as_str().unwrap(),
-            "https://new-proxy.example.com/v1"
+            "https://new-proxy.example.com"
         );
     }
 

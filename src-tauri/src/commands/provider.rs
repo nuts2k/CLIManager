@@ -9,7 +9,7 @@ use crate::adapter::claude::ClaudeAdapter;
 use crate::adapter::codex::CodexAdapter;
 use crate::adapter::CliAdapter;
 use crate::error::AppError;
-use crate::provider::{ProtocolType, Provider};
+use crate::provider::{normalize_origin_base_url, ProtocolType, Provider};
 use crate::storage::local::{read_local_settings, write_local_settings, LocalSettings};
 
 #[derive(Debug, Clone, Serialize)]
@@ -91,18 +91,18 @@ pub(crate) fn validate_provider(provider: &Provider) -> Result<(), AppError> {
         ));
     }
 
-    if !provider.base_url.starts_with("http://") && !provider.base_url.starts_with("https://") {
-        return Err(AppError::Validation(
-            "Provider base URL must start with http:// or https://".to_string(),
-        ));
-    }
+    normalize_origin_base_url(&provider.base_url).map_err(AppError::Validation)?;
 
     Ok(())
 }
 
-fn normalize_and_validate_provider(mut provider: Provider) -> Result<Provider, AppError> {
+pub(crate) fn normalize_and_validate_provider(
+    mut provider: Provider,
+) -> Result<Provider, AppError> {
     normalize_provider_fields(&mut provider);
     validate_provider(&provider)?;
+    provider.base_url =
+        normalize_origin_base_url(&provider.base_url).map_err(AppError::Validation)?;
     Ok(provider)
 }
 
@@ -457,7 +457,8 @@ pub fn update_local_settings(settings: LocalSettings) -> Result<LocalSettings, A
 
 #[tauri::command]
 pub async fn test_provider(provider_id: String) -> Result<TestResult, AppError> {
-    let provider = crate::storage::icloud::get_provider(&provider_id)?;
+    let provider =
+        normalize_and_validate_provider(crate::storage::icloud::get_provider(&provider_id)?)?;
 
     // Read timeout from settings
     let settings = read_local_settings().unwrap_or_default();
@@ -651,6 +652,32 @@ mod tests {
     }
 
     #[test]
+    fn test_normalize_and_validate_provider_rejects_base_url_with_path() {
+        let provider = Provider {
+            base_url: "https://api.openai.com/v1".to_string(),
+            ..make_provider("p1", "Test Provider", "claude")
+        };
+
+        let err = normalize_and_validate_provider(provider).unwrap_err();
+        assert!(matches!(
+            err,
+            AppError::Validation(ref message)
+                if message == "Provider base URL must not contain a path"
+        ));
+    }
+
+    #[test]
+    fn test_normalize_and_validate_provider_strips_base_url_trailing_slash() {
+        let provider = Provider {
+            base_url: "https://api.anthropic.com/".to_string(),
+            ..make_provider("p1", "Test Provider", "claude")
+        };
+
+        let normalized = normalize_and_validate_provider(provider).unwrap();
+        assert_eq!(normalized.base_url, "https://api.anthropic.com");
+    }
+
+    #[test]
     fn test_list_providers_filters_by_cli_id() {
         let tmp = TempDir::new().unwrap();
         let dir = tmp.path();
@@ -753,7 +780,7 @@ mod tests {
         let mut provider = make_provider("p2", "Codex Provider", "codex");
         provider.protocol_type = ProtocolType::OpenAiCompatible;
         provider.api_key = "sk-codex-key".to_string();
-        provider.base_url = "https://proxy.example.com/v1".to_string();
+        provider.base_url = "https://proxy.example.com".to_string();
         save_provider_to(&providers_dir, &provider).unwrap();
 
         let adapter_config_dir = tmp.path().join("codex-config");
