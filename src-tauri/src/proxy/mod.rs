@@ -8,6 +8,7 @@ pub mod error;
 pub mod handler;
 pub mod server;
 pub mod state;
+pub mod translate;
 
 pub use error::ProxyError;
 pub use handler::{health_handler, proxy_handler};

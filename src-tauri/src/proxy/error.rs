@@ -31,6 +31,9 @@ pub enum ProxyError {
 
     #[error("内部错误: {0}")]
     Internal(String),
+
+    #[error("转换错误: {0}")]
+    TranslateError(String),
 }
 
 impl IntoResponse for ProxyError {
@@ -38,6 +41,7 @@ impl IntoResponse for ProxyError {
         let (status, message) = match &self {
             ProxyError::UpstreamUnreachable(_) => (StatusCode::BAD_GATEWAY, self.to_string()),
             ProxyError::NoUpstreamConfigured => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
+            ProxyError::TranslateError(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
         };
 
