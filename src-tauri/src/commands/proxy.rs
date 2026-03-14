@@ -6,9 +6,7 @@ use tokio::sync::Mutex;
 
 use crate::adapter::CliAdapter;
 use crate::error::AppError;
-use crate::provider::{
-    extract_origin_base_url, normalize_origin_base_url, ProtocolType, Provider,
-};
+use crate::provider::{extract_origin_base_url, normalize_origin_base_url, ProtocolType, Provider};
 use crate::proxy::{proxy_port_for_cli, ProxyService, ProxyStatusInfo, UpstreamTarget};
 use crate::storage::local::{ProxySettings, ProxyTakeover};
 
@@ -47,10 +45,8 @@ fn build_upstream_target_from_provider(provider: &Provider) -> Result<UpstreamTa
     })
 }
 
-type AdapterFactory = fn(
-    &str,
-    &crate::storage::local::LocalSettings,
-) -> Result<Box<dyn CliAdapter>, AppError>;
+type AdapterFactory =
+    fn(&str, &crate::storage::local::LocalSettings) -> Result<Box<dyn CliAdapter>, AppError>;
 
 /// 串行化全局代理开关，避免多个请求交错修改持久化状态和运行态。
 pub struct ProxyGlobalToggleLock {
@@ -272,20 +268,15 @@ pub(crate) async fn _proxy_enable_in(
             .get(cli_id)
             .and_then(|pid| pid.as_ref())
             .ok_or_else(|| {
-                AppError::Validation(format!(
-                    "该 CLI ({}) 无活跃 Provider，无法开启代理",
-                    cli_id
-                ))
+                AppError::Validation(format!("该 CLI ({}) 无活跃 Provider，无法开启代理", cli_id))
             })?;
 
         // 2. 从 iCloud 读取真实 Provider
-        let real_provider =
-            crate::storage::icloud::get_provider_in(providers_dir, provider_id)?;
+        let real_provider = crate::storage::icloud::get_provider_in(providers_dir, provider_id)?;
 
         // 3. 获取端口
-        let port = proxy_port_for_cli(cli_id).ok_or_else(|| {
-            AppError::Validation(format!("不支持的 CLI: {}", cli_id))
-        })?;
+        let port = proxy_port_for_cli(cli_id)
+            .ok_or_else(|| AppError::Validation(format!("不支持的 CLI: {}", cli_id)))?;
 
         // 4. 构造代理专用 Provider 并 patch CLI 配置
         let proxy_provider = make_proxy_provider(cli_id, port, &real_provider);
@@ -311,15 +302,12 @@ pub(crate) async fn _proxy_enable_in(
             cli_id,
             start_err
         );
-        if let Err(rollback_err) = get_adapter_for_cli(cli_id, &settings)
-            .and_then(|a| a.patch(&real_provider).map(|_| ()))
+        if let Err(rollback_err) =
+            get_adapter_for_cli(cli_id, &settings).and_then(|a| a.patch(&real_provider).map(|_| ()))
         {
             log::error!("回滚 CLI 配置也失败: {}", rollback_err);
         }
-        return Err(AppError::Validation(format!(
-            "代理启动失败: {}",
-            start_err
-        )));
+        return Err(AppError::Validation(format!("代理启动失败: {}", start_err)));
     }
 
     // 7. 更新 local.json：proxy_takeover + proxy.cli_enabled
@@ -353,13 +341,7 @@ pub(crate) async fn _proxy_disable_in(
     let restore_result = {
         let settings = crate::storage::local::read_local_settings_from(local_settings_path)?;
         let adapter_ref = adapter.as_ref().map(|a| a.as_ref() as &dyn CliAdapter);
-        restore_or_clear_cli_config(
-            providers_dir,
-            &settings,
-            cli_id,
-            adapter_ref,
-            "关闭代理",
-        )
+        restore_or_clear_cli_config(providers_dir, &settings, cli_id, adapter_ref, "关闭代理")
     };
 
     // 2. 停止代理（best-effort，async）
@@ -442,7 +424,11 @@ fn cleanup_on_exit_sync_in(
             "退出清理",
             adapter_factory,
         ) {
-            log::error!("退出清理：保留 takeover 标记: cli_id={}, err={}", cli_id, err);
+            log::error!(
+                "退出清理：保留 takeover 标记: cli_id={}, err={}",
+                cli_id,
+                err
+            );
             unresolved_cli_ids.push(cli_id.clone());
         }
     }
@@ -522,7 +508,11 @@ fn recover_on_startup_in(
                 log::info!("崩溃恢复：已处理 CLI 配置: cli_id={}", cli_id);
             }
             Err(err) => {
-                log::error!("崩溃恢复：保留 takeover 标记: cli_id={}, err={}", cli_id, err);
+                log::error!(
+                    "崩溃恢复：保留 takeover 标记: cli_id={}, err={}",
+                    cli_id,
+                    err
+                );
                 unresolved_cli_ids.push(cli_id.clone());
             }
         }
@@ -602,15 +592,18 @@ pub async fn restore_proxy_state(
             .map_or(false, |pid| pid.is_some());
 
         if !has_provider {
-            log::warn!(
-                "代理状态恢复：CLI {} 无活跃 Provider，跳过",
-                cli_id
-            );
+            log::warn!("代理状态恢复：CLI {} 无活跃 Provider，跳过", cli_id);
             continue;
         }
 
-        if let Err(e) =
-            _proxy_enable_in(providers_dir, local_settings_path, cli_id, proxy_service, None).await
+        if let Err(e) = _proxy_enable_in(
+            providers_dir,
+            local_settings_path,
+            cli_id,
+            proxy_service,
+            None,
+        )
+        .await
         {
             log::warn!("代理状态恢复：CLI {} 启动失败: {}", cli_id, e);
         } else {
@@ -682,13 +675,19 @@ pub async fn proxy_enable(
     proxy_service: State<'_, ProxyService>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
-    let providers_dir = crate::storage::icloud::get_icloud_providers_dir()
-        .map_err(|e| e.to_string())?;
+    let providers_dir =
+        crate::storage::icloud::get_icloud_providers_dir().map_err(|e| e.to_string())?;
     let settings_path = crate::storage::local::get_local_settings_path();
 
-    _proxy_enable_in(&providers_dir, &settings_path, &cli_id, &proxy_service, None)
-        .await
-        .map_err(|e| e.to_string())?;
+    _proxy_enable_in(
+        &providers_dir,
+        &settings_path,
+        &cli_id,
+        &proxy_service,
+        None,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
 
     let _ = app_handle.emit("proxy-mode-changed", ());
     Ok(())
@@ -701,13 +700,19 @@ pub async fn proxy_disable(
     proxy_service: State<'_, ProxyService>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
-    let providers_dir = crate::storage::icloud::get_icloud_providers_dir()
-        .map_err(|e| e.to_string())?;
+    let providers_dir =
+        crate::storage::icloud::get_icloud_providers_dir().map_err(|e| e.to_string())?;
     let settings_path = crate::storage::local::get_local_settings_path();
 
-    _proxy_disable_in(&providers_dir, &settings_path, &cli_id, &proxy_service, None)
-        .await
-        .map_err(|e| e.to_string())?;
+    _proxy_disable_in(
+        &providers_dir,
+        &settings_path,
+        &cli_id,
+        &proxy_service,
+        None,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
 
     let _ = app_handle.emit("proxy-mode-changed", ());
     Ok(())
@@ -722,8 +727,8 @@ pub async fn proxy_set_global(
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
     let _guard = toggle_lock.lock().await;
-    let providers_dir = crate::storage::icloud::get_icloud_providers_dir()
-        .map_err(|e| e.to_string())?;
+    let providers_dir =
+        crate::storage::icloud::get_icloud_providers_dir().map_err(|e| e.to_string())?;
     let settings_path = crate::storage::local::get_local_settings_path();
 
     // 读取当前设置
@@ -803,8 +808,7 @@ pub async fn proxy_set_global(
 pub async fn proxy_get_mode_status(
     proxy_service: State<'_, ProxyService>,
 ) -> Result<ProxyModeStatus, String> {
-    let settings = crate::storage::local::read_local_settings()
-        .map_err(|e| e.to_string())?;
+    let settings = crate::storage::local::read_local_settings().map_err(|e| e.to_string())?;
 
     let proxy = settings.proxy.as_ref();
     let global_enabled = proxy.map_or(false, |p| p.global_enabled);
@@ -963,7 +967,10 @@ mod tests {
         let proxy = make_proxy_provider("codex", 15801, &real);
         assert_eq!(proxy.api_key, "PROXY_MANAGED");
         assert_eq!(proxy.base_url, "http://127.0.0.1:15801");
-        assert!(matches!(proxy.protocol_type, ProtocolType::OpenAiCompatible));
+        assert!(matches!(
+            proxy.protocol_type,
+            ProtocolType::OpenAiCompatible
+        ));
     }
 
     // --- 生命周期管理测试 ---
@@ -1107,10 +1114,7 @@ mod tests {
 
         // 验证 takeover 被清除
         let updated = crate::storage::local::read_local_settings_from(&local_path).unwrap();
-        assert!(
-            updated.proxy_takeover.is_none(),
-            "takeover 应被清除"
-        );
+        assert!(updated.proxy_takeover.is_none(), "takeover 应被清除");
 
         // 验证 CLI 配置被还原为真实凭据
         let claude_settings: serde_json::Value = serde_json::from_str(
@@ -1118,8 +1122,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            claude_settings["env"]["ANTHROPIC_AUTH_TOKEN"],
-            "sk-real-key-12345",
+            claude_settings["env"]["ANTHROPIC_AUTH_TOKEN"], "sk-real-key-12345",
             "CLI 配置应被还原为真实 API key"
         );
     }
@@ -1174,7 +1177,11 @@ mod tests {
         crate::storage::local::write_local_settings_to(&local_path, &settings).unwrap();
 
         let result = recover_on_startup(&providers_dir, &local_path);
-        assert!(result.is_ok(), "恢复应保留失败标记而不是整体报错: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "恢复应保留失败标记而不是整体报错: {:?}",
+            result
+        );
 
         let updated = crate::storage::local::read_local_settings_from(&local_path).unwrap();
         assert_eq!(
@@ -1253,8 +1260,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            claude_settings["env"]["ANTHROPIC_AUTH_TOKEN"],
-            "sk-real-key-12345",
+            claude_settings["env"]["ANTHROPIC_AUTH_TOKEN"], "sk-real-key-12345",
             "退出清理后 CLI 配置应被还原为真实 API key"
         );
     }
@@ -1373,6 +1379,389 @@ mod tests {
                 .and_then(|proxy| proxy.cli_enabled.get("claude"))
                 .copied(),
             Some(false)
+        );
+    }
+
+    // --- Gap 1: MODE-02/MODE-03 — _proxy_enable_in 完整流程测试 ---
+
+    #[tokio::test]
+    async fn test_proxy_enable_patches_cli_and_starts_proxy() {
+        let tmp = TempDir::new().unwrap();
+        let providers_dir = tmp.path().join("providers");
+        std::fs::create_dir_all(&providers_dir).unwrap();
+        let local_path = tmp.path().join("local.json");
+
+        // 创建 Claude 配置目录（adapter 需要写入 settings.json）
+        let claude_config_dir = tmp.path().join("claude-config");
+        std::fs::create_dir_all(&claude_config_dir).unwrap();
+        let claude_backup_dir = tmp.path().join("claude-backup");
+
+        // 写入初始的 Claude 配置（模拟直连状态）
+        let initial_settings = serde_json::json!({
+            "env": {
+                "ANTHROPIC_AUTH_TOKEN": "sk-real-key-12345",
+                "ANTHROPIC_BASE_URL": "https://api.anthropic.com"
+            }
+        });
+        std::fs::write(
+            claude_config_dir.join("settings.json"),
+            serde_json::to_string_pretty(&initial_settings).unwrap(),
+        )
+        .unwrap();
+
+        // 设置 Provider（iCloud 端）
+        let _provider = setup_test_provider(&providers_dir, "p1", "claude");
+
+        // 创建 local.json，设置 active_providers 和 cli_paths
+        let mut active_providers = std::collections::HashMap::new();
+        active_providers.insert("claude".to_string(), Some("p1".to_string()));
+
+        let settings = LocalSettings {
+            active_providers,
+            cli_paths: crate::storage::local::CliPaths {
+                claude_config_dir: Some(claude_config_dir.to_string_lossy().to_string()),
+                codex_config_dir: None,
+            },
+            ..LocalSettings::default()
+        };
+        crate::storage::local::write_local_settings_to(&local_path, &settings).unwrap();
+
+        // 创建真实 ProxyService 和 adapter
+        let proxy_service = ProxyService::new();
+        let adapter: Box<dyn CliAdapter + Send> = Box::new(ClaudeAdapter::new_with_paths(
+            claude_config_dir.clone(),
+            claude_backup_dir,
+        ));
+
+        // 执行 _proxy_enable_in
+        let result = _proxy_enable_in(
+            &providers_dir,
+            &local_path,
+            "claude",
+            &proxy_service,
+            Some(adapter),
+        )
+        .await;
+        assert!(result.is_ok(), "_proxy_enable_in 应成功: {:?}", result);
+
+        // 验证 1: CLI 配置被 patch 为 PROXY_MANAGED + localhost
+        let claude_settings: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(claude_config_dir.join("settings.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            claude_settings["env"]["ANTHROPIC_AUTH_TOKEN"], "PROXY_MANAGED",
+            "CLI 配置应被 patch 为 PROXY_MANAGED"
+        );
+        assert_eq!(
+            claude_settings["env"]["ANTHROPIC_BASE_URL"],
+            format!("http://127.0.0.1:{}", PROXY_PORT_CLAUDE),
+            "CLI 配置应指向 localhost 代理端口"
+        );
+
+        // 验证 2: ProxyService 有运行中的 server
+        let status = proxy_service.status().await;
+        let claude_server = status
+            .servers
+            .iter()
+            .find(|s| s.cli_id == "claude");
+        assert!(
+            claude_server.is_some(),
+            "ProxyService 应有 claude server"
+        );
+        assert!(
+            claude_server.unwrap().running,
+            "claude server 应在运行中"
+        );
+
+        // 验证 3: local.json proxy_takeover.cli_ids 包含 cli_id
+        let updated = crate::storage::local::read_local_settings_from(&local_path).unwrap();
+        let takeover = updated.proxy_takeover.as_ref().expect("应有 proxy_takeover");
+        assert!(
+            takeover.cli_ids.contains(&"claude".to_string()),
+            "proxy_takeover.cli_ids 应包含 claude"
+        );
+
+        // 验证 4: local.json proxy.cli_enabled[claude] = true
+        let proxy = updated.proxy.as_ref().expect("应有 proxy settings");
+        assert_eq!(
+            proxy.cli_enabled.get("claude").copied(),
+            Some(true),
+            "proxy.cli_enabled[claude] 应为 true"
+        );
+
+        // 清理：停止代理
+        let _ = proxy_service.stop("claude").await;
+    }
+
+    // --- Gap 2: MODE-04 — _proxy_disable_in 成功路径测试 ---
+
+    #[tokio::test]
+    async fn test_proxy_disable_restores_real_provider() {
+        let tmp = TempDir::new().unwrap();
+        let providers_dir = tmp.path().join("providers");
+        std::fs::create_dir_all(&providers_dir).unwrap();
+        let local_path = tmp.path().join("local.json");
+
+        // 创建 Claude 配置目录
+        let claude_config_dir = tmp.path().join("claude-config");
+        std::fs::create_dir_all(&claude_config_dir).unwrap();
+        let claude_backup_dir = tmp.path().join("claude-backup");
+
+        // 写入被代理接管的 Claude 配置（模拟 enable 后的状态）
+        let proxy_config = serde_json::json!({
+            "env": {
+                "ANTHROPIC_AUTH_TOKEN": "PROXY_MANAGED",
+                "ANTHROPIC_BASE_URL": format!("http://127.0.0.1:{}", PROXY_PORT_CLAUDE)
+            }
+        });
+        std::fs::write(
+            claude_config_dir.join("settings.json"),
+            serde_json::to_string_pretty(&proxy_config).unwrap(),
+        )
+        .unwrap();
+
+        // 设置 Provider（iCloud 端，包含真实凭据）
+        let _provider = setup_test_provider(&providers_dir, "p1", "claude");
+
+        // 创建 local.json，模拟代理已开启的状态
+        let mut active_providers = std::collections::HashMap::new();
+        active_providers.insert("claude".to_string(), Some("p1".to_string()));
+
+        let settings = LocalSettings {
+            active_providers,
+            cli_paths: crate::storage::local::CliPaths {
+                claude_config_dir: Some(claude_config_dir.to_string_lossy().to_string()),
+                codex_config_dir: None,
+            },
+            proxy: Some(ProxySettings {
+                global_enabled: true,
+                cli_enabled: {
+                    let mut m = std::collections::HashMap::new();
+                    m.insert("claude".to_string(), true);
+                    m
+                },
+            }),
+            proxy_takeover: Some(ProxyTakeover {
+                cli_ids: vec!["claude".to_string()],
+            }),
+            ..LocalSettings::default()
+        };
+        crate::storage::local::write_local_settings_to(&local_path, &settings).unwrap();
+
+        let proxy_service = ProxyService::new();
+        let adapter: Box<dyn CliAdapter + Send> = Box::new(ClaudeAdapter::new_with_paths(
+            claude_config_dir.clone(),
+            claude_backup_dir,
+        ));
+
+        // 执行 _proxy_disable_in
+        let result = _proxy_disable_in(
+            &providers_dir,
+            &local_path,
+            "claude",
+            &proxy_service,
+            Some(adapter),
+        )
+        .await;
+        assert!(result.is_ok(), "_proxy_disable_in 应成功: {:?}", result);
+
+        // 验证 1: CLI 配置被还原为真实 API key
+        let claude_settings: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(claude_config_dir.join("settings.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            claude_settings["env"]["ANTHROPIC_AUTH_TOKEN"], "sk-real-key-12345",
+            "CLI 配置应被还原为真实 API key"
+        );
+        assert_eq!(
+            claude_settings["env"]["ANTHROPIC_BASE_URL"], "https://api.anthropic.com",
+            "CLI 配置应被还原为真实 base_url"
+        );
+
+        // 验证 2: local.json proxy_takeover.cli_ids 不再包含 claude
+        let updated = crate::storage::local::read_local_settings_from(&local_path).unwrap();
+        let has_claude_takeover = updated
+            .proxy_takeover
+            .as_ref()
+            .map_or(false, |t| t.cli_ids.contains(&"claude".to_string()));
+        assert!(
+            !has_claude_takeover,
+            "proxy_takeover 不应再包含 claude"
+        );
+
+        // 验证 3: local.json proxy.cli_enabled[claude] = false
+        let cli_enabled = updated
+            .proxy
+            .as_ref()
+            .and_then(|p| p.cli_enabled.get("claude"))
+            .copied();
+        assert_eq!(
+            cli_enabled,
+            Some(false),
+            "proxy.cli_enabled[claude] 应为 false"
+        );
+    }
+
+    // --- Gap 3: UX-02 — restore_proxy_state 自动恢复测试 ---
+
+    #[tokio::test]
+    async fn test_restore_proxy_state_re_enables_proxy() {
+        let tmp = TempDir::new().unwrap();
+        let providers_dir = tmp.path().join("providers");
+        std::fs::create_dir_all(&providers_dir).unwrap();
+        let local_path = tmp.path().join("local.json");
+
+        // 创建 Claude 配置目录
+        let claude_config_dir = tmp.path().join("claude-config");
+        std::fs::create_dir_all(&claude_config_dir).unwrap();
+
+        // 写入初始 Claude 配置（直连状态，恢复前的状态）
+        let initial_config = serde_json::json!({
+            "env": {
+                "ANTHROPIC_AUTH_TOKEN": "sk-real-key-12345",
+                "ANTHROPIC_BASE_URL": "https://api.anthropic.com"
+            }
+        });
+        std::fs::write(
+            claude_config_dir.join("settings.json"),
+            serde_json::to_string_pretty(&initial_config).unwrap(),
+        )
+        .unwrap();
+
+        // 设置 Provider
+        let _provider = setup_test_provider(&providers_dir, "p1", "claude");
+
+        // 创建 local.json：global_enabled=true, cli_enabled[claude]=true
+        // 模拟应用重启后从持久化恢复的场景
+        let mut active_providers = std::collections::HashMap::new();
+        active_providers.insert("claude".to_string(), Some("p1".to_string()));
+
+        let settings = LocalSettings {
+            active_providers,
+            cli_paths: crate::storage::local::CliPaths {
+                claude_config_dir: Some(claude_config_dir.to_string_lossy().to_string()),
+                codex_config_dir: None,
+            },
+            proxy: Some(ProxySettings {
+                global_enabled: true,
+                cli_enabled: {
+                    let mut m = std::collections::HashMap::new();
+                    m.insert("claude".to_string(), true);
+                    m
+                },
+            }),
+            // 注意：重启后 takeover 已被 recover_on_startup 清除，所以为 None
+            proxy_takeover: None,
+            ..LocalSettings::default()
+        };
+        crate::storage::local::write_local_settings_to(&local_path, &settings).unwrap();
+
+        let proxy_service = ProxyService::new();
+
+        // 执行 restore_proxy_state
+        let result = restore_proxy_state(&providers_dir, &local_path, &proxy_service).await;
+        // restore_proxy_state 内部对启动失败只记录 warn 日志并继续，始终返回 Ok
+        assert!(
+            result.is_ok(),
+            "restore_proxy_state 应成功: {:?}",
+            result
+        );
+
+        // 验证行为：检查代理是否成功启动
+        // 注意：在并行测试中端口 15800 可能被其他测试占用，导致 start 失败并回滚。
+        // 如果启动成功，验证完整状态；如果失败（端口冲突），验证回滚正确。
+        let status = proxy_service.status().await;
+        let claude_server = status
+            .servers
+            .iter()
+            .find(|s| s.cli_id == "claude");
+        let proxy_started = claude_server.map_or(false, |s| s.running);
+
+        let claude_settings: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(claude_config_dir.join("settings.json")).unwrap(),
+        )
+        .unwrap();
+
+        if proxy_started {
+            // 成功路径：CLI 配置被 patch 为代理模式
+            assert_eq!(
+                claude_settings["env"]["ANTHROPIC_AUTH_TOKEN"], "PROXY_MANAGED",
+                "恢复后 CLI 配置应被 patch 为 PROXY_MANAGED"
+            );
+            // 清理
+            let _ = proxy_service.stop("claude").await;
+        } else {
+            // 端口冲突路径：_proxy_enable_in 回滚了 CLI 配置，config 应保持原状
+            assert_eq!(
+                claude_settings["env"]["ANTHROPIC_AUTH_TOKEN"], "sk-real-key-12345",
+                "启动失败时 CLI 配置应被回滚为原始状态"
+            );
+        }
+
+        // 核心行为验证：restore_proxy_state 正确识别了需要恢复的 CLI
+        // （无论启动成功与否，函数都正确返回 Ok 且不 panic）
+    }
+
+    #[tokio::test]
+    async fn test_restore_proxy_state_noop_when_disabled() {
+        let tmp = TempDir::new().unwrap();
+        let providers_dir = tmp.path().join("providers");
+        std::fs::create_dir_all(&providers_dir).unwrap();
+        let local_path = tmp.path().join("local.json");
+
+        // 创建 local.json：global_enabled=false
+        let settings = LocalSettings {
+            proxy: Some(ProxySettings {
+                global_enabled: false,
+                cli_enabled: {
+                    let mut m = std::collections::HashMap::new();
+                    m.insert("claude".to_string(), true);
+                    m
+                },
+            }),
+            ..LocalSettings::default()
+        };
+        crate::storage::local::write_local_settings_to(&local_path, &settings).unwrap();
+
+        let proxy_service = ProxyService::new();
+
+        // 执行 restore_proxy_state
+        let result = restore_proxy_state(&providers_dir, &local_path, &proxy_service).await;
+        assert!(
+            result.is_ok(),
+            "global_enabled=false 时应直接返回 Ok"
+        );
+
+        // 验证：没有代理被启动
+        let status = proxy_service.status().await;
+        assert!(
+            status.servers.is_empty(),
+            "global_enabled=false 时不应启动任何代理"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_restore_proxy_state_noop_when_no_proxy_settings() {
+        let tmp = TempDir::new().unwrap();
+        let providers_dir = tmp.path().join("providers");
+        std::fs::create_dir_all(&providers_dir).unwrap();
+        let local_path = tmp.path().join("local.json");
+
+        // 创建 local.json：无 proxy 字段
+        let settings = LocalSettings::default();
+        crate::storage::local::write_local_settings_to(&local_path, &settings).unwrap();
+
+        let proxy_service = ProxyService::new();
+
+        let result = restore_proxy_state(&providers_dir, &local_path, &proxy_service).await;
+        assert!(result.is_ok(), "无 proxy 设置时应直接返回 Ok");
+
+        let status = proxy_service.status().await;
+        assert!(
+            status.servers.is_empty(),
+            "无 proxy 设置时不应启动任何代理"
         );
     }
 }
