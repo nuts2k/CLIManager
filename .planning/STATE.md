@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Local Proxy
 status: executing
-stopped_at: Phase 10 context gathered
-last_updated: "2026-03-13T15:54:27.363Z"
-last_activity: 2026-03-13 — Phase 9 plan 02 complete
+stopped_at: Completed 10-01-PLAN.md
+last_updated: "2026-03-14T00:25:28.000Z"
+last_activity: 2026-03-14 — Phase 10 plan 01 complete
 progress:
   total_phases: 3
   completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
-  percent: 67
+  total_plans: 6
+  completed_plans: 5
+  percent: 83
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-13)
 
 **Core value:** 切换 Provider 时只做 surgical patch（精确修改凭据和模型字段），绝不重写配置文件的其他内容
-**Current focus:** Phase 9 complete - 准备 Phase 10
+**Current focus:** Phase 10 plan 01 complete - 后端代理联动已完成
 
 ## Current Position
 
-Phase: 9 of 10 (模式切换与持久化) - COMPLETE
-Plan: 2 of 2 in current phase (phase complete)
+Phase: 10 of 10 (实时切换与 UI 集成) - IN PROGRESS
+Plan: 1 of 2 in current phase
 Status: Executing
-Last activity: 2026-03-13 — Phase 9 plan 02 complete
+Last activity: 2026-03-14 — Phase 10 plan 01 complete
 
-Progress: [██████░░░░] 67% (v2.0 milestone: 2/3 phases)
+Progress: [████████░░] 83% (v2.0 milestone: 2/3 phases, plan 5/6)
 
 ## Performance Metrics
 
@@ -45,7 +45,7 @@ Progress: [██████░░░░] 67% (v2.0 milestone: 2/3 phases)
 |-------|-------|-------|----------|
 | 8. 代理核心 | 2/2 | 14min | 7min |
 | 9. 模式切换与持久化 | 2/2 | 13min | 6.5min |
-| 10. 实时切换与 UI 集成 | - | - | - |
+| 10. 实时切换与 UI 集成 | 1/2 | 4min | 4min |
 
 ## Accumulated Context
 
@@ -72,6 +72,10 @@ Recent decisions affecting current work:
 - [09-02]: 代理停止 stop_all 通过 tauri::async_runtime::block_on 在退出回调中异步执行
 - [09-02]: 恢复顺序：先崩溃恢复（同步还原 takeover）→ 再 spawn 异步恢复代理状态
 - [09-02]: restore_proxy_state 通过 tauri::async_runtime::spawn 异步执行，不阻塞应用启动
+- [10-01]: watcher 代理联动使用 spawn async 模式，与 Phase 9 restore_proxy_state 一致
+- [10-01]: update_provider 代理检查在 _update_provider_in 之后（先保存文件再更新上游）
+- [10-01]: delete_provider 代理检查在 _delete_provider_in 之前（先关闭代理再删除文件）
+- [10-01]: 代理联动失败仅 log 不阻塞正常流程
 
 ### Pending Todos
 
@@ -86,6 +90,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-13T15:54:27.360Z
-Stopped at: Phase 10 context gathered
-Resume file: .planning/phases/10-live-switching-ui/10-CONTEXT.md
+Last session: 2026-03-14T00:25:28.000Z
+Stopped at: Completed 10-01-PLAN.md
+Resume file: .planning/phases/10-live-switching-ui/10-01-SUMMARY.md

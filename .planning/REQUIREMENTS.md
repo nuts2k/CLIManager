@@ -26,9 +26,9 @@ Requirements for Local Proxy milestone. Each maps to roadmap phases.
 
 ### 实时切换 (Live Switching)
 
-- [ ] **LIVE-01**: 代理模式下切换 Provider，只更新代理内存中的上游目标，CLI 无需重启、无感知中断
-- [ ] **LIVE-02**: 代理模式下 iCloud 同步的 Provider 变更（内容修改）自动更新代理内存
-- [ ] **LIVE-03**: 代理模式下 Provider CRUD 操作自动更新代理内存
+- [x] **LIVE-01**: 代理模式下切换 Provider，只更新代理内存中的上游目标，CLI 无需重启、无感知中断
+- [x] **LIVE-02**: 代理模式下 iCloud 同步的 Provider 变更（内容修改）自动更新代理内存
+- [x] **LIVE-03**: 代理模式下 Provider CRUD 操作自动更新代理内存
 - [x] **LIVE-04**: 代理设置（开关状态、端口）存储在本地设备层（不通过 iCloud 同步）
 
 ### 体验 (User Experience)
@@ -96,9 +96,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | MODE-04 | Phase 9 | Complete |
 | MODE-05 | Phase 9 | Complete |
 | MODE-06 | Phase 9 | Complete |
-| LIVE-01 | Phase 10 | Pending |
-| LIVE-02 | Phase 10 | Pending |
-| LIVE-03 | Phase 10 | Pending |
+| LIVE-01 | Phase 10 | Complete |
+| LIVE-02 | Phase 10 | Complete |
+| LIVE-03 | Phase 10 | Complete |
 | LIVE-04 | Phase 9 | Complete |
 | UX-01 | Phase 10 | Pending |
 | UX-02 | Phase 9 | Complete |
