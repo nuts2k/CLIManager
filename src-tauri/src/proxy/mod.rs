@@ -202,12 +202,23 @@ mod tests {
         reqwest::Client::builder().no_proxy().build().unwrap()
     }
 
-    /// 辅助函数：创建测试用 UpstreamTarget
+    /// 辅助函数：创建测试用 Anthropic UpstreamTarget
     fn make_upstream(base_url: &str) -> UpstreamTarget {
         UpstreamTarget {
             api_key: "sk-test".to_string(),
             base_url: base_url.to_string(),
             protocol_type: ProtocolType::Anthropic,
+            upstream_model: None,
+            upstream_model_map: None,
+        }
+    }
+
+    /// 辅助函数：创建测试用 OpenAiChatCompletions UpstreamTarget
+    fn make_upstream_openai(base_url: &str) -> UpstreamTarget {
+        UpstreamTarget {
+            api_key: "sk-test".to_string(),
+            base_url: base_url.to_string(),
+            protocol_type: ProtocolType::OpenAiChatCompletions,
             upstream_model: None,
             upstream_model_map: None,
         }
@@ -488,6 +499,248 @@ mod tests {
             ProxyError::NotRunning => {}
             other => panic!("期望 NotRunning，得到 {:?}", other),
         }
+    }
+
+    // ── OpenAiChatCompletions 协议路由集成测试 ──
+
+    #[tokio::test]
+    async fn test_openai_compatible_non_streaming_roundtrip() {
+        use axum::routing::post;
+
+        // mock 上游返回 OpenAI Chat Completions 非流式响应格式
+        let mock_resp = json!({
+            "id": "chatcmpl-test",
+            "object": "chat.completion",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "Hello from OpenAI!"},
+                "finish_reason": "stop"
+            }],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+        });
+
+        let mock_app = Router::new().route(
+            "/v1/chat/completions",
+            post(move || {
+                let body = mock_resp.clone();
+                async move { axum::Json(body) }
+            }),
+        );
+        let (upstream_port, shutdown_tx) = start_mock_upstream_router(mock_app).await;
+
+        let service = ProxyService::new();
+        let base_url = format!("http://127.0.0.1:{}", upstream_port);
+        service
+            .start("claude", 0, make_upstream_openai(&base_url))
+            .await
+            .unwrap();
+
+        let proxy_port = service
+            .status()
+            .await
+            .servers
+            .into_iter()
+            .find(|s| s.cli_id == "claude")
+            .unwrap()
+            .port;
+
+        // 发送 Anthropic 格式请求
+        let anthropic_req = json!({
+            "model": "claude-3-5-sonnet-20241022",
+            "max_tokens": 100,
+            "messages": [{"role": "user", "content": "Hello"}]
+        });
+
+        let resp: Value = test_client()
+            .post(format!("http://127.0.0.1:{}/v1/messages", proxy_port))
+            .header("x-api-key", "PROXY_MANAGED")
+            .header("content-type", "application/json")
+            .json(&anthropic_req)
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+
+        // 验证响应为 Anthropic 格式
+        assert_eq!(resp["content"][0]["type"], "text", "响应应包含 text content block");
+        assert_eq!(resp["content"][0]["text"], "Hello from OpenAI!", "文本内容应匹配");
+        assert_eq!(resp["stop_reason"], "end_turn", "stop_reason 应为 end_turn");
+        assert_eq!(resp["usage"]["input_tokens"], 10, "input_tokens 应匹配");
+
+        // 清理
+        service.stop("claude").await.unwrap();
+        let _ = shutdown_tx.send(());
+    }
+
+    #[tokio::test]
+    async fn test_openai_compatible_streaming_roundtrip() {
+        use axum::routing::post;
+        use std::convert::Infallible;
+
+        // mock 上游返回 OpenAI SSE 流式响应
+        let sse_body = concat!(
+            "data: {\"id\":\"chatcmpl-test\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Hi\"},\"finish_reason\":null}]}\n\n",
+            "data: {\"id\":\"chatcmpl-test\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" there\"},\"finish_reason\":null}]}\n\n",
+            "data: {\"id\":\"chatcmpl-test\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":2,\"total_tokens\":7}}\n\n",
+            "data: [DONE]\n\n"
+        );
+
+        let mock_app = Router::new().route(
+            "/v1/chat/completions",
+            post(move || {
+                let body = sse_body;
+                async move {
+                    let stream = futures::stream::once(async move {
+                        Ok::<Bytes, Infallible>(Bytes::from(body))
+                    });
+                    axum::response::Response::builder()
+                        .status(200)
+                        .header("content-type", "text/event-stream")
+                        .body(axum::body::Body::from_stream(stream))
+                        .unwrap()
+                }
+            }),
+        );
+        let (upstream_port, shutdown_tx) = start_mock_upstream_router(mock_app).await;
+
+        let service = ProxyService::new();
+        let base_url = format!("http://127.0.0.1:{}", upstream_port);
+        service
+            .start("claude", 0, make_upstream_openai(&base_url))
+            .await
+            .unwrap();
+
+        let proxy_port = service
+            .status()
+            .await
+            .servers
+            .into_iter()
+            .find(|s| s.cli_id == "claude")
+            .unwrap()
+            .port;
+
+        // 发送 Anthropic 格式的流式请求
+        let anthropic_req = json!({
+            "model": "claude-3-5-sonnet-20241022",
+            "max_tokens": 100,
+            "stream": true,
+            "messages": [{"role": "user", "content": "Hello"}]
+        });
+
+        let resp_text = test_client()
+            .post(format!("http://127.0.0.1:{}/v1/messages", proxy_port))
+            .header("x-api-key", "PROXY_MANAGED")
+            .header("content-type", "application/json")
+            .json(&anthropic_req)
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+
+        // 验证响应包含 Anthropic SSE 事件关键标记
+        assert!(resp_text.contains("event: message_start"), "应包含 message_start 事件");
+        assert!(resp_text.contains("event: content_block_start"), "应包含 content_block_start 事件");
+        assert!(resp_text.contains("event: content_block_delta"), "应包含 content_block_delta 事件");
+        assert!(resp_text.contains("event: message_stop"), "应包含 message_stop 事件");
+        assert!(resp_text.contains("Hi"), "应包含第一段文本 Hi");
+        assert!(resp_text.contains(" there"), "应包含第二段文本 there");
+
+        // 清理
+        service.stop("claude").await.unwrap();
+        let _ = shutdown_tx.send(());
+    }
+
+    #[tokio::test]
+    async fn test_openai_compatible_model_mapping_applied() {
+        use axum::routing::post;
+        use std::collections::HashMap;
+
+        // 共享状态：capture 接收到的请求 body
+        let captured_body: Arc<TokioMutex<Option<Value>>> = Arc::new(TokioMutex::new(None));
+        let captured_body_clone = captured_body.clone();
+
+        // mock 上游返回最简单的 OpenAI 响应，同时 capture 请求 body
+        let mock_resp = json!({
+            "id": "chatcmpl-mapping-test",
+            "object": "chat.completion",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "Mapped!"},
+                "finish_reason": "stop"
+            }],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6}
+        });
+
+        let mock_app = Router::new().route(
+            "/v1/chat/completions",
+            post(move |body: axum::extract::Json<Value>| {
+                let captured = captured_body_clone.clone();
+                let resp = mock_resp.clone();
+                async move {
+                    *captured.lock().await = Some(body.0);
+                    axum::Json(resp)
+                }
+            }),
+        );
+        let (upstream_port, shutdown_tx) = start_mock_upstream_router(mock_app).await;
+
+        // 构造带模型映射的 UpstreamTarget
+        let mut model_map = HashMap::new();
+        model_map.insert(
+            "claude-3-5-sonnet-20241022".to_string(),
+            "gpt-4o".to_string(),
+        );
+        let upstream = UpstreamTarget {
+            api_key: "sk-test".to_string(),
+            base_url: format!("http://127.0.0.1:{}", upstream_port),
+            protocol_type: ProtocolType::OpenAiChatCompletions,
+            upstream_model: None,
+            upstream_model_map: Some(model_map),
+        };
+
+        let service = ProxyService::new();
+        service.start("claude", 0, upstream).await.unwrap();
+
+        let proxy_port = service
+            .status()
+            .await
+            .servers
+            .into_iter()
+            .find(|s| s.cli_id == "claude")
+            .unwrap()
+            .port;
+
+        // 发送 Anthropic 格式请求（model = claude-3-5-sonnet-20241022）
+        let anthropic_req = json!({
+            "model": "claude-3-5-sonnet-20241022",
+            "max_tokens": 100,
+            "messages": [{"role": "user", "content": "Hello"}]
+        });
+
+        let _ = test_client()
+            .post(format!("http://127.0.0.1:{}/v1/messages", proxy_port))
+            .header("x-api-key", "PROXY_MANAGED")
+            .header("content-type", "application/json")
+            .json(&anthropic_req)
+            .send()
+            .await
+            .unwrap();
+
+        // 验证 mock 上游接收到的请求中 model 字段已被映射为 "gpt-4o"
+        let body = captured_body.lock().await;
+        let received_body = body.as_ref().expect("mock 上游应已收到请求");
+        assert_eq!(
+            received_body["model"], "gpt-4o",
+            "模型名应从 claude-3-5-sonnet-20241022 映射为 gpt-4o"
+        );
+
+        // 清理
+        service.stop("claude").await.unwrap();
+        let _ = shutdown_tx.send(());
     }
 
     #[tokio::test]
