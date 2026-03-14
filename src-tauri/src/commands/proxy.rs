@@ -2,6 +2,7 @@ use std::path::Path;
 
 use serde::Serialize;
 use tauri::{Emitter, State};
+use tokio::sync::Mutex;
 
 use crate::adapter::CliAdapter;
 use crate::error::AppError;
@@ -50,6 +51,23 @@ type AdapterFactory = fn(
     &str,
     &crate::storage::local::LocalSettings,
 ) -> Result<Box<dyn CliAdapter>, AppError>;
+
+/// 串行化全局代理开关，避免多个请求交错修改持久化状态和运行态。
+pub struct ProxyGlobalToggleLock {
+    mutex: Mutex<()>,
+}
+
+impl ProxyGlobalToggleLock {
+    pub fn new() -> Self {
+        Self {
+            mutex: Mutex::new(()),
+        }
+    }
+
+    pub async fn lock(&self) -> tokio::sync::MutexGuard<'_, ()> {
+        self.mutex.lock().await
+    }
+}
 
 fn patch_cli_with_adapter(
     cli_id: &str,
@@ -700,8 +718,10 @@ pub async fn proxy_disable(
 pub async fn proxy_set_global(
     enabled: bool,
     proxy_service: State<'_, ProxyService>,
+    toggle_lock: State<'_, ProxyGlobalToggleLock>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
+    let _guard = toggle_lock.lock().await;
     let providers_dir = crate::storage::icloud::get_icloud_providers_dir()
         .map_err(|e| e.to_string())?;
     let settings_path = crate::storage::local::get_local_settings_path();

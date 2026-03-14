@@ -27,22 +27,31 @@ interface SettingsPageProps {
 export function SettingsPage({ onBack, onShowImport }: SettingsPageProps) {
   const { t } = useTranslation();
   const { settings, updateSettings } = useSettings();
-  const { proxyStatus } = useProxyStatus();
+  const { proxyStatus, refresh: refreshProxyStatus } = useProxyStatus();
 
   const currentLanguage = settings?.language ?? "zh";
 
   // 代理模式全局开关局部状态（用于乐观更新 + 失败回滚）
   const [proxyEnabled, setProxyEnabled] = useState(false);
+  const [isProxyTogglePending, setIsProxyTogglePending] = useState(false);
+  const proxyTogglePendingRef = useRef(false);
 
   // 当 proxyStatus 变化时同步 proxyEnabled
   useEffect(() => {
-    if (proxyStatus) {
+    if (proxyStatus && !proxyTogglePendingRef.current) {
       setProxyEnabled(proxyStatus.global_enabled);
     }
   }, [proxyStatus]);
 
   const handleProxyToggle = async (newValue: boolean) => {
+    if (proxyTogglePendingRef.current) {
+      return;
+    }
+
+    proxyTogglePendingRef.current = true;
+    setIsProxyTogglePending(true);
     const previousValue = proxyEnabled;
+
     // 乐观更新
     setProxyEnabled(newValue);
     try {
@@ -63,6 +72,10 @@ export function SettingsPage({ onBack, onShowImport }: SettingsPageProps) {
       } else {
         toast.error(t("proxy.enableFailed") + ": " + errorStr);
       }
+    } finally {
+      proxyTogglePendingRef.current = false;
+      setIsProxyTogglePending(false);
+      void refreshProxyStatus();
     }
   };
 
@@ -169,6 +182,7 @@ export function SettingsPage({ onBack, onShowImport }: SettingsPageProps) {
             </p>
             <Switch
               checked={proxyEnabled}
+              disabled={isProxyTogglePending}
               onCheckedChange={handleProxyToggle}
             />
           </div>

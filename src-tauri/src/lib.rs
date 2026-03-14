@@ -17,6 +17,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(watcher::SelfWriteTracker::new())
         .manage(proxy::ProxyService::new())
+        .manage(commands::proxy::ProxyGlobalToggleLock::new())
         .invoke_handler(tauri::generate_handler![
             commands::provider::list_providers,
             commands::provider::get_provider,

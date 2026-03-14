@@ -459,10 +459,6 @@ pub async fn delete_provider(
     let dir = crate::storage::icloud::get_icloud_providers_dir()?;
     let settings_path = crate::storage::local::get_local_settings_path();
 
-    // Record self-write before deletion so the file watcher ignores this change
-    let tracker = app_handle.state::<crate::watcher::SelfWriteTracker>();
-    tracker.record_write(dir.join(format!("{}.json", id)));
-
     // 代理模式联动：删除前检查是否有代理模式 CLI 正在使用该 Provider
     let settings = crate::storage::local::read_local_settings_from(&settings_path)?;
     let global_enabled = settings
@@ -475,7 +471,7 @@ pub async fn delete_provider(
                 let active_pid = settings.active_providers.get(cli_id);
                 if active_pid == Some(&Some(id.clone())) {
                     // 先关闭该 CLI 的代理模式（还原 CLI 配置、停止代理服务器、更新 local.json）
-                    if let Err(e) = crate::commands::proxy::_proxy_disable_in(
+                    crate::commands::proxy::_proxy_disable_in(
                         &dir,
                         &settings_path,
                         cli_id,
@@ -483,24 +479,24 @@ pub async fn delete_provider(
                         None,
                     )
                     .await
-                    {
+                    .map_err(|e| {
                         log::error!(
-                            "代理联动：delete_provider 关闭代理失败: cli_id={}, err={}",
+                            "代理联动：delete_provider 关闭代理失败，中止删除: cli_id={}, err={}",
                             cli_id,
                             e
                         );
-                    } else {
-                        log::info!(
-                            "代理联动：delete_provider 已关闭代理: cli_id={}",
-                            cli_id
-                        );
-                    }
-                    // 通知前端代理模式状态已变更
+                        e
+                    })?;
+                    log::info!("代理联动：delete_provider 已关闭代理: cli_id={}", cli_id);
                     app_handle.emit("proxy-mode-changed", ()).ok();
                 }
             }
         }
     }
+
+    // 仅在确认即将执行删除时记录 self-write，避免删除中止后误记 watcher 状态
+    let tracker = app_handle.state::<crate::watcher::SelfWriteTracker>();
+    tracker.record_write(dir.join(format!("{}.json", id)));
 
     _delete_provider_in(&dir, &settings_path, id, None)
 }
