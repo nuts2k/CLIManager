@@ -194,18 +194,12 @@ fn update_proxy_upstream_if_needed(app_handle: &AppHandle, changed_files: &[Stri
                 }
             };
 
-        let base_url = match crate::provider::extract_origin_base_url(&provider.base_url) {
-            Ok(url) => url,
-            Err(e) => {
-                log::error!("代理联动：解析 base_url 失败: cli_id={}, err={}", cli_id, e);
-                continue;
-            }
-        };
-
         let upstream = crate::proxy::UpstreamTarget {
             api_key: provider.api_key.clone(),
-            base_url,
+            base_url: provider.base_url.clone(),
             protocol_type: provider.protocol_type.clone(),
+            upstream_model: provider.upstream_model.clone(),
+            upstream_model_map: provider.upstream_model_map.clone(),
         };
 
         let cli_id_owned = cli_id.clone();

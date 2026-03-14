@@ -6,7 +6,7 @@ use tokio::sync::Mutex;
 
 use crate::adapter::CliAdapter;
 use crate::error::AppError;
-use crate::provider::{extract_origin_base_url, normalize_origin_base_url, ProtocolType, Provider};
+use crate::provider::{normalize_origin_base_url, ProtocolType, Provider};
 use crate::proxy::{proxy_port_for_cli, ProxyService, ProxyStatusInfo, UpstreamTarget};
 use crate::storage::local::{ProxySettings, ProxyTakeover};
 
@@ -37,14 +37,18 @@ fn build_upstream_target(
         api_key,
         base_url: normalized_base_url,
         protocol_type: pt,
+        upstream_model: None,
+        upstream_model_map: None,
     })
 }
 
 fn build_upstream_target_from_provider(provider: &Provider) -> Result<UpstreamTarget, AppError> {
     Ok(UpstreamTarget {
         api_key: provider.api_key.clone(),
-        base_url: extract_origin_base_url(&provider.base_url).map_err(AppError::Validation)?,
+        base_url: provider.base_url.clone(),
         protocol_type: provider.protocol_type.clone(),
+        upstream_model: provider.upstream_model.clone(),
+        upstream_model_map: provider.upstream_model_map.clone(),
     })
 }
 
@@ -895,7 +899,7 @@ mod tests {
     }
 
     #[test]
-    fn test_build_upstream_target_from_provider_strips_legacy_path() {
+    fn test_build_upstream_target_from_provider_preserves_base_url() {
         let provider = Provider {
             id: "p-legacy".to_string(),
             cli_id: "codex".to_string(),
@@ -914,7 +918,7 @@ mod tests {
         };
 
         let upstream = build_upstream_target_from_provider(&provider).unwrap();
-        assert_eq!(upstream.base_url, "https://api.openai.com");
+        assert_eq!(upstream.base_url, "https://api.openai.com/v1/chat/completions");
     }
 
     #[test]

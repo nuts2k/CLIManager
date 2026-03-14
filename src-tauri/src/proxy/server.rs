@@ -266,6 +266,8 @@ mod tests {
                 api_key: "sk-test".to_string(),
                 base_url: format!("http://127.0.0.1:{}", upstream_port),
                 protocol_type: ProtocolType::Anthropic,
+                upstream_model: None,
+                upstream_model_map: None,
             })
             .await;
         server.start().await.unwrap();
@@ -314,6 +316,8 @@ mod tests {
                 api_key: "sk-real-secret-key".to_string(),
                 base_url: format!("http://127.0.0.1:{}", upstream_port),
                 protocol_type: ProtocolType::Anthropic,
+                upstream_model: None,
+                upstream_model_map: None,
             })
             .await;
         server.start().await.unwrap();
@@ -375,6 +379,8 @@ mod tests {
                 api_key: "sk-test".to_string(),
                 base_url: format!("http://127.0.0.1:{}", upstream_port),
                 protocol_type: ProtocolType::Anthropic,
+                upstream_model: None,
+                upstream_model_map: None,
             })
             .await;
         server.start().await.unwrap();
@@ -423,6 +429,8 @@ mod tests {
                 api_key: "sk-test".to_string(),
                 base_url: format!("http://127.0.0.1:{}", dead_port),
                 protocol_type: ProtocolType::Anthropic,
+                upstream_model: None,
+                upstream_model_map: None,
             })
             .await;
         server.start().await.unwrap();

@@ -9,7 +9,7 @@ use crate::adapter::claude::ClaudeAdapter;
 use crate::adapter::codex::CodexAdapter;
 use crate::adapter::CliAdapter;
 use crate::error::AppError;
-use crate::provider::{extract_origin_base_url, normalize_origin_base_url, ProtocolType, Provider};
+use crate::provider::{normalize_origin_base_url, ProtocolType, Provider};
 use crate::storage::local::{read_local_settings, write_local_settings, LocalSettings};
 
 #[derive(Debug, Clone, Serialize)]
@@ -554,8 +554,10 @@ pub async fn update_provider(
     for cli_id in update_context.proxy_cli_ids {
         let upstream = crate::proxy::UpstreamTarget {
             api_key: result.api_key.clone(),
-            base_url: extract_origin_base_url(&result.base_url).map_err(AppError::Validation)?,
+            base_url: result.base_url.clone(),
             protocol_type: result.protocol_type.clone(),
+            upstream_model: result.upstream_model.clone(),
+            upstream_model_map: result.upstream_model_map.clone(),
         };
         if let Err(e) = proxy_service.update_upstream(&cli_id, upstream).await {
             log::error!(
@@ -635,8 +637,10 @@ pub(crate) async fn _set_active_provider_in_proxy_mode(
         let provider = crate::storage::icloud::get_provider_in(providers_dir, pid)?;
         Some(crate::proxy::UpstreamTarget {
             api_key: provider.api_key.clone(),
-            base_url: extract_origin_base_url(&provider.base_url).map_err(AppError::Validation)?,
+            base_url: provider.base_url.clone(),
             protocol_type: provider.protocol_type.clone(),
+            upstream_model: provider.upstream_model.clone(),
+            upstream_model_map: provider.upstream_model_map.clone(),
         })
     } else {
         None

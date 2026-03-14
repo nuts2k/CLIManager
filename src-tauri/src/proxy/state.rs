@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -9,6 +10,10 @@ pub struct UpstreamTarget {
     pub api_key: String,
     pub base_url: String,
     pub protocol_type: ProtocolType,
+    /// 上游模型名（Provider 配置的固定映射，优先级低于 upstream_model_map）
+    pub upstream_model: Option<String>,
+    /// 客户端模型名到上游模型名的映射表
+    pub upstream_model_map: Option<HashMap<String, String>>,
 }
 
 /// 代理共享状态：持有当前上游目标和 HTTP 客户端
@@ -51,6 +56,8 @@ mod tests {
             api_key: "sk-test-key".to_string(),
             base_url: "https://api.anthropic.com".to_string(),
             protocol_type: ProtocolType::Anthropic,
+            upstream_model: None,
+            upstream_model_map: None,
         }
     }
 
@@ -92,6 +99,8 @@ mod tests {
             api_key: "sk-new-key".to_string(),
             base_url: "https://api.openai.com".to_string(),
             protocol_type: ProtocolType::OpenAiChatCompletions,
+            upstream_model: None,
+            upstream_model_map: None,
         };
         state.update_upstream(new_target).await;
 
@@ -106,6 +115,8 @@ mod tests {
             api_key: "key-123".to_string(),
             base_url: "https://example.com".to_string(),
             protocol_type: ProtocolType::OpenAiChatCompletions,
+            upstream_model: None,
+            upstream_model_map: None,
         };
         assert_eq!(target.api_key, "key-123");
         assert_eq!(target.base_url, "https://example.com");

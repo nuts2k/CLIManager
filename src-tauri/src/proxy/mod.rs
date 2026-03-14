@@ -208,6 +208,8 @@ mod tests {
             api_key: "sk-test".to_string(),
             base_url: base_url.to_string(),
             protocol_type: ProtocolType::Anthropic,
+            upstream_model: None,
+            upstream_model_map: None,
         }
     }
 
