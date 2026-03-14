@@ -16,8 +16,8 @@ Requirements for Release Engineering milestone. Each maps to roadmap phases.
 ### Signing
 
 - [ ] **SIGN-01**: CI 构建时 macOS ad-hoc 代码签名（`APPLE_SIGNING_IDENTITY="-"`）
-- [ ] **SIGN-02**: 生成 updater Ed25519 签名密钥对并安全备份
-- [ ] **SIGN-03**: 私钥存储到 GitHub Secrets，公钥写入 tauri.conf.json
+- [x] **SIGN-02**: 生成 updater Ed25519 签名密钥对并安全备份
+- [x] **SIGN-03**: 私钥存储到 GitHub Secrets，公钥写入 tauri.conf.json
 
 ### Auto Update
 
@@ -28,7 +28,7 @@ Requirements for Release Engineering milestone. Each maps to roadmap phases.
 
 ### Release Tooling
 
-- [ ] **REL-01**: Cargo.toml 作为唯一版本来源，tauri.conf.json 省略 version 字段
+- [x] **REL-01**: Cargo.toml 作为唯一版本来源，tauri.conf.json 省略 version 字段
 - [ ] **REL-02**: 项目专用发版技能（非全局 `/release`），bump Cargo.toml → CHANGELOG → commit → tag → push
 - [ ] **REL-03**: GitHub Release Notes 包含 Gatekeeper 安装指引
 
