@@ -33,7 +33,7 @@ Requirements for Local Proxy milestone. Each maps to roadmap phases.
 
 ### 体验 (User Experience)
 
-- [ ] **UX-01**: 启动代理时检测端口占用，端口冲突给出清晰错误提示
+- [x] **UX-01**: 启动代理时检测端口占用，端口冲突给出清晰错误提示
 - [x] **UX-02**: 应用重启后自动恢复之前的代理开关状态
 - [x] **UX-03**: 代理启动后执行健康自检（GET /health），确认监听正常
 
