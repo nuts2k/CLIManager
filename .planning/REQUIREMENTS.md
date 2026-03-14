@@ -49,8 +49,8 @@ Requirements for v2.2 协议转换。让 Claude Code 通过代理模式使用 Op
 
 - [x] **RAPI-01**: Provider 可配置目标 API 格式（Chat Completions 或 Responses）
 - [x] **RAPI-02**: 选择 Responses 格式时，请求自动转换为 Responses API 格式
-- [ ] **RAPI-03**: Responses API 非流式响应正确转换回 Anthropic 格式
-- [ ] **RAPI-04**: Responses API 流式事件正确转换为 Anthropic SSE 格式
+- [x] **RAPI-03**: Responses API 非流式响应正确转换回 Anthropic 格式
+- [x] **RAPI-04**: Responses API 流式事件正确转换为 Anthropic SSE 格式
 
 ## Future Requirements
 
@@ -104,8 +104,8 @@ Requirements for v2.2 协议转换。让 Claude Code 通过代理模式使用 Op
 | MODL-03 | Phase 15 | Complete |
 | RAPI-01 | Phase 16 | Complete |
 | RAPI-02 | Phase 16 | Complete |
-| RAPI-03 | Phase 16 | Pending |
-| RAPI-04 | Phase 16 | Pending |
+| RAPI-03 | Phase 16 | Complete |
+| RAPI-04 | Phase 16 | Complete |
 | MODL-04 | Phase 16 | Complete |
 
 **Coverage:**

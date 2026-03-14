@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: 协议转换
 status: planning
-stopped_at: Completed 16-01-PLAN.md (anthropic_to_responses 纯函数)
-last_updated: "2026-03-14T15:36:38.190Z"
+stopped_at: Completed 16-responses-api-provider-ui/16-02-PLAN.md
+last_updated: "2026-03-14T15:38:33.689Z"
 last_activity: 2026-03-14 — v2.2 roadmap restructured (3 phases, 27 requirements, max parallelism)
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 10
-  completed_plans: 8
+  completed_plans: 9
   percent: 100
 ---
 
@@ -62,6 +62,8 @@ Progress: [██████████] 100% (Phase 14 完成)
 - [Phase 16]: ProtocolType 三变体 + 旧 open_ai_compatible 向前兼容映射 + 模型映射 Array/Record 双向转换
 - [Phase 16-01]: image block 转换为 {type:'input_image', image_url:'data:...'} 格式（符合 Responses API 规范）
 - [Phase 16-01]: 复用 super::request::clean_schema 避免重复实现
+- [Phase 16-responses-api-provider-ui]: Responses API 无 Deferred Start：output_item.added 携带完整 call_id+name，立即发 content_block_start
+- [Phase 16-responses-api-provider-ui]: responses_to_anthropic stop_reason 推断：遍历 output 数组 has_function_call 标志位，usage 字段直接透传（命名相同）
 
 ### Pending Todos
 
@@ -74,6 +76,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-14T15:36:38.188Z
-Stopped at: Completed 16-01-PLAN.md (anthropic_to_responses 纯函数)
+Last session: 2026-03-14T15:38:33.687Z
+Stopped at: Completed 16-responses-api-provider-ui/16-02-PLAN.md
 Resume file: None
