@@ -1,304 +1,338 @@
-# Technology Stack
+# Stack Research
 
-**Project:** CLIManager v2.0 Local Proxy
-**Researched:** 2026-03-13
+**Domain:** Release Engineering — CI/CD, code signing, auto-update for Tauri 2 macOS desktop app
+**Researched:** 2026-03-14
+**Confidence:** HIGH (核心版本号均经官方文档和 npm/crates.io 多源交叉验证)
 
 ## Scope
 
-本文档只覆盖 v2.0 本地代理功能所需的**增量**技术栈。现有 v1.1 技术栈（Tauri 2.10, React 19, Vite 7, shadcn/ui, Tailwind CSS v4, i18next, Rust 后端 serde/toml_edit/notify 等）已验证并上线，不在此重新评估。
+本文档只覆盖 v2.1 Release Engineering 所需的**增量**技术栈。现有已验证技术栈（Tauri 2.10, React 19, Vite 7, axum 0.8, shadcn/ui, Tailwind CSS v4, Rust 后端 serde/toml_edit/notify 等）不在本文件重新评估。
 
 ---
 
-## 核心发现：依赖复用率极高
+## 核心发现摘要
 
-Tauri 2 内部已经携带了构建 HTTP 代理所需的绝大部分底层依赖。当前 `Cargo.lock` 中已存在：
+v2.1 需要四项新能力：**GitHub Actions CI/CD**、**CI 版本注入**、**macOS ad-hoc 签名**、**Tauri 自动更新**。这四项能力的实现成本极低：
 
-| 依赖 | 当前版本 | 来源 |
-|------|---------|------|
-| tokio | 1.50.0 | Tauri 2 async runtime |
-| hyper | 1.8.1 | Tauri/reqwest 传递依赖 |
-| hyper-util | 0.1.20 | Tauri/reqwest 传递依赖 |
-| tower | 0.5.3 | Tauri 传递依赖 |
-| tower-http | 0.6.8 | Tauri 传递依赖 |
-| bytes | 1.11.1 | Tauri/reqwest 传递依赖 |
-| http | 1.x | Tauri/reqwest 传递依赖 |
-| reqwest | 0.12.28 | 已在 Cargo.toml（用于 test_provider） |
-
-这意味着新增的 crate 不会引入大量新的传递依赖，编译时间和产物体积影响极小。
-
-**置信度:** HIGH -- 通过直接检查 `Cargo.lock` 验证。
-
----
-
-## 推荐新增依赖
-
-### 核心 HTTP 服务器框架
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| axum | 0.8 | HTTP 路由和请求处理 | axum 是 tokio 官方生态的 HTTP 框架，基于 hyper 1.x + tower 0.5 构建。**与 Tauri 2 的 tokio runtime 完全兼容**（共享同一 tokio 实例），无需创建独立 runtime。cc-switch 已验证此方案可行（使用 axum 0.7 + Tauri 2）。axum 0.8 是当前稳定版（0.8.8，2025-12-20 发布），相比 cc-switch 的 0.7 更新了路径语法但核心 API 稳定。 |
-
-**置信度:** HIGH
-
-**为什么选 axum 而不是其他：**
-- **vs hyper 直接使用：** axum 在 hyper 之上提供路由、提取器、中间件组合，代码量减少 60%+。axum 本身开销极小，性能与直接使用 hyper 相当。
-- **vs actix-web：** actix 有自己的 async runtime，与 Tauri 的 tokio runtime 不兼容，需要开独立线程运行，增加复杂度和通信开销。
-- **vs warp：** warp 维护活跃度下降，且 filter 组合模式对于代理场景不如 axum 的 handler + State 模式直观。
-- **vs axum-reverse-proxy 第三方 crate：** 该 crate 带来了负载均衡、DNS 服务发现、WebSocket 转发等 v2.0 不需要的功能。我们的需求是动态切换单一上游目标，用 `Arc<RwLock<>>` + 自定义 handler 更简洁可控。
-- **vs Pingora/Rama：** 生产级代理框架，为 Cloudflare 规模设计，对桌面应用本地代理严重过度工程化。
-
-### reqwest 功能扩展（非新 crate）
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| reqwest `stream` feature | 0.12 (已有) | 启用 `Response::bytes_stream()` 方法 | SSE 流式转发的关键：上游返回 `text/event-stream` 响应时，用 `bytes_stream()` 逐 chunk 读取，再通过 `axum::body::Body::from_stream()` 零缓冲转发给客户端。不启用此 feature 则无法流式代理，必须缓冲完整响应才能返回——对 AI API 的长流式响应不可接受。cc-switch 也使用了此 feature。 |
-
-**置信度:** HIGH -- cc-switch 的 `reqwest` 配置验证了 `stream` feature 用于 SSE 代理。
-
-### tower-http CORS 中间件
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| tower-http `cors` feature | 0.6 (已在 lock) | 代理服务器 CORS 支持 | CLI 工具直接 HTTP 连接不需要 CORS，但预留此中间件成本为零（tower-http 已在依赖树中）。cc-switch 在代理服务器上也配置了 `CorsLayer`。 |
+- 只新增 2 个 Rust crate（`tauri-plugin-updater` + `tauri-plugin-process`）
+- 只新增 2 个 npm 包（`@tauri-apps/plugin-updater` + `@tauri-apps/plugin-process`）
+- GitHub Actions 用官方 `tauri-apps/tauri-action@v1` 覆盖构建+发布
+- 版本注入用 `sed` 脚本（无额外工具依赖）
+- Ad-hoc 签名用单个环境变量 `APPLE_SIGNING_IDENTITY=-`（无需证书）
 
 **置信度:** HIGH
 
 ---
 
-## 完整 Cargo.toml 变更
+## Recommended Stack
+
+### 核心新增技术
+
+| Technology | Version | Purpose | Why Recommended |
+|------------|---------|---------|-----------------|
+| `tauri-plugin-updater` | 2.10.0 | Tauri 内置自动更新插件 | 官方插件，与 Tauri 2.10 版本对应。**2.10.0 是关键版本**：`tauri-apps/tauri-action@v1` 生成的新格式 `latest.json`（含 `{os}-{arch}-{installer}` 键）要求 updater >= 2.10.0，低版本无法解析。作为 Rust crate 与同版本 npm 包必须严格同步。 |
+| `tauri-plugin-process` | 2.3.1 | 更新完成后重启应用 | 官方插件，updater 的标准配套：`downloadAndInstall()` 后调用 `relaunch()` 重启 app 完成更新。无其他实现方式。 |
+| `tauri-apps/tauri-action@v1` | v1 (latest stable) | GitHub Actions 构建 + 发布 Tauri app | 官方维护的 GitHub Action。自动完成 `tauri build`、生成 `latest.json`（updater 需要）、上传 DMG + `.sig` 文件到 GitHub Releases。`@v1` 是当前推荐标签（`@v0` 已过时，部分官方文档引用但 README 已指向 v1）。 |
+| `actions/checkout@v4` | v4 | Checkout 代码 | GitHub 官方推荐版本 |
+| `actions/setup-node@v4` | v4 | 安装 Node.js | GitHub 官方推荐版本 |
+| `dtolnay/rust-toolchain@stable` | stable | 安装 Rust toolchain | Tauri CI 生态标准选择，比官方 `actions-rs/toolchain` 更轻量且维护活跃 |
+
+### 版本注入工具
+
+| Tool | Version | Purpose | When to Use |
+|------|---------|---------|-------------|
+| `sed` (macOS runner 内置) | 系统内置 | 从 git tag 提取版本号、注入到 Cargo.toml 和 tauri.conf.json | 每次 CI 构建触发时。无需额外安装，macOS runner 内置。 |
+| `git describe` / `GITHUB_REF_NAME` | 系统内置 | 从触发 workflow 的 tag 提取版本号 | 推荐用 `GITHUB_REF_NAME` 而非 `git describe`，前者在 tag push 触发时直接获得 tag 名，更可靠。 |
+
+### 签名工具
+
+| Tool | Version | Purpose | Notes |
+|------|---------|---------|-------|
+| `APPLE_SIGNING_IDENTITY=-` | 环境变量（无需安装） | macOS ad-hoc 代码签名 | Tauri bundler 读取此环境变量，使用 macOS 内置 `codesign` 工具以 `-`（dash）身份签名。macOS runner 内置 `codesign`，无需额外安装任何工具。 |
+| `TAURI_SIGNING_PRIVATE_KEY` | 环境变量（密钥内容） | 为 updater 生成的 `.sig` 文件签名 | 由本地运行 `pnpm tauri signer generate` 生成的 minisign 私钥，以 base64 内容存入 GitHub Secret。与 Apple 代码签名无关，是 Tauri updater 校验机制。 |
+
+---
+
+## Recommended Stack（汇总表）
+
+### Rust Crates（新增到 src-tauri/Cargo.toml）
+
+| Library | Version | Purpose | When to Use |
+|---------|---------|---------|-------------|
+| `tauri-plugin-updater` | 2.10.0 | 应用内自动更新（检查、下载、安装） | 所有桌面平台（非 iOS/Android），用 `cfg` target 限定 |
+| `tauri-plugin-process` | 2.3.1 | 更新安装后重启应用（`relaunch()`） | 与 updater 配合，更新完成后触发重启 |
+
+### npm Packages（新增到 package.json）
+
+| Library | Version | Purpose | When to Use |
+|---------|---------|---------|-------------|
+| `@tauri-apps/plugin-updater` | 2.10.0 | updater 插件前端 bindings | 与 Rust crate 严格同版本 |
+| `@tauri-apps/plugin-process` | 2.3.1 | process 插件前端 bindings | 与 Rust crate 严格同版本 |
+
+### GitHub Actions（.github/workflows/release.yml）
+
+| Tool | Version | Purpose | Notes |
+|------|---------|---------|-------|
+| `actions/checkout` | v4 | checkout 仓库代码 | 标准 |
+| `actions/setup-node` | v4 | 安装 Node.js LTS | 配合 pnpm cache |
+| `dtolnay/rust-toolchain` | stable | 安装 Rust + targets | `targets: aarch64-apple-darwin,x86_64-apple-darwin` |
+| `tauri-apps/tauri-action` | v1 | 构建 + 打包 + 发布 GitHub Release | 生成 DMG、`.sig`、`latest.json` |
+
+---
+
+## Installation
 
 ```toml
-# src-tauri/Cargo.toml
-
-[dependencies]
-# ... 现有依赖保持不变 ...
-
-# 修改：reqwest 增加 stream feature
-reqwest = { version = "0.12", features = ["json", "stream"] }
-
-# 新增：HTTP 服务器框架（用于本地代理）
-axum = "0.8"
-
-# 新增：CORS 中间件（tower-http 已在依赖树中，只需显式声明使用 cors feature）
-tower-http = { version = "0.6", features = ["cors"] }
-
-# 新增：tokio 显式声明（Tauri 已携带 tokio 1.50，显式声明确保编译器可见 net/sync/time API）
-tokio = { version = "1", features = ["net", "sync", "time"] }
+# src-tauri/Cargo.toml — 新增（只覆盖桌面平台）
+[target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
+tauri-plugin-updater = "2.10.0"
+tauri-plugin-process = "2.3.1"
 ```
 
-### 为什么需要显式声明 tokio
-
-Tauri 2 内部依赖 tokio 但不对外暴露所有 feature flags。代理服务器需要：
-- `net`：`TcpListener::bind()` 绑定端口
-- `sync`：`RwLock`, `oneshot` 通道
-- `time`：`timeout()` 用于优雅停机
-
-通过在 `Cargo.toml` 中显式声明 tokio，Cargo 的 feature unification 机制会合并所有 feature，不会引入新的 tokio 实例。
-
-**置信度:** HIGH -- cc-switch 和 Tauri 社区文档均显式声明 tokio。
+```bash
+# npm 前端 bindings（版本与 Rust crate 严格对齐）
+pnpm add @tauri-apps/plugin-updater@2.10.0
+pnpm add @tauri-apps/plugin-process@2.3.1
+```
 
 ---
 
-## 不需要新增的依赖
+## Configuration Changes
 
-| 类别 | 不需要的 | 原因 |
-|------|---------|------|
-| HTTP 框架 | actix-web, warp, rocket | axum 与 Tauri tokio runtime 原生兼容，无需额外 runtime |
-| 代理库 | axum-reverse-proxy, hyper-reverse-proxy | 自定义 handler 更简洁；这些库带来不需要的负载均衡/DNS 发现功能 |
-| 生产级代理 | pingora, rama, sozu | 为 CDN/云规模设计，桌面应用不需要 |
-| SSE 解析 | reqwest-eventsource, eventsource-stream | v2.0 做透明转发不解析 SSE 事件内容，`bytes_stream()` 逐 chunk 透传即可 |
-| 额外序列化 | serde_yaml, json5, regex | v2.0 代理不需要新的格式解析 |
-| 数据库 | rusqlite, sqlx | v2.0 代理设置存 `local.json`（现有存储层），不需要数据库 |
-| 异步流工具 | futures, async-stream | `bytes_stream()` 返回的 `impl Stream<Item=Result<Bytes>>` 可直接传给 `Body::from_stream()`，无需额外的 stream 组合器 |
-| 连接池 | deadpool, bb8 | reqwest 内置连接池，桌面应用单用户不需要外部池 |
+### tauri.conf.json 新增配置
+
+```json
+{
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "<内容来自 ~/.tauri/climanager.key.pub>",
+      "endpoints": [
+        "https://github.com/YOUR_USERNAME/CLIManager/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}
+```
+
+关键点：
+- `createUpdaterArtifacts: true` 让 Tauri bundler 生成 `.sig` 签名文件（updater 校验用）
+- `pubkey` 必须是 `.pub` 文件内容，不能是文件路径
+- `endpoints` 直接指向 GitHub Releases 上的 `latest.json`
+
+### capabilities/default.json 新增权限
+
+```json
+{
+  "permissions": [
+    "updater:default",
+    "process:allow-relaunch"
+  ]
+}
+```
+
+### CI 环境变量（GitHub Secrets）
+
+| Secret | Value | Purpose |
+|--------|-------|---------|
+| `TAURI_SIGNING_PRIVATE_KEY` | minisign 私钥内容（`cat ~/.tauri/climanager.key`） | 对 updater 产物（.sig 文件）签名 |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 生成密钥时设置的密码（可为空） | 解密私钥 |
+
+无需 `APPLE_SIGNING_IDENTITY` secret——只需在 workflow env 段直接写 `-`（非 secret，ad-hoc 无证书无需保密）。
 
 ---
 
-## 架构集成：Tauri tokio Runtime 内启动 axum
+## 版本注入方案
 
-### 启动模式
+**设计决策：以 git tag 为版本唯一来源，CI 注入 Cargo.toml 和 tauri.conf.json，不预先提交版本号。**
 
-在 `lib.rs` 的 `.setup()` 钩子中使用 `tauri::async_runtime::spawn()` 启动 axum 服务器：
-
-```rust
-// lib.rs setup() 中
-let proxy_state = Arc::new(ProxyManager::new());
-app.manage(proxy_state.clone());
-
-tauri::async_runtime::spawn(async move {
-    if let Err(e) = proxy_manager.start_if_enabled().await {
-        log::error!("代理服务器启动失败: {}", e);
-    }
-});
+```yaml
+# .github/workflows/release.yml 版本注入步骤
+- name: Inject version from tag
+  run: |
+    # GITHUB_REF_NAME 在 tag push 时为 "v2.1.0"
+    VERSION="${GITHUB_REF_NAME#v}"
+    # 注入 Cargo.toml（[package] version 字段）
+    sed -i '' "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
+    # 注入 tauri.conf.json
+    sed -i '' "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
 ```
 
-**关键点：**
-1. `tauri::async_runtime::spawn()` 在 Tauri 管理的 tokio runtime 中调度任务。
-2. **不需要** `#[tokio::main]` 或独立 `tokio::runtime::Runtime::new()`。
-3. **不需要** `std::thread::spawn` + 独立 runtime（那是 actix 等不兼容 runtime 的 workaround）。
-4. axum 的 `serve()` 是一个异步函数，天然运行在 tokio executor 上。
-
-**置信度:** HIGH -- [Tauri 官方文档](https://docs.rs/tauri/latest/tauri/async_runtime/index.html)和 cc-switch 代码均验证此模式。
-
-### SSE 流式转发模式
-
-```rust
-// 代理 handler 核心逻辑（伪代码）
-async fn proxy_handler(
-    State(state): State<Arc<ProxyState>>,
-    req: axum::extract::Request,
-) -> axum::response::Response {
-    // 1. 从共享状态读取当前上游目标
-    let upstream = state.get_current_upstream(&cli_type).await;
-
-    // 2. 构造 reqwest 请求，注入上游 API key 和 base URL
-    let client = &state.http_client;
-    let upstream_resp = client
-        .post(&format!("{}{}", upstream.base_url, path))
-        .headers(forward_headers(&req))
-        .header("Authorization", format!("Bearer {}", upstream.api_key))
-        .body(reqwest::Body::from(body_bytes))
-        .send()
-        .await?;
-
-    // 3. 流式转发响应（SSE 和非 SSE 统一处理）
-    let mut builder = axum::response::Response::builder()
-        .status(upstream_resp.status());
-    for (k, v) in upstream_resp.headers() {
-        builder = builder.header(k, v);
-    }
-    let body = axum::body::Body::from_stream(
-        upstream_resp.bytes_stream()
-    );
-    builder.body(body).unwrap()
-}
-```
-
-**关键设计决策：透明转发而非 SSE 解析**
-
-v2.0 代理不需要理解 SSE 事件的语义内容（那是 2.x 流量监控的事）。只需要：
-1. 保持 `Content-Type: text/event-stream` header 原样传递
-2. 用 `bytes_stream()` 逐 chunk 流式转发，不缓冲
-3. 不加压缩层（或排除 `text/event-stream` MIME type）
-
-这使得实现极其简单，且对所有 API 协议（Anthropic、OpenAI）通用。
-
-**置信度:** HIGH -- 这正是 cc-switch `response_processor.rs` 的核心模式。
-
-### 动态上游切换模式
-
-```rust
-struct ProxyState {
-    // 每个 CLI 类型的当前上游目标
-    upstreams: RwLock<HashMap<CliType, UpstreamTarget>>,
-    // 共享 HTTP 客户端（连接池复用）
-    http_client: reqwest::Client,
-}
-
-struct UpstreamTarget {
-    base_url: String,
-    api_key: String,
-    // 其他需要注入的字段
-}
-
-impl ProxyState {
-    /// Provider 切换时调用，立即生效
-    async fn switch_upstream(&self, cli_type: CliType, target: UpstreamTarget) {
-        let mut upstreams = self.upstreams.write().await;
-        upstreams.insert(cli_type, target);
-        // 下一个请求自动使用新目标，无需重启服务器
-    }
-}
-```
-
-**为什么用 `tokio::sync::RwLock` 而不是 `std::sync::RwLock`：**
-- 读操作（每个代理请求都会读）远多于写操作（只在 Provider 切换时写）
-- `tokio::sync::RwLock` 的 `.read().await` 不阻塞 tokio worker thread
-- `std::sync::RwLock` 在异步上下文中可能导致 thread 阻塞，影响其他任务
-
-**置信度:** HIGH -- 标准 Rust 异步模式，cc-switch 广泛使用此模式。
+注意：macOS 的 `sed -i` 需要 `''` 参数（空字符串），Linux 不需要。macOS runner 用 `sed -i ''`，无跨平台问题（本项目 CI 仅跑 macOS）。
 
 ---
 
-## 端口分配策略
+## GitHub Actions Workflow 结构
 
-| CLI | 默认端口 | 说明 |
-|-----|---------|------|
-| Claude Code | 9960 | 固定端口，代理模式下 CLI 配置 patch 为 `http://127.0.0.1:9960` |
-| Codex | 9961 | 固定端口，代理模式下 CLI 配置 patch 为 `http://127.0.0.1:9961` |
+```yaml
+name: Release
 
-**实现方式：** 每个 CLI 类型一个独立的 `TcpListener` + axum `Router`，各自 `tokio::spawn` 运行。不使用单一服务器 + 路径前缀区分的原因是：
-1. CLI 工具配置的 base URL 格式固定（如 Claude Code 期望 `/v1/messages` 路径），加前缀需要 CLI 修改配置
-2. 独立端口使每个 CLI 可以独立启停，互不影响
-3. 与 cc-switch 的单端口 + 路径前缀方案相比，独立端口更简单——不需要处理 `/claude/v1/messages` vs `/codex/v1/chat/completions` 的路由歧义
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
 
-**置信度:** MEDIUM -- 端口号为参考值，需确认不与常见服务冲突。独立端口 vs 单端口 + 前缀的取舍需在实现阶段确认。
+jobs:
+  release:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: '--target aarch64-apple-darwin'
+          - platform: macos-latest
+            args: '--target x86_64-apple-darwin'
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Install pnpm and dependencies
+        run: |
+          npm install -g pnpm
+          pnpm install
+
+      - name: Inject version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          sed -i '' "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
+          sed -i '' "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
+
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_SIGNING_IDENTITY: '-'
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'CLIManager ${{ github.ref_name }}'
+          releaseBody: 'See CHANGELOG for details.'
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
+```
+
+---
+
+## Ad-hoc 签名说明与局限
+
+**Ad-hoc 签名是什么：** macOS 要求所有代码必须签名，特别是 Apple Silicon（arm64）上运行的 app。Ad-hoc 签名使用 `-` 作为身份，只做 checksum 校验，无证书验证链。
+
+**Tauri 支持方式：** 将 `APPLE_SIGNING_IDENTITY=-` 设入 CI 环境，Tauri bundler 调用系统内置 `codesign` 工具完成 ad-hoc 签名，无需额外安装任何工具。
+
+**已知局限（HIGH 置信度，官方文档明确说明）：**
+
+| 场景 | 结果 |
+|------|------|
+| 用户下载后首次从 Finder 双击打开 | macOS GateKeeper 弹出"无法验证开发者"对话框，用户需在系统偏好设置 > 安全性中手动点"仍要打开" |
+| 自动更新（updater）下载新版本后重启 | updater 会替换 app bundle，但新版本同样是 ad-hoc 签名，用户需再次手动授权 |
+| 终端直接运行 `open CLIManager.app` | 正常，无弹窗 |
+| 复制到其他 Mac 后运行 | 被 GateKeeper 拦截，需同样手动授权 |
+
+**对 v2.1 的影响：** ad-hoc 签名足够让开发者和早期用户测试，但正式向公众分发前需要 Apple Developer 证书（$99/年）+ notarization。v2.1 里程碑 scope 明确是 ad-hoc，这是合理的阶段性目标。
 
 ---
 
 ## Alternatives Considered
 
-| 类别 | 推荐 | 备选 | 不选原因 |
-|------|-----|------|---------|
-| HTTP 框架 | axum 0.8 | actix-web 4 | actix 有独立 runtime，与 Tauri tokio 不兼容 |
-| HTTP 框架 | axum 0.8 | warp 0.3 | warp 维护活跃度下降，filter 模式对代理场景不直观 |
-| 代理实现 | 自定义 handler | axum-reverse-proxy 1.0 | 第三方 crate 引入不需要的负载均衡/DNS 发现；我们需要动态 upstream 切换，自己写更可控 |
-| SSE 转发 | bytes_stream() 透传 | SSE 事件解析再发射 | v2.0 不需要理解事件内容，透传更简单更高效 |
-| 共享状态 | `Arc<RwLock<HashMap>>` | 每次从文件重读 | RwLock 读取纳秒级，文件 I/O 毫秒级；代理路径不应有磁盘 I/O |
-| 端口模式 | 每 CLI 独立端口 | 单端口 + 路径前缀 | 独立端口避免路径重写，CLI 配置更简单 |
-| 上游 HTTP 客户端 | reqwest 0.12 (已有) | hyper client 直接使用 | reqwest 是 hyper 的高层封装，已在项目中，API 更友好 |
+| 推荐 | 备选 | 不选原因 |
+|------|------|---------|
+| `tauri-apps/tauri-action@v1` | 自写 `cargo tauri build` + `gh release create` | 官方 action 自动处理 `latest.json` 生成、多平台 artifact 上传、updater `.sig` 收集，自写至少 50 行 YAML 且易出错 |
+| `APPLE_SIGNING_IDENTITY=-`（ad-hoc） | Apple Developer 证书签名 + notarization | v2.1 无 Apple 账号；ad-hoc 对内部/开发者分发足够，避免 $99/年费用和 notarization 流程复杂性 |
+| `sed` 版本注入 | `cargo-release`、`release-plz`、`standard-version` | v2.1 只需 tag → 版本号，`sed` 两行脚本无新工具依赖；`cargo-release` 功能完整但学习和配置成本高于需求 |
+| `GITHUB_REF_NAME` 取 tag | `git describe --tags` | `git describe` 在浅克隆（`actions/checkout` 默认）下可能失败，`GITHUB_REF_NAME` 是 GitHub Actions 原生环境变量更可靠 |
+| GitHub Releases（静态 JSON） | CrabNebula Cloud / 自建更新服务器 | GitHub Releases 零成本、无额外账号、`tauri-action@v1` 原生支持；自建服务器增加运维复杂度，v2.1 不值得 |
 
 ---
 
-## 安装总结
+## What NOT to Use
 
-```toml
-# src-tauri/Cargo.toml 变更
+| 避免 | 原因 | 用什么替代 |
+|------|------|-----------|
+| Apple 代码签名证书工具（`xcrun altool`、`notarytool`）| v2.1 明确用 ad-hoc，这些工具需要 Apple Developer 账号和 secret 管理 | `APPLE_SIGNING_IDENTITY=-` 环境变量（无需任何工具安装） |
+| `apple-actions/import-codesign-certs` | 导入真实 P12 证书的 Action，v2.1 无证书 | 不需要 |
+| `tauri-action@v0` | 部分旧文档还引用，但 `@v1` 已是官方 README 推荐版本，`@v0` 的 `latest.json` 格式为旧格式，与 `tauri-plugin-updater 2.10.0` 新格式不完全兼容 | `tauri-apps/tauri-action@v1` |
+| `cargo-tauri-action` / 非官方 Action | 社区维护，版本滞后，缺乏对 Tauri 2 新特性的同步更新 | `tauri-apps/tauri-action@v1` |
+| `standard-version` / `semantic-release` | 为 npm 生态设计，在 Rust/Tauri 混合项目中配置复杂，超出 v2.1 scope | `sed` 脚本 + `CHANGELOG.md` 手写或 `git-cliff` |
+| `tauri-plugin-updater` < 2.10.0 | `tauri-action@v1` 生成的 `latest.json` 新格式（`{os}-{arch}-{installer}` 键）需要 >= 2.10.0 才能正确解析，低版本 updater 无法识别更新 | `tauri-plugin-updater = "2.10.0"` |
 
-# 修改（增加 stream feature）:
-reqwest = { version = "0.12", features = ["json", "stream"] }
+---
 
-# 新增:
-axum = "0.8"
-tower-http = { version = "0.6", features = ["cors"] }
-tokio = { version = "1", features = ["net", "sync", "time"] }
+## Stack Patterns by Variant
+
+**如果需要 macOS Universal Binary（arm64 + x86_64 合一）：**
+- 在 `tauri-action` 的 `args` 中传 `--target universal-apple-darwin`
+- 需要 `rustup target add x86_64-apple-darwin aarch64-apple-darwin`
+- Universal Binary 体积约为单架构的 2x，但用户只需下载一个文件
+- 当前方案选择分架构构建（matrix），产物更小，updater `latest.json` 分别记录两个 target
+
+**如果 CI 只构建 arm64（节省时间）：**
+- matrix 中去掉 `x86_64-apple-darwin`，仅保留 `aarch64-apple-darwin`
+- Intel Mac 用户仍可通过 Rosetta 运行，但非原生性能
+
+**如果将来升级到 Apple Developer 证书签名：**
+- 在 CI env 中添加 `APPLE_CERTIFICATE`（base64 P12）、`APPLE_CERTIFICATE_PASSWORD`、`APPLE_SIGNING_IDENTITY`（真实 identity string，非 `-`）
+- 另外添加 notarization 环境变量：`APPLE_API_ISSUER`、`APPLE_API_KEY`、`APPLE_API_KEY_PATH`
+- `APPLE_SIGNING_IDENTITY=-` 直接替换为真实 identity，其他 workflow 结构不变
+
+---
+
+## Version Compatibility
+
+| Package | Compatible With | Notes |
+|---------|-----------------|-------|
+| `tauri-plugin-updater@2.10.0` (Rust) | `@tauri-apps/plugin-updater@2.10.0` (npm) | Rust crate 和 npm 包必须严格同版本，patch 版本也不能错位 |
+| `tauri-plugin-process@2.3.1` (Rust) | `@tauri-apps/plugin-process@2.3.1` (npm) | 同上 |
+| `tauri-plugin-updater@2.10.0` | `tauri-apps/tauri-action@v1` | `@v1` 生成的新格式 `latest.json` 要求 updater >= 2.10.0 |
+| `tauri-plugin-updater@2.10.0` | Tauri 2.10 | 同 minor 版本，无兼容性问题 |
+
+---
+
+## 密钥生成（一次性操作，本地执行）
+
+```bash
+# 在 CLIManager 项目根目录执行，生成 updater 签名密钥对
+pnpm tauri signer generate -w ~/.tauri/climanager.key
+
+# 将公钥内容复制到 tauri.conf.json 的 plugins.updater.pubkey
+cat ~/.tauri/climanager.key.pub
+
+# 将私钥内容存入 GitHub Secrets（TAURI_SIGNING_PRIVATE_KEY）
+cat ~/.tauri/climanager.key
 ```
 
-**新增 crate 数量：** 1 个直接新增（axum），2 个显式声明已有传递依赖（tower-http, tokio）。实际新增传递依赖极少，因为 axum 依赖的 hyper/tower/tokio/bytes/http 全部已在 Cargo.lock 中。
-
-**无新增 npm 包。** 前端只需增加代理开关的 UI 组件和对应的 Tauri 命令调用。
-
----
-
-## 与 cc-switch 的对比
-
-| 维度 | cc-switch | CLIManager v2.0 | 原因 |
-|------|----------|-----------------|------|
-| axum 版本 | 0.7 | 0.8 | 0.8 是当前稳定版，路径语法更新但核心 API 同 |
-| 端口模式 | 单端口 + 路径前缀 | 每 CLI 独立端口 | 避免路径重写复杂度 |
-| 数据库 | rusqlite | 无（local.json） | v2.0 只存开关状态和端口，JSON 足够 |
-| 协议转换 | Anthropic ↔ OpenAI 双向 | 无（透传） | 明确标记为 Out of Scope（2.x 里程碑） |
-| 熔断器 | 有（CircuitBreaker） | 无 | v2.0 不做 failover |
-| Usage 统计 | 有（解析流并统计 token） | 无 | v2.0 不做流量监控 |
-| SSE 处理 | 解析事件、统计 token、协议转换 | 透明转发 | v2.0 代理只做路由，不做内容处理 |
-
-**cc-switch 代理模块约 2000+ 行 Rust 代码，CLIManager v2.0 代理核心预计 300-500 行**——因为我们只做透传，不做协议转换/熔断/统计。
+**重要提醒：** 私钥一旦丢失无法为已安装的用户推送更新（updater 校验会拒绝）。备份 `~/.tauri/climanager.key` 到安全位置（如密码管理器）。
 
 ---
 
 ## Sources
 
-- [Tauri async_runtime 文档](https://docs.rs/tauri/latest/tauri/async_runtime/index.html) -- 在 Tauri 内 spawn 异步任务的官方 API (HIGH)
-- [axum GitHub](https://github.com/tokio-rs/axum) -- HTTP 框架官方仓库 (HIGH)
-- [axum 0.8.0 公告](https://tokio.rs/blog/2025-01-01-announcing-axum-0-8-0) -- 版本发布说明 (HIGH)
-- [axum 官方 reverse-proxy 示例](https://github.com/tokio-rs/axum/blob/main/examples/reverse-proxy/src/main.rs) -- reqwest + axum 代理模式 (HIGH)
-- [axum 官方 SSE 示例](https://github.com/tokio-rs/axum/blob/main/examples/sse/src/main.rs) -- SSE 响应支持 (HIGH)
-- [Tauri + Async Rust Process](https://rfdonnelly.github.io/posts/tauri-async-rust-process/) -- 在 Tauri 内运行异步任务的模式 (MEDIUM)
-- [Tauri GitHub Discussion #2942](https://github.com/tauri-apps/tauri/discussions/2942) -- 在 Tauri 内运行 HTTP 服务器 (MEDIUM)
-- [Static streams for faster async proxies](https://blog.adamchalmers.com/streaming-proxy/) -- 流式代理架构决策 (MEDIUM)
-- [axum + reqwest 代理讨论](https://github.com/tokio-rs/axum/discussions/1821) -- 大文件/流式代理最佳实践 (MEDIUM)
-- cc-switch `src-tauri/src/proxy/server.rs` -- 工作参考：axum + Tauri 代理服务器实现 (HIGH)
-- cc-switch `src-tauri/src/proxy/response_processor.rs` -- 工作参考：`bytes_stream()` SSE 透传 (HIGH)
-- cc-switch `src-tauri/src/proxy/forwarder.rs` -- 工作参考：reqwest 请求转发 (HIGH)
-- cc-switch `src-tauri/Cargo.toml` -- 验证依赖：axum 0.7, reqwest stream, tokio features (HIGH)
-- CLIManager `src-tauri/Cargo.lock` -- 直接验证已有传递依赖版本 (HIGH)
+- [Tauri GitHub Actions 官方文档](https://v2.tauri.app/distribute/pipelines/github/) — workflow 结构、runner 选择、env 变量 (HIGH)
+- [tauri-apps/tauri-action GitHub](https://github.com/tauri-apps/tauri-action) — v0 vs v1 差异、inputs 说明 (HIGH)
+- [tauri-plugin-updater 官方文档](https://v2.tauri.app/plugin/updater/) — 配置格式、endpoints、pubkey、权限 (HIGH)
+- [tauri-plugin-updater@2.10.0 on npm](https://www.npmjs.com/package/@tauri-apps/plugin-updater) — 当前版本确认 (HIGH)
+- [tauri-plugin-updater 2.10.0 on docs.rs](https://docs.rs/crate/tauri-plugin-updater/latest) — Rust crate 版本确认 (HIGH)
+- [tauri-plugin-process 2.3.1 on docs.rs](https://docs.rs/crate/tauri-plugin-process/latest) — Rust crate 版本确认 (HIGH)
+- [@tauri-apps/plugin-process 2.3.1 on npm](https://www.npmjs.com/package/@tauri-apps/plugin-process) — npm 版本确认 (HIGH)
+- [macOS Code Signing 官方文档](https://v2.tauri.app/distribute/sign/macos/) — ad-hoc signing 环境变量、局限说明 (HIGH)
+- [tauri-apps/tauri issue #8763](https://github.com/tauri-apps/tauri/issues/8763) — ad-hoc signing 必要性讨论 (MEDIUM)
+- [Tauri Discussion #6347 — version sync](https://github.com/tauri-apps/tauri/discussions/6347) — Cargo.toml 和 tauri.conf.json 版本同步策略 (MEDIUM)
+
+---
+*Stack research for: CLIManager v2.1 Release Engineering*
+*Researched: 2026-03-14*
