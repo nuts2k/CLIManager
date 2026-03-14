@@ -33,10 +33,10 @@ Requirements for v2.2 协议转换。让 Claude Code 通过代理模式使用 Op
 
 ### 流式 SSE 转换
 
-- [ ] **STRM-01**: 文本 delta 事件序列转换（OpenAI content delta → Anthropic message_start/content_block_start/text_delta/content_block_stop/message_delta/message_stop 完整事件序列）
-- [ ] **STRM-02**: 工具调用流式转换，含 Deferred Start pending buffer（等待 id+name 就绪后才发 content_block_start）
-- [ ] **STRM-03**: 多工具并发流式支持（按 index 独立追踪每个工具调用状态）
-- [ ] **STRM-04**: 流结束事件映射（finish_reason → message_delta stop_reason + message_stop）
+- [x] **STRM-01**: 文本 delta 事件序列转换（OpenAI content delta → Anthropic message_start/content_block_start/text_delta/content_block_stop/message_delta/message_stop 完整事件序列）
+- [x] **STRM-02**: 工具调用流式转换，含 Deferred Start pending buffer（等待 id+name 就绪后才发 content_block_start）
+- [x] **STRM-03**: 多工具并发流式支持（按 index 独立追踪每个工具调用状态）
+- [x] **STRM-04**: 流结束事件映射（finish_reason → message_delta stop_reason + message_stop）
 
 ### 模型映射
 
@@ -95,10 +95,10 @@ Requirements for v2.2 协议转换。让 Claude Code 通过代理模式使用 Op
 | RESP-03 | Phase 14 | Complete |
 | RESP-04 | Phase 14 | Complete |
 | RESP-05 | Phase 14 | Complete |
-| STRM-01 | Phase 14 | Pending |
-| STRM-02 | Phase 14 | Pending |
-| STRM-03 | Phase 14 | Pending |
-| STRM-04 | Phase 14 | Pending |
+| STRM-01 | Phase 14 | Complete |
+| STRM-02 | Phase 14 | Complete |
+| STRM-03 | Phase 14 | Complete |
+| STRM-04 | Phase 14 | Complete |
 | ROUT-01 | Phase 15 | Pending |
 | ROUT-02 | Phase 15 | Pending |
 | MODL-03 | Phase 15 | Pending |
