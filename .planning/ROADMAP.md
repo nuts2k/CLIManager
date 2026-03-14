@@ -52,7 +52,7 @@
 **Milestone Goal:** 让 Claude Code 通过代理模式使用 OpenAI 兼容的 Provider，代理层自动完成 Anthropic Messages API ↔ OpenAI Chat Completions API 的协议转换
 
 - [x] **Phase 14: 数据模型 + 转换核心** — Provider 数据模型扩展，以及请求转换、响应转换、流式 SSE 状态机三条并行开发路线，可独立单元测试 (completed 2026-03-14)
-- [ ] **Phase 15: Handler 集成与协议路由** — 转换层接入 proxy_handler，实现协议路由，端到端验证
+- [x] **Phase 15: Handler 集成与协议路由** — 转换层接入 proxy_handler，实现协议路由，端到端验证 (completed 2026-03-14)
 - [ ] **Phase 16: Responses API + Provider UI** — Responses API 转换层与 Provider 编辑 UI 模型映射配置，两条并行开发路线
 
 ## Phase Details
@@ -87,7 +87,7 @@ Plans:
 **Goal**: 转换层完整接入 proxy_handler，OpenAiCompatible Provider 请求自动走转换路径并按模型映射替换模型名，Anthropic Provider 零回归，端到端请求-响应链路验证通过
 **Depends on**: Phase 14 (三个转换模块就绪，数据模型扩展就绪)
 **Requirements**: ROUT-01, ROUT-02, MODL-03
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 15-01-PLAN.md — UpstreamTarget 扩展 + base_url 语义变更 + 全量构造点更新
@@ -135,7 +135,7 @@ Plans:
 | 12. 全栈实现 | v2.1 | 4/4 | Complete | 2026-03-14 |
 | 13. 端到端验证 | v2.1 | 1/1 | Complete | 2026-03-14 |
 | 14. 数据模型 + 转换核心 | v2.2 | 4/4 | Complete | 2026-03-14 |
-| 15. Handler 集成与协议路由 | 1/2 | In Progress|  | - |
+| 15. Handler 集成与协议路由 | 2/2 | Complete   | 2026-03-14 | - |
 | 16. Responses API + Provider UI | v2.2 | 0/? | Not started | - |
 
 ---

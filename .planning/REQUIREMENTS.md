@@ -9,7 +9,7 @@ Requirements for v2.2 协议转换。让 Claude Code 通过代理模式使用 Op
 
 ### 协议路由
 
-- [ ] **ROUT-01**: 代理模式下，Provider 协议类型为 OpenAiCompatible 时自动启用协议转换路径
+- [x] **ROUT-01**: 代理模式下，Provider 协议类型为 OpenAiCompatible 时自动启用协议转换路径
 - [x] **ROUT-02**: Provider 协议类型为 Anthropic 时请求直接透传，零回归
 
 ### 请求转换
@@ -99,7 +99,7 @@ Requirements for v2.2 协议转换。让 Claude Code 通过代理模式使用 Op
 | STRM-02 | Phase 14 | Complete |
 | STRM-03 | Phase 14 | Complete |
 | STRM-04 | Phase 14 | Complete |
-| ROUT-01 | Phase 15 | Pending |
+| ROUT-01 | Phase 15 | Complete |
 | ROUT-02 | Phase 15 | Complete |
 | MODL-03 | Phase 15 | Complete |
 | RAPI-01 | Phase 16 | Pending |
