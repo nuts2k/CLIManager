@@ -4,7 +4,7 @@ milestone: v2.1
 milestone_name: Release Engineering
 status: completed
 stopped_at: Completed 12-03-PLAN.md
-last_updated: "2026-03-14T08:18:16.385Z"
+last_updated: "2026-03-14T08:22:31.994Z"
 last_activity: 2026-03-14 — 12-04 完成（/ship 一键发版技能 + CHANGELOG.md）
 progress:
   total_phases: 2
