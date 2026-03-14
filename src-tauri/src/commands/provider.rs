@@ -389,16 +389,22 @@ fn _delete_provider_in(
     Ok(())
 }
 
-fn _update_provider_in(
-    providers_dir: &Path,
-    local_settings_path: &Path,
-    mut provider: Provider,
-    adapter: Option<Box<dyn CliAdapter>>,
-    skip_patch: bool,
-) -> Result<Provider, AppError> {
-    provider = normalize_and_validate_provider(provider)?;
-    let existing = crate::storage::icloud::get_provider_in(providers_dir, &provider.id)?;
-    let settings = crate::storage::local::read_local_settings_from(local_settings_path)?;
+#[derive(Debug, PartialEq, Eq)]
+struct ProviderUpdateContext {
+    is_active: bool,
+    proxy_cli_ids: Vec<String>,
+}
+
+impl ProviderUpdateContext {
+    fn should_patch_cli(&self) -> bool {
+        self.is_active && self.proxy_cli_ids.is_empty()
+    }
+}
+
+fn build_provider_update_context(
+    settings: &LocalSettings,
+    provider: &Provider,
+) -> ProviderUpdateContext {
     let is_active = settings
         .active_providers
         .get(&provider.cli_id)
@@ -406,11 +412,33 @@ fn _update_provider_in(
             active.as_deref() == Some(provider.id.as_str())
         });
 
+    let proxy_cli_ids = if is_active {
+        find_proxy_cli_ids_for_provider(settings, &provider.id)
+    } else {
+        vec![]
+    };
+
+    ProviderUpdateContext {
+        is_active,
+        proxy_cli_ids,
+    }
+}
+
+fn _update_provider_in(
+    providers_dir: &Path,
+    mut provider: Provider,
+    settings: &LocalSettings,
+    update_context: &ProviderUpdateContext,
+    adapter: Option<Box<dyn CliAdapter>>,
+) -> Result<Provider, AppError> {
+    provider = normalize_and_validate_provider(provider)?;
+    let existing = crate::storage::icloud::get_provider_in(providers_dir, &provider.id)?;
+
     provider.updated_at = chrono::Utc::now().timestamp_millis();
     crate::storage::icloud::save_existing_provider_to(providers_dir, &provider)?;
 
-    if is_active && !skip_patch {
-        if let Err(err) = patch_provider_for_cli(&provider.cli_id, &settings, &provider, adapter) {
+    if update_context.should_patch_cli() {
+        if let Err(err) = patch_provider_for_cli(&provider.cli_id, settings, &provider, adapter) {
             let _ = crate::storage::icloud::save_existing_provider_to(providers_dir, &existing);
             return Err(err);
         }
@@ -462,10 +490,7 @@ pub fn create_provider(
 
 /// 纯函数：给定 settings 和 provider_id，返回处于代理模式且该 provider
 /// 是活跃 Provider 的 cli_id 列表。用于 update_provider 代理联动和 delete_provider 阻止删除。
-fn find_proxy_cli_ids_for_provider(
-    settings: &LocalSettings,
-    provider_id: &str,
-) -> Vec<String> {
+fn find_proxy_cli_ids_for_provider(settings: &LocalSettings, provider_id: &str) -> Vec<String> {
     let global_enabled = settings.proxy.as_ref().map_or(false, |p| p.global_enabled);
     if !global_enabled {
         return vec![];
@@ -482,9 +507,7 @@ fn find_proxy_cli_ids_for_provider(
             settings
                 .active_providers
                 .get(*cli_id)
-                .map_or(false, |active| {
-                    active.as_deref() == Some(provider_id)
-                })
+                .map_or(false, |active| active.as_deref() == Some(provider_id))
         })
         .cloned()
         .collect()
@@ -492,10 +515,7 @@ fn find_proxy_cli_ids_for_provider(
 
 /// 纯函数：检查代理模式是否阻止删除指定 provider（不依赖 global_enabled，
 /// 只要 proxy_takeover 中有 CLI 使用该 provider 即阻止）。
-fn check_proxy_blocks_delete(
-    settings: &LocalSettings,
-    provider_id: &str,
-) -> Result<(), AppError> {
+fn check_proxy_blocks_delete(settings: &LocalSettings, provider_id: &str) -> Result<(), AppError> {
     if let Some(ref takeover) = settings.proxy_takeover {
         for cli_id in &takeover.cli_ids {
             let active_pid = settings.active_providers.get(cli_id);
@@ -524,19 +544,17 @@ pub async fn update_provider(
     let tracker = app_handle.state::<crate::watcher::SelfWriteTracker>();
     tracker.record_write(dir.join(format!("{}.json", provider.id)));
 
-    // 代理模式检测：若被编辑的 Provider 是某个代理模式 CLI 的活跃 Provider，跳过 patch
+    // 基于同一份 settings 快照同时判断是否 patch CLI、以及是否需要联动更新代理上游。
     let settings = crate::storage::local::read_local_settings_from(&settings_path)?;
-    let proxy_cli_ids = find_proxy_cli_ids_for_provider(&settings, &provider.id);
-    let skip_patch = !proxy_cli_ids.is_empty();
+    let update_context = build_provider_update_context(&settings, &provider);
 
-    let result = _update_provider_in(&dir, &settings_path, provider, None, skip_patch)?;
+    let result = _update_provider_in(&dir, provider, &settings, &update_context, None)?;
 
     // 代理模式联动：如果被编辑的 Provider 是某个代理模式 CLI 的活跃 Provider，更新代理上游
-    for cli_id in proxy_cli_ids {
+    for cli_id in update_context.proxy_cli_ids {
         let upstream = crate::proxy::UpstreamTarget {
             api_key: result.api_key.clone(),
-            base_url: extract_origin_base_url(&result.base_url)
-                .map_err(AppError::Validation)?,
+            base_url: extract_origin_base_url(&result.base_url).map_err(AppError::Validation)?,
             protocol_type: result.protocol_type.clone(),
         };
         if let Err(e) = proxy_service.update_upstream(&cli_id, upstream).await {
@@ -624,17 +642,21 @@ pub(crate) async fn _set_active_provider_in_proxy_mode(
         None
     };
 
+    if let Some(upstream) = upstream {
+        proxy_service
+            .update_upstream(&cli_id, upstream)
+            .await
+            .map_err(|err| {
+                log::error!("代理模式下更新上游失败: cli_id={}, err={}", cli_id, err);
+                AppError::Validation(format!("代理模式下更新上游失败: {}", err))
+            })?;
+    }
+
     let mut settings = crate::storage::local::read_local_settings_from(local_settings_path)?;
     settings
         .active_providers
         .insert(cli_id.clone(), provider_id.clone());
     crate::storage::local::write_local_settings_to(local_settings_path, &settings)?;
-
-    if let Some(upstream) = upstream {
-        if let Err(err) = proxy_service.update_upstream(&cli_id, upstream).await {
-            log::error!("代理模式下更新上游失败: cli_id={}, err={}", cli_id, err);
-        }
-    }
 
     Ok(settings)
 }
@@ -1218,6 +1240,45 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn test_set_active_provider_in_proxy_mode_not_running_does_not_persist() {
+        let tmp = TempDir::new().unwrap();
+        let providers_dir = tmp.path().join("providers");
+        let settings_path = tmp.path().join("local.json");
+        std::fs::create_dir_all(&providers_dir).unwrap();
+
+        let provider = make_provider("p1", "Test Provider", "claude");
+        save_provider_to(&providers_dir, &provider).unwrap();
+
+        let mut initial = LocalSettings::default();
+        initial
+            .active_providers
+            .insert("claude".to_string(), Some("old-id".to_string()));
+        write_local_settings_to(&settings_path, &initial).unwrap();
+
+        let proxy_service = crate::proxy::ProxyService::new();
+        let err = _set_active_provider_in_proxy_mode(
+            &providers_dir,
+            &settings_path,
+            "claude".to_string(),
+            Some("p1".to_string()),
+            &proxy_service,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(
+            err,
+            AppError::Validation(ref msg) if msg.contains("服务器未运行")
+        ));
+
+        let loaded = read_local_settings_from(&settings_path).unwrap();
+        assert_eq!(
+            loaded.active_providers.get("claude"),
+            Some(&Some("old-id".to_string()))
+        );
+    }
+
     #[test]
     fn test_set_active_provider_patch_failure_does_not_persist() {
         let tmp = TempDir::new().unwrap();
@@ -1276,16 +1337,18 @@ mod tests {
         let mut updated = provider.clone();
         updated.api_key = "sk-ant-updated".to_string();
         updated.base_url = "https://proxy.example.com".to_string();
+        let update_context = build_provider_update_context(&settings, &updated);
+        assert!(update_context.should_patch_cli());
 
         _update_provider_in(
             &providers_dir,
-            &settings_path,
             updated.clone(),
+            &settings,
+            &update_context,
             Some(Box::new(ClaudeAdapter::new_with_paths(
                 adapter_config_dir.clone(),
                 adapter_backup_dir,
             ))),
-            false,
         )
         .unwrap();
 
@@ -1322,13 +1385,15 @@ mod tests {
 
         let mut updated = provider.clone();
         updated.api_key = "sk-ant-updated".to_string();
+        let update_context = build_provider_update_context(&settings, &updated);
+        assert!(update_context.should_patch_cli());
 
         let err = _update_provider_in(
             &providers_dir,
-            &settings_path,
             updated,
+            &settings,
+            &update_context,
             Some(Box::new(FailingAdapter)),
-            false,
         )
         .unwrap_err();
 
@@ -1342,7 +1407,6 @@ mod tests {
     fn test_update_provider_normalizes_base_url_before_save() {
         let tmp = TempDir::new().unwrap();
         let providers_dir = tmp.path().join("providers");
-        let settings_path = tmp.path().join("local.json");
         std::fs::create_dir_all(&providers_dir).unwrap();
 
         let provider = make_provider("p1", "Test Provider", "claude");
@@ -1350,8 +1414,11 @@ mod tests {
 
         let mut updated = provider.clone();
         updated.base_url = "  https://proxy.example.com  ".to_string();
+        let settings = LocalSettings::default();
+        let update_context = build_provider_update_context(&settings, &updated);
 
-        let stored = _update_provider_in(&providers_dir, &settings_path, updated, None, false).unwrap();
+        let stored =
+            _update_provider_in(&providers_dir, updated, &settings, &update_context, None).unwrap();
 
         assert_eq!(stored.base_url, "https://proxy.example.com");
         assert_eq!(
@@ -1364,7 +1431,6 @@ mod tests {
     fn test_update_provider_rejects_invalid_base_url_without_overwriting_file() {
         let tmp = TempDir::new().unwrap();
         let providers_dir = tmp.path().join("providers");
-        let settings_path = tmp.path().join("local.json");
         std::fs::create_dir_all(&providers_dir).unwrap();
 
         let provider = make_provider("p1", "Test Provider", "claude");
@@ -1372,8 +1438,11 @@ mod tests {
 
         let mut updated = provider.clone();
         updated.base_url = "localhost:8080".to_string();
+        let settings = LocalSettings::default();
+        let update_context = build_provider_update_context(&settings, &updated);
 
-        let err = _update_provider_in(&providers_dir, &settings_path, updated, None, false).unwrap_err();
+        let err = _update_provider_in(&providers_dir, updated, &settings, &update_context, None)
+            .unwrap_err();
         assert!(matches!(
             err,
             AppError::Validation(ref message)
@@ -1917,6 +1986,43 @@ mod tests {
     }
 
     #[test]
+    fn test_build_provider_update_context_proxy_active_skips_patch() {
+        let provider = make_provider("p1", "Test Provider", "claude");
+        let mut settings = LocalSettings::default();
+        settings.proxy = Some(ProxySettings {
+            global_enabled: true,
+            cli_enabled: std::collections::HashMap::new(),
+        });
+        settings.proxy_takeover = Some(ProxyTakeover {
+            cli_ids: vec!["claude".to_string()],
+        });
+        settings
+            .active_providers
+            .insert("claude".to_string(), Some("p1".to_string()));
+
+        let context = build_provider_update_context(&settings, &provider);
+
+        assert!(context.is_active);
+        assert_eq!(context.proxy_cli_ids, vec!["claude".to_string()]);
+        assert!(!context.should_patch_cli());
+    }
+
+    #[test]
+    fn test_build_provider_update_context_direct_active_patches_cli() {
+        let provider = make_provider("p1", "Test Provider", "claude");
+        let mut settings = LocalSettings::default();
+        settings
+            .active_providers
+            .insert("claude".to_string(), Some("p1".to_string()));
+
+        let context = build_provider_update_context(&settings, &provider);
+
+        assert!(context.is_active);
+        assert!(context.proxy_cli_ids.is_empty());
+        assert!(context.should_patch_cli());
+    }
+
+    #[test]
     fn test_check_proxy_blocks_delete_active_provider_in_proxy_mode() {
         let mut settings = LocalSettings::default();
         settings.proxy_takeover = Some(ProxyTakeover {
@@ -1957,11 +2063,11 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    // --- _update_provider_in skip_patch 测试 ---
+    // --- _update_provider_in / ProviderUpdateContext 测试 ---
 
     #[test]
-    fn test_update_provider_skip_patch_does_not_call_adapter() {
-        // skip_patch=true 时，活跃 Provider 被编辑后文件被保存，但 adapter.patch() 不被调用
+    fn test_update_provider_proxy_active_does_not_call_adapter() {
+        // 代理模式接管中的活跃 Provider 被编辑后，文件会保存，但 adapter.patch() 不应被调用。
         let tmp = TempDir::new().unwrap();
         let providers_dir = tmp.path().join("providers");
         let settings_path = tmp.path().join("local.json");
@@ -1970,8 +2076,14 @@ mod tests {
         let provider = make_provider("p1", "Test Provider", "claude");
         save_provider_to(&providers_dir, &provider).unwrap();
 
-        // 设置为活跃 Provider
         let mut settings = LocalSettings::default();
+        settings.proxy = Some(ProxySettings {
+            global_enabled: true,
+            cli_enabled: std::collections::HashMap::new(),
+        });
+        settings.proxy_takeover = Some(ProxyTakeover {
+            cli_ids: vec!["claude".to_string()],
+        });
         settings
             .active_providers
             .insert("claude".to_string(), Some("p1".to_string()));
@@ -1980,19 +2092,18 @@ mod tests {
         let mut updated = provider.clone();
         updated.api_key = "sk-ant-new-key".to_string();
         updated.base_url = "https://new.example.com".to_string();
+        let update_context = build_provider_update_context(&settings, &updated);
+        assert!(!update_context.should_patch_cli());
 
-        // skip_patch=true：即使传入 None adapter，也不应尝试调用 patch
-        // （若 skip_patch=false 且 adapter=None，会尝试获取真实 adapter 并失败）
         let result = _update_provider_in(
             &providers_dir,
-            &settings_path,
             updated.clone(),
-            None,
-            true, // skip_patch=true
+            &settings,
+            &update_context,
+            Some(Box::new(FailingAdapter)),
         )
         .unwrap();
 
-        // 文件应被保存（updated_at 更新，api_key 更新）
         assert_eq!(result.api_key, "sk-ant-new-key");
         let stored = get_provider_in(&providers_dir, "p1").unwrap();
         assert_eq!(stored.api_key, "sk-ant-new-key");
@@ -2000,8 +2111,8 @@ mod tests {
     }
 
     #[test]
-    fn test_update_provider_no_skip_patch_calls_adapter_on_active() {
-        // skip_patch=false 时，活跃 Provider 被编辑后 adapter.patch() 被调用（现有行为不变）
+    fn test_update_provider_direct_active_calls_adapter() {
+        // 非代理模式下，活跃 Provider 被编辑后仍应 patch CLI 配置。
         let tmp = TempDir::new().unwrap();
         let providers_dir = tmp.path().join("providers");
         let settings_path = tmp.path().join("local.json");
@@ -2023,20 +2134,21 @@ mod tests {
 
         let mut updated = provider.clone();
         updated.api_key = "sk-ant-patched-key".to_string();
+        let update_context = build_provider_update_context(&settings, &updated);
+        assert!(update_context.should_patch_cli());
 
         _update_provider_in(
             &providers_dir,
-            &settings_path,
             updated,
+            &settings,
+            &update_context,
             Some(Box::new(ClaudeAdapter::new_with_paths(
                 adapter_config_dir.clone(),
                 adapter_backup_dir,
             ))),
-            false, // skip_patch=false
         )
         .unwrap();
 
-        // adapter.patch() 被调用：settings.json 应已被 patch
         let patched: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(adapter_config_dir.join("settings.json")).unwrap(),
         )
