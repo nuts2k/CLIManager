@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.0
-milestone_name: Local Proxy
-status: shipped
-stopped_at: Milestone v2.0 complete
+milestone: v2.1
+milestone_name: Release Engineering
+status: active
+stopped_at: null
 last_updated: "2026-03-14"
-last_activity: 2026-03-14 — v2.0 Local Proxy shipped
+last_activity: 2026-03-14 — Milestone v2.1 started
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 7
-  completed_plans: 7
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -21,15 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-14)
 
 **Core value:** 切换 Provider 时只做 surgical patch（精确修改凭据和模型字段），绝不重写配置文件的其他内容
-**Current focus:** v2.0 shipped — planning next milestone
+**Current focus:** v2.1 Release Engineering — 让 app 能用起来
 
 ## Current Position
 
-Milestone: v2.0 Local Proxy — SHIPPED 2026-03-14
-Status: Complete
-Next: /gsd:new-milestone
-
-Progress: [██████████] 100% (v2.0: 4 phases, 7 plans, 221 tests)
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-14 — Milestone v2.1 started
 
 ## Performance Metrics
 
@@ -57,5 +56,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-14
-Stopped at: v2.0 milestone completed and archived
+Stopped at: Milestone v2.1 requirements definition
 Resume file: None
