@@ -51,31 +51,56 @@ fn process_events(events: Vec<DebouncedEvent>, app_handle: &AppHandle) {
         return;
     }
 
+    let handle = app_handle.clone();
+    tauri::async_runtime::spawn(async move {
+        process_provider_changes(handle, changed_files).await;
+    });
+}
+
+async fn process_provider_changes(app_handle: AppHandle, changed_files: Vec<String>) {
+    let mut repatched = false;
+    let mut proxy_mode_changed = false;
+
     // Auto re-patch CLI configs
-    let (repatched, proxy_cli_ids_to_disable) =
+    let proxy_cli_ids_to_disable =
         match crate::commands::provider::sync_changed_active_providers(&changed_files) {
-            Ok(result) => (result.repatched, result.proxy_cli_ids_to_disable),
+            Ok(result) => {
+                repatched = result.repatched;
+                result.proxy_cli_ids_to_disable
+            }
             Err(e) => {
                 log::error!("Failed to re-patch CLI configs after sync: {:?}", e);
                 let _ = app_handle.emit("sync-repatch-failed", e.to_string());
-                (false, vec![])
+                vec![]
             }
         };
 
-    // 代理模式下活跃 Provider 被同步删除：异步关闭代理并重新 reconcile
+    // 代理模式下活跃 Provider 被同步删除：等待 cleanup 完成，再发 providers-changed
     if !proxy_cli_ids_to_disable.is_empty() {
-        let handle_clone = app_handle.clone();
-        tauri::async_runtime::spawn(async move {
-            crate::commands::provider::disable_proxy_for_deleted_providers(
-                &handle_clone,
-                proxy_cli_ids_to_disable,
-            )
-            .await;
-        });
+        match crate::commands::provider::disable_proxy_for_deleted_providers(
+            &app_handle,
+            proxy_cli_ids_to_disable,
+            Some(&changed_files),
+        )
+        .await
+        {
+            Ok(cleanup_result) => {
+                repatched |= cleanup_result.repatched;
+                proxy_mode_changed = cleanup_result.proxy_mode_changed;
+            }
+            Err(e) => {
+                log::error!("Failed to disable proxy for deleted providers: {:?}", e);
+                let _ = app_handle.emit("sync-repatch-failed", e.to_string());
+            }
+        }
     }
 
     // 代理模式联动：iCloud 同步变更活跃 Provider 时，自动更新代理上游
-    update_proxy_upstream_if_needed(app_handle, &changed_files);
+    update_proxy_upstream_if_needed(&app_handle, &changed_files);
+
+    if proxy_mode_changed {
+        let _ = app_handle.emit("proxy-mode-changed", ());
+    }
 
     let payload = ProvidersChangedPayload {
         changed_files,
@@ -88,7 +113,7 @@ fn process_events(events: Vec<DebouncedEvent>, app_handle: &AppHandle) {
 
     // Rebuild tray menu to reflect provider changes from iCloud sync
     #[cfg(desktop)]
-    crate::tray::update_tray_menu(app_handle);
+    crate::tray::update_tray_menu(&app_handle);
 }
 
 /// 代理模式联动：检查变更的文件是否对应代理模式下的活跃 Provider，
@@ -107,10 +132,7 @@ fn update_proxy_upstream_if_needed(app_handle: &AppHandle, changed_files: &[Stri
     };
 
     // 检查代理全局开关和 takeover 状态
-    let global_enabled = settings
-        .proxy
-        .as_ref()
-        .map_or(false, |p| p.global_enabled);
+    let global_enabled = settings.proxy.as_ref().map_or(false, |p| p.global_enabled);
     if !global_enabled {
         return;
     }
@@ -141,27 +163,24 @@ fn update_proxy_upstream_if_needed(app_handle: &AppHandle, changed_files: &[Stri
         }
 
         // 从 iCloud 重新读取该 Provider，构造 UpstreamTarget
-        let provider = match crate::storage::icloud::get_provider_in(&providers_dir, active_provider_id) {
-            Ok(p) => p,
-            Err(e) => {
-                log::error!(
-                    "代理联动：读取 Provider 失败: cli_id={}, provider_id={}, err={}",
-                    cli_id,
-                    active_provider_id,
-                    e
-                );
-                continue;
-            }
-        };
+        let provider =
+            match crate::storage::icloud::get_provider_in(&providers_dir, active_provider_id) {
+                Ok(p) => p,
+                Err(e) => {
+                    log::error!(
+                        "代理联动：读取 Provider 失败: cli_id={}, provider_id={}, err={}",
+                        cli_id,
+                        active_provider_id,
+                        e
+                    );
+                    continue;
+                }
+            };
 
         let base_url = match crate::provider::extract_origin_base_url(&provider.base_url) {
             Ok(url) => url,
             Err(e) => {
-                log::error!(
-                    "代理联动：解析 base_url 失败: cli_id={}, err={}",
-                    cli_id,
-                    e
-                );
+                log::error!("代理联动：解析 base_url 失败: cli_id={}, err={}", cli_id, e);
                 continue;
             }
         };
@@ -177,11 +196,7 @@ fn update_proxy_upstream_if_needed(app_handle: &AppHandle, changed_files: &[Stri
         tauri::async_runtime::spawn(async move {
             let proxy_service = handle_clone.state::<crate::proxy::ProxyService>();
             if let Err(e) = proxy_service.update_upstream(&cli_id_owned, upstream).await {
-                log::error!(
-                    "代理联动：更新上游失败: cli_id={}, err={}",
-                    cli_id_owned,
-                    e
-                );
+                log::error!("代理联动：更新上游失败: cli_id={}, err={}", cli_id_owned, e);
             } else {
                 log::info!("代理联动：iCloud 同步后已更新上游: cli_id={}", cli_id_owned);
             }

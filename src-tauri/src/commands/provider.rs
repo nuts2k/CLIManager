@@ -220,6 +220,14 @@ struct ReconcileResult {
     proxy_cli_ids_to_disable: Vec<String>,
 }
 
+#[derive(Debug, Default)]
+pub(crate) struct ProxyCleanupResult {
+    /// cleanup 后是否实际 patch/clear 了 CLI 配置
+    pub repatched: bool,
+    /// cleanup 过程中是否更新了代理模式持久化状态
+    pub proxy_mode_changed: bool,
+}
+
 fn _reconcile_active_providers_in_with_adapter(
     providers_dir: &Path,
     local_settings_path: &Path,
@@ -263,6 +271,7 @@ fn _reconcile_active_providers_in_with_adapter(
         .unwrap_or_default();
 
     let mut proxy_cli_ids_to_disable: Vec<String> = vec![];
+    let mut repatched = false;
 
     for (cli_id, provider_id) in &active_targets {
         if proxy_cli_ids.contains(cli_id) {
@@ -296,6 +305,7 @@ fn _reconcile_active_providers_in_with_adapter(
                 let settings =
                     crate::storage::local::read_local_settings_from(local_settings_path)?;
                 patch_provider_for_cli(cli_id, &settings, &provider, adapter.take())?;
+                repatched = true;
             }
             Err(AppError::NotFound(_)) | Err(AppError::Json(_)) => {
                 _reconcile_missing_active_provider_in(
@@ -305,13 +315,14 @@ fn _reconcile_active_providers_in_with_adapter(
                     provider_id.clone(),
                     adapter.take(),
                 )?;
+                repatched = true;
             }
             Err(err) => return Err(err),
         }
     }
 
     Ok(ReconcileResult {
-        repatched: true,
+        repatched,
         proxy_cli_ids_to_disable,
     })
 }
@@ -466,10 +477,7 @@ pub async fn update_provider(
 
     // 代理模式联动：如果被编辑的 Provider 是某个代理模式 CLI 的活跃 Provider，更新代理上游
     let settings = crate::storage::local::read_local_settings_from(&settings_path)?;
-    let global_enabled = settings
-        .proxy
-        .as_ref()
-        .map_or(false, |p| p.global_enabled);
+    let global_enabled = settings.proxy.as_ref().map_or(false, |p| p.global_enabled);
     if global_enabled {
         if let Some(ref takeover) = settings.proxy_takeover {
             for cli_id in &takeover.cli_ids {
@@ -488,10 +496,7 @@ pub async fn update_provider(
                             e
                         );
                     } else {
-                        log::info!(
-                            "代理联动：update_provider 后已更新上游: cli_id={}",
-                            cli_id
-                        );
+                        log::info!("代理联动：update_provider 后已更新上游: cli_id={}", cli_id);
                     }
                 }
             }
@@ -502,10 +507,7 @@ pub async fn update_provider(
 }
 
 #[tauri::command]
-pub async fn delete_provider(
-    app_handle: tauri::AppHandle,
-    id: String,
-) -> Result<(), AppError> {
+pub async fn delete_provider(app_handle: tauri::AppHandle, id: String) -> Result<(), AppError> {
     let dir = crate::storage::icloud::get_icloud_providers_dir()?;
     let settings_path = crate::storage::local::get_local_settings_path();
 
@@ -578,8 +580,7 @@ pub(crate) async fn _set_active_provider_in_proxy_mode(
         let provider = crate::storage::icloud::get_provider_in(providers_dir, pid)?;
         Some(crate::proxy::UpstreamTarget {
             api_key: provider.api_key.clone(),
-            base_url: extract_origin_base_url(&provider.base_url)
-                .map_err(AppError::Validation)?,
+            base_url: extract_origin_base_url(&provider.base_url).map_err(AppError::Validation)?,
             protocol_type: provider.protocol_type.clone(),
         })
     } else {
@@ -594,63 +595,89 @@ pub(crate) async fn _set_active_provider_in_proxy_mode(
 
     if let Some(upstream) = upstream {
         if let Err(err) = proxy_service.update_upstream(&cli_id, upstream).await {
-            log::error!(
-                "代理模式下更新上游失败: cli_id={}, err={}",
-                cli_id,
-                err
-            );
+            log::error!("代理模式下更新上游失败: cli_id={}, err={}", cli_id, err);
         }
     }
 
     Ok(settings)
 }
 
-/// 代理模式下活跃 Provider 被同步删除时，异步关闭代理并 reconcile。
-/// 供 watcher 和 sync_active_providers 使用。
-pub(crate) async fn disable_proxy_for_deleted_providers(
-    app_handle: &tauri::AppHandle,
-    cli_ids: Vec<String>,
-) {
-    let proxy_service = app_handle.state::<crate::proxy::ProxyService>();
-    let providers_dir = match crate::storage::icloud::get_icloud_providers_dir() {
-        Ok(d) => d,
-        Err(e) => {
-            log::error!("代理联动：获取 providers 目录失败: {}", e);
-            return;
-        }
-    };
-    let settings_path = crate::storage::local::get_local_settings_path();
+async fn disable_proxy_for_deleted_providers_in(
+    providers_dir: &Path,
+    local_settings_path: &Path,
+    proxy_service: &crate::proxy::ProxyService,
+    cli_ids: &[String],
+    changed_provider_ids: Option<&[String]>,
+) -> Result<ProxyCleanupResult, AppError> {
+    if cli_ids.is_empty() {
+        return Ok(ProxyCleanupResult::default());
+    }
 
-    for cli_id in &cli_ids {
+    let before_settings = crate::storage::local::read_local_settings_from(local_settings_path)?;
+
+    for cli_id in cli_ids {
         log::info!(
             "代理联动：活跃 Provider 被同步删除，关闭代理: cli_id={}",
             cli_id
         );
-        if let Err(e) = crate::commands::proxy::_proxy_disable_in(
-            &providers_dir,
-            &settings_path,
+        match crate::commands::proxy::_proxy_disable_in(
+            providers_dir,
+            local_settings_path,
             cli_id,
-            &proxy_service,
+            proxy_service,
             None,
         )
         .await
         {
-            log::error!(
-                "代理联动：关闭代理失败: cli_id={}, err={}",
-                cli_id,
-                e
-            );
+            Ok(()) => {}
+            Err(e) => {
+                log::error!("代理联动：关闭代理失败: cli_id={}, err={}", cli_id, e);
+            }
         }
     }
 
+    let after_cleanup_settings =
+        crate::storage::local::read_local_settings_from(local_settings_path)?;
+    let proxy_mode_changed = before_settings.proxy_takeover
+        != after_cleanup_settings.proxy_takeover
+        || before_settings.proxy != after_cleanup_settings.proxy;
+
     // 代理关闭后重新 reconcile（此时 CLI 已脱离代理模式，正常切换到下一个 Provider）
-    if let Err(e) = _reconcile_active_providers_in(&providers_dir, &settings_path, None) {
-        log::error!("代理联动：关闭代理后 reconcile 失败: {}", e);
+    let reconcile_result =
+        _reconcile_active_providers_in(providers_dir, local_settings_path, changed_provider_ids)?;
+
+    if !reconcile_result.proxy_cli_ids_to_disable.is_empty() {
+        log::warn!(
+            "代理联动：cleanup 后仍有 CLI 处于待关闭代理状态: {:?}",
+            reconcile_result.proxy_cli_ids_to_disable
+        );
     }
 
-    // 通知前端刷新代理状态
-    use tauri::Emitter;
-    app_handle.emit("proxy-mode-changed", ()).ok();
+    Ok(ProxyCleanupResult {
+        repatched: reconcile_result.repatched,
+        proxy_mode_changed,
+    })
+}
+
+/// 代理模式下活跃 Provider 被同步删除时，关闭代理并在最终 settings 落盘后返回。
+/// 供 watcher 和 sync_active_providers 使用。
+pub(crate) async fn disable_proxy_for_deleted_providers(
+    app_handle: &tauri::AppHandle,
+    cli_ids: Vec<String>,
+    changed_provider_ids: Option<&[String]>,
+) -> Result<ProxyCleanupResult, AppError> {
+    let proxy_service = app_handle.state::<crate::proxy::ProxyService>();
+    let providers_dir = crate::storage::icloud::get_icloud_providers_dir()?;
+    let settings_path = crate::storage::local::get_local_settings_path();
+
+    disable_proxy_for_deleted_providers_in(
+        &providers_dir,
+        &settings_path,
+        &proxy_service,
+        &cli_ids,
+        changed_provider_ids,
+    )
+    .await
 }
 
 /// sync 返回结果，供 watcher 使用
@@ -660,7 +687,9 @@ pub struct SyncResult {
     pub proxy_cli_ids_to_disable: Vec<String>,
 }
 
-pub fn sync_changed_active_providers(changed_provider_ids: &[String]) -> Result<SyncResult, AppError> {
+pub fn sync_changed_active_providers(
+    changed_provider_ids: &[String],
+) -> Result<SyncResult, AppError> {
     let dir = crate::storage::icloud::get_icloud_providers_dir()?;
     let settings_path = crate::storage::local::get_local_settings_path();
     let result = _reconcile_active_providers_in(&dir, &settings_path, Some(changed_provider_ids))?;
@@ -671,17 +700,22 @@ pub fn sync_changed_active_providers(changed_provider_ids: &[String]) -> Result<
 }
 
 #[tauri::command]
-pub fn sync_active_providers(app: tauri::AppHandle) -> Result<(), AppError> {
+pub async fn sync_active_providers(app: tauri::AppHandle) -> Result<(), AppError> {
     let dir = crate::storage::icloud::get_icloud_providers_dir()?;
     let settings_path = crate::storage::local::get_local_settings_path();
     let result = _reconcile_active_providers_in(&dir, &settings_path, None)?;
+    let mut proxy_mode_changed = false;
 
-    // 代理模式下 Provider 被删除的 CLI：异步关闭代理
+    // 代理模式下 Provider 被删除的 CLI：等待 cleanup 完成，确保返回前 settings 已是最终态
     if !result.proxy_cli_ids_to_disable.is_empty() {
-        let app_clone = app.clone();
-        tauri::async_runtime::spawn(async move {
-            disable_proxy_for_deleted_providers(&app_clone, result.proxy_cli_ids_to_disable).await;
-        });
+        let cleanup_result =
+            disable_proxy_for_deleted_providers(&app, result.proxy_cli_ids_to_disable, None)
+                .await?;
+        proxy_mode_changed = cleanup_result.proxy_mode_changed;
+    }
+
+    if proxy_mode_changed {
+        app.emit("proxy-mode-changed", ()).ok();
     }
 
     #[cfg(desktop)]
@@ -801,7 +835,9 @@ mod tests {
     use crate::adapter::PatchResult;
     use crate::provider::ProtocolType;
     use crate::storage::icloud::{get_provider_in, save_provider_to};
-    use crate::storage::local::{read_local_settings_from, write_local_settings_to, CliPaths};
+    use crate::storage::local::{
+        read_local_settings_from, write_local_settings_to, CliPaths, ProxySettings, ProxyTakeover,
+    };
     use tempfile::TempDir;
 
     struct FailingAdapter;
@@ -1357,6 +1393,70 @@ mod tests {
     }
 
     #[test]
+    fn test_reconcile_active_providers_proxy_mode_existing_provider_does_not_report_repatched() {
+        let tmp = TempDir::new().unwrap();
+        let providers_dir = tmp.path().join("providers");
+        let settings_path = tmp.path().join("local.json");
+        std::fs::create_dir_all(&providers_dir).unwrap();
+
+        save_provider_to(&providers_dir, &make_provider("p1", "Active", "claude")).unwrap();
+
+        let mut settings = LocalSettings::default();
+        settings
+            .active_providers
+            .insert("claude".to_string(), Some("p1".to_string()));
+        settings.proxy_takeover = Some(ProxyTakeover {
+            cli_ids: vec!["claude".to_string()],
+        });
+        write_local_settings_to(&settings_path, &settings).unwrap();
+
+        let result = _reconcile_active_providers_in_with_adapter(
+            &providers_dir,
+            &settings_path,
+            Some(&["p1".to_string()]),
+            Some(Box::new(FailingAdapter)),
+        )
+        .unwrap();
+
+        assert!(!result.repatched);
+        assert!(result.proxy_cli_ids_to_disable.is_empty());
+    }
+
+    #[test]
+    fn test_reconcile_active_providers_proxy_mode_missing_provider_requests_cleanup_only() {
+        let tmp = TempDir::new().unwrap();
+        let providers_dir = tmp.path().join("providers");
+        let settings_path = tmp.path().join("local.json");
+        std::fs::create_dir_all(&providers_dir).unwrap();
+
+        let mut settings = LocalSettings::default();
+        settings
+            .active_providers
+            .insert("claude".to_string(), Some("missing".to_string()));
+        settings.proxy_takeover = Some(ProxyTakeover {
+            cli_ids: vec!["claude".to_string()],
+        });
+        write_local_settings_to(&settings_path, &settings).unwrap();
+
+        let result = _reconcile_active_providers_in(
+            &providers_dir,
+            &settings_path,
+            Some(&["missing".to_string()]),
+        )
+        .unwrap();
+
+        assert!(!result.repatched);
+        assert_eq!(result.proxy_cli_ids_to_disable, vec!["claude".to_string()]);
+        assert_eq!(
+            read_local_settings_from(&settings_path)
+                .unwrap()
+                .active_providers
+                .get("claude"),
+            Some(&Some("missing".to_string()))
+        );
+    }
+
+    #[test]
     fn test_reconcile_active_providers_switches_missing_active_provider() {
         let tmp = TempDir::new().unwrap();
         let providers_dir = tmp.path().join("providers");
@@ -1458,6 +1558,103 @@ mod tests {
         assert!(patched["env"]["ANTHROPIC_AUTH_TOKEN"].is_null());
         assert!(patched["env"]["ANTHROPIC_BASE_URL"].is_null());
         assert_eq!(patched["env"]["CUSTOM_VAR"], "keep-me");
+    }
+
+    #[tokio::test]
+    async fn test_disable_proxy_for_deleted_providers_in_updates_settings_before_return() {
+        let tmp = TempDir::new().unwrap();
+        let providers_dir = tmp.path().join("providers");
+        let settings_path = tmp.path().join("local.json");
+        let config_dir = tmp.path().join("claude-config");
+        let backup_dir = tmp.path().join("claude-backup");
+        std::fs::create_dir_all(&providers_dir).unwrap();
+        std::fs::create_dir_all(&config_dir).unwrap();
+        let mut fallback = make_provider("p2", "Fallback", "claude");
+        fallback.api_key = "sk-ant-fallback".to_string();
+        fallback.base_url = "https://fallback.example.com".to_string();
+        save_provider_to(&providers_dir, &fallback).unwrap();
+        std::fs::write(
+            config_dir.join("settings.json"),
+            r#"{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "PROXY_MANAGED",
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8080"
+  }
+}"#,
+        )
+        .unwrap();
+
+        let mut settings = LocalSettings {
+            cli_paths: CliPaths {
+                claude_config_dir: Some(config_dir.display().to_string()),
+                codex_config_dir: None,
+            },
+            ..LocalSettings::default()
+        };
+        settings
+            .active_providers
+            .insert("claude".to_string(), Some("missing".to_string()));
+        settings.proxy = Some(ProxySettings {
+            global_enabled: true,
+            cli_enabled: std::collections::HashMap::from([("claude".to_string(), true)]),
+        });
+        settings.proxy_takeover = Some(ProxyTakeover {
+            cli_ids: vec!["claude".to_string()],
+        });
+        write_local_settings_to(&settings_path, &settings).unwrap();
+
+        let proxy_service = crate::proxy::ProxyService::new();
+        crate::commands::proxy::_proxy_disable_in(
+            &providers_dir,
+            &settings_path,
+            "claude",
+            &proxy_service,
+            Some(Box::new(ClaudeAdapter::new_with_paths(
+                config_dir.clone(),
+                backup_dir.clone(),
+            ))),
+        )
+        .await
+        .unwrap();
+
+        let after_disable = read_local_settings_from(&settings_path).unwrap();
+        assert!(after_disable.proxy_takeover.is_none());
+        assert_eq!(
+            after_disable
+                .proxy
+                .as_ref()
+                .and_then(|proxy| proxy.cli_enabled.get("claude"))
+                .copied(),
+            Some(false)
+        );
+
+        let reconcile_result = _reconcile_active_providers_in_with_adapter(
+            &providers_dir,
+            &settings_path,
+            Some(&["missing".to_string()]),
+            Some(Box::new(ClaudeAdapter::new_with_paths(
+                config_dir.clone(),
+                backup_dir,
+            ))),
+        )
+        .unwrap();
+
+        assert!(reconcile_result.repatched);
+
+        let updated = read_local_settings_from(&settings_path).unwrap();
+        assert_eq!(
+            updated.active_providers.get("claude"),
+            Some(&Some("p2".to_string()))
+        );
+        let patched: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(config_dir.join("settings.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(patched["env"]["ANTHROPIC_AUTH_TOKEN"], "sk-ant-fallback");
+        assert_eq!(
+            patched["env"]["ANTHROPIC_BASE_URL"],
+            "https://fallback.example.com"
+        );
     }
 
     #[test]
