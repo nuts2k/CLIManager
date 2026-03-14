@@ -10,7 +10,7 @@ Requirements for v2.2 协议转换。让 Claude Code 通过代理模式使用 Op
 ### 协议路由
 
 - [ ] **ROUT-01**: 代理模式下，Provider 协议类型为 OpenAiCompatible 时自动启用协议转换路径
-- [ ] **ROUT-02**: Provider 协议类型为 Anthropic 时请求直接透传，零回归
+- [x] **ROUT-02**: Provider 协议类型为 Anthropic 时请求直接透传，零回归
 
 ### 请求转换
 
@@ -42,7 +42,7 @@ Requirements for v2.2 协议转换。让 Claude Code 通过代理模式使用 Op
 
 - [x] **MODL-01**: Provider 数据模型支持存储默认目标模型名（缺省映射）
 - [x] **MODL-02**: Provider 数据模型支持存储任意个模型名映射对（Anthropic 名 → 目标名）
-- [ ] **MODL-03**: 代理转换时按映射表自动替换请求中的模型名（精确匹配优先，无匹配时用默认模型）
+- [x] **MODL-03**: 代理转换时按映射表自动替换请求中的模型名（精确匹配优先，无匹配时用默认模型）
 - [ ] **MODL-04**: Provider 编辑 UI 支持配置默认模型和映射对
 
 ### Responses API
@@ -100,8 +100,8 @@ Requirements for v2.2 协议转换。让 Claude Code 通过代理模式使用 Op
 | STRM-03 | Phase 14 | Complete |
 | STRM-04 | Phase 14 | Complete |
 | ROUT-01 | Phase 15 | Pending |
-| ROUT-02 | Phase 15 | Pending |
-| MODL-03 | Phase 15 | Pending |
+| ROUT-02 | Phase 15 | Complete |
+| MODL-03 | Phase 15 | Complete |
 | RAPI-01 | Phase 16 | Pending |
 | RAPI-02 | Phase 16 | Pending |
 | RAPI-03 | Phase 16 | Pending |

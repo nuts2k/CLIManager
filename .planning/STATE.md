@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: 协议转换
 status: planning
-stopped_at: Phase 15 context gathered
-last_updated: "2026-03-14T13:57:41.626Z"
+stopped_at: Completed 15-handler/15-01-PLAN.md
+last_updated: "2026-03-14T14:22:56.322Z"
 last_activity: 2026-03-14 — v2.2 roadmap restructured (3 phases, 27 requirements, max parallelism)
 progress:
   total_phases: 3
   completed_phases: 1
-  total_plans: 4
-  completed_plans: 4
+  total_plans: 6
+  completed_plans: 5
   percent: 100
 ---
 
@@ -57,6 +57,7 @@ Progress: [██████████] 100% (Phase 14 完成)
 - [Phase 14-data-model-translate-core]: clean_schema 移除所有 format + default 字段（扩展 cc-switch 只移除 format=uri 的逻辑）
 - [Phase 14-data-model-translate-core]: arguments 反序列化失败包装为 {"raw": "原字符串"} 而非空对象——保留原始数据便于调试
 - [Phase 14-data-model-translate-core]: stream.rs 中 map_finish_reason 使用局部副本，不依赖 response.rs，保持 Wave 2 并行编译独立性
+- [Phase 15-handler]: build_upstream_target_from_provider 直接保留 provider.base_url，不再调用 extract_origin_base_url——Provider base_url 已在创建时校验，handler 层需要完整路径供 URL 拼接
 
 ### Pending Todos
 
@@ -69,6 +70,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-14T13:57:41.617Z
-Stopped at: Phase 15 context gathered
-Resume file: .planning/phases/15-handler/15-CONTEXT.md
+Last session: 2026-03-14T14:22:56.319Z
+Stopped at: Completed 15-handler/15-01-PLAN.md
+Resume file: None
