@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Local Proxy
 status: executing
-stopped_at: "Checkpoint: Task 3 human-verify in 10-02-PLAN.md"
-last_updated: "2026-03-14T02:11:09.242Z"
-last_activity: 2026-03-14 — Phase 10 plan 01 complete
+stopped_at: "Completed 11-01-PLAN.md"
+last_updated: "2026-03-14T04:23:00Z"
+last_activity: 2026-03-14 — Phase 11 plan 01 complete
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 6
-  completed_plans: 6
-  percent: 83
+  total_phases: 4
+  completed_phases: 4
+  total_plans: 7
+  completed_plans: 7
+  percent: 100
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-13)
 
 **Core value:** 切换 Provider 时只做 surgical patch（精确修改凭据和模型字段），绝不重写配置文件的其他内容
-**Current focus:** Phase 10 plan 01 complete - 后端代理联动已完成
+**Current focus:** Phase 11 plan 01 complete - 代理感知修复与文档同步已完成
 
 ## Current Position
 
-Phase: 10 of 10 (实时切换与 UI 集成) - IN PROGRESS
-Plan: 1 of 2 in current phase
-Status: Executing
-Last activity: 2026-03-14 — Phase 10 plan 01 complete
+Phase: 11 of 11 (代理感知修复) - COMPLETE
+Plan: 1 of 1 in current phase
+Status: Complete
+Last activity: 2026-03-14 — Phase 11 plan 01 complete
 
-Progress: [████████░░] 83% (v2.0 milestone: 2/3 phases, plan 5/6)
+Progress: [██████████] 100% (v2.0 milestone: all phases complete)
 
 ## Performance Metrics
 
@@ -45,7 +45,8 @@ Progress: [████████░░] 83% (v2.0 milestone: 2/3 phases, plan
 |-------|-------|-------|----------|
 | 8. 代理核心 | 2/2 | 14min | 7min |
 | 9. 模式切换与持久化 | 2/2 | 13min | 6.5min |
-| 10. 实时切换与 UI 集成 | 1/2 | 4min | 4min |
+| 10. 实时切换与 UI 集成 | 2/2 | 4min | 4min |
+| 11. 代理感知修复 | 1/1 | 4min | 4min |
 
 ## Accumulated Context
 
@@ -76,6 +77,9 @@ Recent decisions affecting current work:
 - [10-01]: update_provider 代理检查在 _update_provider_in 之后（先保存文件再更新上游）
 - [10-01]: delete_provider 代理检查在 _delete_provider_in 之前（先关闭代理再删除文件）
 - [10-01]: 代理联动失败仅 log 不阻塞正常流程
+- [11-01]: tray.rs spawn_blocking 改为 tauri::async_runtime::spawn，以支持调用 async 代理感知函数
+- [11-01]: _update_provider_in 增加 skip_patch 参数，代理模式下 update_provider 传 skip_patch=true
+- [11-01]: determine_tray_switch_mode 提取为纯函数，与 AppHandle async 上下文解耦，便于单元测试
 
 ### Pending Todos
 
@@ -90,6 +94,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-14T00:32:42.322Z
-Stopped at: Checkpoint: Task 3 human-verify in 10-02-PLAN.md
+Last session: 2026-03-14T04:23:00Z
+Stopped at: Completed 11-01-PLAN.md
 Resume file: None
+

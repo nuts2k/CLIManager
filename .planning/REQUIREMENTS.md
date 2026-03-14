@@ -100,7 +100,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LIVE-02 | Phase 10 | Complete |
 | LIVE-03 | Phase 10 | Complete |
 | LIVE-04 | Phase 9 | Complete |
-| UX-01 | Phase 11 | Pending |
+| UX-01 | Phase 11 | Complete |
 | UX-02 | Phase 9 | Complete |
 | UX-03 | Phase 8 | Complete |
 
