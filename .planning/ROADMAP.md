@@ -94,11 +94,14 @@ Plans:
   1. 托盘菜单切换 Provider 时，代理模式下跳过 adapter.patch()，仅更新 active_providers 和代理上游
   2. 编辑活跃 Provider 时，代理模式下跳过 patch_provider_for_cli，仅保存文件并更新代理上游
   3. REQUIREMENTS.md UX-01 复选框标记为完成，10-02-SUMMARY.md 包含 requirements-completed 字段
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+- [ ] 11-01-PLAN.md — 托盘/编辑代理感知修复 + UX-01 文档同步
 
 ## Progress
 
-**Execution Order:** Phase 8 -> Phase 9 -> Phase 10
+**Execution Order:** Phase 8 -> Phase 9 -> Phase 10 -> Phase 11
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -112,8 +115,8 @@ Plans:
 | 8. 代理核心 | v2.0 | 2/2 | Complete | 2026-03-13 |
 | 9. 模式切换与持久化 | 1/2 | In Progress|  | - |
 | 10. 实时切换与 UI 集成 | 2/2 | Complete    | 2026-03-14 | - |
-| 11. 代理感知修复与文档同步 | v2.0 | 0/0 | Not Started | - |
+| 11. 代理感知修复与文档同步 | v2.0 | 0/1 | Not Started | - |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*
-*Last updated: 2026-03-14 — added gap closure Phase 11*
+*Last updated: 2026-03-14 — Phase 11 plan created*
