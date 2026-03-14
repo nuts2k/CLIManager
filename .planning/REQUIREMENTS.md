@@ -1,0 +1,80 @@
+# Requirements: CLIManager
+
+**Defined:** 2026-03-14
+**Core Value:** 切换 Provider 时只做 surgical patch（精确修改凭据和模型字段），绝不重写配置文件的其他内容
+
+## v2.1 Requirements
+
+Requirements for Release Engineering milestone. Each maps to roadmap phases.
+
+### CI/CD
+
+- [ ] **CICD-01**: 三段式 `v*.*.*` tag 推送触发 GitHub Actions 构建
+- [ ] **CICD-02**: macOS 双架构构建（aarch64 + x86_64），生成 DMG 安装镜像
+- [ ] **CICD-03**: 构建产物（DMG + .app.tar.gz + .sig + latest.json）自动上传到 GitHub Release Draft
+
+### Signing
+
+- [ ] **SIGN-01**: CI 构建时 macOS ad-hoc 代码签名（`APPLE_SIGNING_IDENTITY="-"`）
+- [ ] **SIGN-02**: 生成 updater Ed25519 签名密钥对并安全备份
+- [ ] **SIGN-03**: 私钥存储到 GitHub Secrets，公钥写入 tauri.conf.json
+
+### Auto Update
+
+- [ ] **UPD-01**: 集成 tauri-plugin-updater + tauri-plugin-process（Rust + JS 两端）
+- [ ] **UPD-02**: App 启动时自动检查 GitHub Releases 的 latest.json
+- [ ] **UPD-03**: 自定义 React 更新 UI（进度条 + 稍后提醒）
+- [ ] **UPD-04**: 签名验证通过后下载安装并重启 app
+
+### Release Tooling
+
+- [ ] **REL-01**: Cargo.toml 作为唯一版本来源，tauri.conf.json 省略 version 字段
+- [ ] **REL-02**: 项目专用发版技能（非全局 `/release`），bump Cargo.toml → CHANGELOG → commit → tag → push
+- [ ] **REL-03**: GitHub Release Notes 包含 Gatekeeper 安装指引
+
+## Future Requirements
+
+### v2.2+
+
+- **UPD-05**: CHANGELOG 自动生成（git-cliff，Conventional Commits 规范稳定后）
+- **UPD-06**: Release Draft 审核发布流程优化
+- **SIGN-04**: Apple Developer 账号签名 + Notarization（正式分发时）
+
+## Out of Scope
+
+| Feature | Reason |
+|---------|--------|
+| Apple Developer 签名 + 公证 | 需付费 $99/年，v2.1 内部工具阶段 ad-hoc 签名够用 |
+| Windows / Linux 构建 | macOS 优先（iCloud 依赖），跨平台增加 CI 复杂度 |
+| macOS App Store 分发 | 沙箱限制与本地 HTTP 代理冲突 |
+| Tauri 内置 updater dialog | 无进度条、无稍后提醒，UX 粗糙 |
+| Sparkle 框架 | 额外 native 依赖，tauri-plugin-updater 够用 |
+| release-please / semantic-release | 单人项目手写脚本更直接可控 |
+| CDN / S3 托管 latest.json | GitHub Releases 免运维，无额外收益 |
+
+## Traceability
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| CICD-01 | — | Pending |
+| CICD-02 | — | Pending |
+| CICD-03 | — | Pending |
+| SIGN-01 | — | Pending |
+| SIGN-02 | — | Pending |
+| SIGN-03 | — | Pending |
+| UPD-01 | — | Pending |
+| UPD-02 | — | Pending |
+| UPD-03 | — | Pending |
+| UPD-04 | — | Pending |
+| REL-01 | — | Pending |
+| REL-02 | — | Pending |
+| REL-03 | — | Pending |
+
+**Coverage:**
+- v2.1 requirements: 13 total
+- Mapped to phases: 0
+- Unmapped: 13
+
+---
+*Requirements defined: 2026-03-14*
+*Last updated: 2026-03-14 after initial definition*
