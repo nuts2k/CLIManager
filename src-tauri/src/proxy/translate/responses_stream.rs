@@ -4,7 +4,54 @@
 //! - `create_responses_anthropic_sse_stream()` — 将 Responses API SSE 事件流转换为 Anthropic SSE 事件序列
 
 use bytes::Bytes;
-use futures::stream::Stream;
+use futures::stream::{Stream, StreamExt};
+use serde_json::{json, Value};
+
+// ── 辅助函数 ──
+
+/// 格式化并返回 Anthropic SSE 事件字节：`event: {type}\ndata: {json}\n\n`
+fn format_sse_event(event_type: &str, data: &Value) -> Bytes {
+    let json_str = serde_json::to_string(data).unwrap_or_default();
+    Bytes::from(format!("event: {event_type}\ndata: {json_str}\n\n"))
+}
+
+/// 解析 Responses API SSE 块，返回 (event_type, data_json) 对
+///
+/// Responses API SSE 格式：`event: type\ndata: json\n\n`
+fn parse_responses_sse_block(block: &str) -> Option<(String, Value)> {
+    let mut event_type = None;
+    let mut data_str = None;
+
+    for line in block.lines() {
+        if let Some(ev) = line.strip_prefix("event: ") {
+            event_type = Some(ev.trim().to_string());
+        } else if let Some(d) = line.strip_prefix("data: ") {
+            data_str = Some(d);
+        }
+    }
+
+    let event_type = event_type?;
+    let data: Value = serde_json::from_str(data_str?).ok()?;
+    Some((event_type, data))
+}
+
+// ── 状态结构 ──
+
+/// 追踪单个 function_call output item 的流式状态
+#[derive(Debug)]
+struct FunctionCallState {
+    /// 在 Anthropic 事件序列中的 content_block index
+    anthropic_index: u32,
+    /// 来自 output_item.added 的 call_id（保留用于调试/扩展）
+    #[allow(dead_code)]
+    call_id: String,
+    /// 函数名称（保留用于调试/扩展）
+    #[allow(dead_code)]
+    name: String,
+    /// 是否已发出 content_block_start（保留用于调试/扩展）
+    #[allow(dead_code)]
+    started: bool,
+}
 
 /// 将 OpenAI Responses API SSE 上游字节流转换为 Anthropic SSE 格式的异步流
 ///
@@ -25,11 +72,288 @@ use futures::stream::Stream;
 /// response.function_call_arguments.delta* → response.function_call_arguments.done →
 /// response.output_item.done → response.completed
 pub fn create_responses_anthropic_sse_stream(
-    _upstream: impl Stream<Item = Result<Bytes, reqwest::Error>> + Send + 'static,
-    _request_model: String,
+    upstream: impl Stream<Item = Result<Bytes, reqwest::Error>> + Send + 'static,
+    request_model: String,
 ) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send {
-    // TDD RED: 未实现
-    futures::stream::empty::<Result<Bytes, std::io::Error>>()
+    async_stream::stream! {
+        // 跨 chunk SSE 行缓冲
+        let mut buffer = String::new();
+
+        // message_start 状态
+        let mut message_started = false;
+
+        // content block 编号管理
+        let mut next_anthropic_index: u32 = 0;
+
+        // 当前文本 block 的 Anthropic index（None = 没有打开的文本 block）
+        let mut current_text_index: Option<u32> = None;
+
+        // 函数调用状态表（key: output_index, value: FunctionCallState）
+        let mut function_calls: std::collections::HashMap<u64, FunctionCallState> = std::collections::HashMap::new();
+
+        // 是否有 function_call 输出（用于推断 stop_reason）
+        let mut has_function_call = false;
+
+        tokio::pin!(upstream);
+
+        'outer: while let Some(chunk) = upstream.next().await {
+            match chunk {
+                Err(e) => {
+                    log::error!("[responses_stream] 上游流读取错误: {e}");
+                    yield Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()));
+                    break 'outer;
+                }
+                Ok(bytes) => {
+                    let text = String::from_utf8_lossy(&bytes);
+                    buffer.push_str(&text);
+
+                    // 消耗所有完整 SSE 块（以 \n\n 结尾）
+                    while let Some(pos) = buffer.find("\n\n") {
+                        let block = buffer[..pos].to_string();
+                        buffer = buffer[pos + 2..].to_string();
+
+                        if block.trim().is_empty() {
+                            continue;
+                        }
+
+                        let Some((event_type, data)) = parse_responses_sse_block(&block) else {
+                            continue;
+                        };
+
+                        match event_type.as_str() {
+                            // ── response.created → message_start ──
+                            "response.created" => {
+                                if !message_started {
+                                    message_started = true;
+
+                                    // 提取 response id，前缀替换 resp_ → msg_
+                                    let raw_id = data
+                                        .pointer("/response/id")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("");
+                                    let msg_id = if raw_id.starts_with("resp_") {
+                                        format!("msg_{}", &raw_id["resp_".len()..])
+                                    } else {
+                                        raw_id.to_string()
+                                    };
+
+                                    let start_event = json!({
+                                        "type": "message_start",
+                                        "message": {
+                                            "id": msg_id,
+                                            "type": "message",
+                                            "role": "assistant",
+                                            "model": request_model,
+                                            "content": [],
+                                            "stop_reason": null,
+                                            "stop_sequence": null,
+                                            "usage": {
+                                                "input_tokens": 0,
+                                                "output_tokens": 0
+                                            }
+                                        }
+                                    });
+                                    yield Ok(format_sse_event("message_start", &start_event));
+                                }
+                            }
+
+                            // ── response.output_item.added ──
+                            // message 类型：等待 content_part.added 发 content_block_start
+                            // function_call 类型：立即发 content_block_start（无需 Deferred Start）
+                            "response.output_item.added" => {
+                                let output_index = data
+                                    .get("output_index")
+                                    .and_then(|v| v.as_u64())
+                                    .unwrap_or(0);
+                                let item = &data["item"];
+                                let item_type = item.get("type").and_then(|t| t.as_str()).unwrap_or("");
+
+                                if item_type == "function_call" {
+                                    has_function_call = true;
+
+                                    let call_id = item
+                                        .get("call_id")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
+                                    let name = item
+                                        .get("name")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
+
+                                    let idx = next_anthropic_index;
+                                    next_anthropic_index += 1;
+
+                                    // 立即发 content_block_start（无 Deferred Start）
+                                    let cbs_event = json!({
+                                        "type": "content_block_start",
+                                        "index": idx,
+                                        "content_block": {
+                                            "type": "tool_use",
+                                            "id": call_id,
+                                            "name": name
+                                        }
+                                    });
+                                    yield Ok(format_sse_event("content_block_start", &cbs_event));
+
+                                    function_calls.insert(
+                                        output_index,
+                                        FunctionCallState {
+                                            anthropic_index: idx,
+                                            call_id,
+                                            name,
+                                            started: true,
+                                        },
+                                    );
+                                }
+                                // message 类型不在此处处理，等待 content_part.added
+                            }
+
+                            // ── response.content_part.added → content_block_start(text) ──
+                            "response.content_part.added" => {
+                                let part_type = data
+                                    .pointer("/part/type")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("");
+
+                                if part_type == "output_text" && current_text_index.is_none() {
+                                    let idx = next_anthropic_index;
+                                    next_anthropic_index += 1;
+                                    current_text_index = Some(idx);
+
+                                    let cbs_event = json!({
+                                        "type": "content_block_start",
+                                        "index": idx,
+                                        "content_block": {
+                                            "type": "text",
+                                            "text": ""
+                                        }
+                                    });
+                                    yield Ok(format_sse_event("content_block_start", &cbs_event));
+                                }
+                            }
+
+                            // ── response.output_text.delta → content_block_delta(text_delta) ──
+                            "response.output_text.delta" => {
+                                if let Some(idx) = current_text_index {
+                                    let delta = data.get("delta").and_then(|v| v.as_str()).unwrap_or("");
+                                    let cbd_event = json!({
+                                        "type": "content_block_delta",
+                                        "index": idx,
+                                        "delta": {
+                                            "type": "text_delta",
+                                            "text": delta
+                                        }
+                                    });
+                                    yield Ok(format_sse_event("content_block_delta", &cbd_event));
+                                }
+                            }
+
+                            // ── response.output_text.done → content_block_stop ──
+                            "response.output_text.done" => {
+                                if let Some(idx) = current_text_index.take() {
+                                    let cbs_stop = json!({
+                                        "type": "content_block_stop",
+                                        "index": idx
+                                    });
+                                    yield Ok(format_sse_event("content_block_stop", &cbs_stop));
+                                }
+                            }
+
+                            // ── response.function_call_arguments.delta → content_block_delta(input_json_delta) ──
+                            "response.function_call_arguments.delta" => {
+                                let output_index = data
+                                    .get("output_index")
+                                    .and_then(|v| v.as_u64())
+                                    .unwrap_or(0);
+                                if let Some(state) = function_calls.get(&output_index) {
+                                    let idx = state.anthropic_index;
+                                    let delta = data.get("delta").and_then(|v| v.as_str()).unwrap_or("");
+                                    let cbd_event = json!({
+                                        "type": "content_block_delta",
+                                        "index": idx,
+                                        "delta": {
+                                            "type": "input_json_delta",
+                                            "partial_json": delta
+                                        }
+                                    });
+                                    yield Ok(format_sse_event("content_block_delta", &cbd_event));
+                                }
+                            }
+
+                            // ── response.function_call_arguments.done → content_block_stop ──
+                            "response.function_call_arguments.done" => {
+                                let output_index = data
+                                    .get("output_index")
+                                    .and_then(|v| v.as_u64())
+                                    .unwrap_or(0);
+                                if let Some(state) = function_calls.get(&output_index) {
+                                    let idx = state.anthropic_index;
+                                    let cbs_stop = json!({
+                                        "type": "content_block_stop",
+                                        "index": idx
+                                    });
+                                    yield Ok(format_sse_event("content_block_stop", &cbs_stop));
+                                }
+                            }
+
+                            // ── response.completed → message_delta + message_stop ──
+                            "response.completed" => {
+                                {
+                                    // 关闭尚未关闭的文本 block（异常情况保底）
+                                    if let Some(idx) = current_text_index.take() {
+                                        let cbs_stop = json!({
+                                            "type": "content_block_stop",
+                                            "index": idx
+                                        });
+                                        yield Ok(format_sse_event("content_block_stop", &cbs_stop));
+                                    }
+
+                                    // 推断 stop_reason
+                                    let stop_reason = if has_function_call { "tool_use" } else { "end_turn" };
+
+                                    // 提取 usage（Responses API 命名与 Anthropic 相同）
+                                    let input_tokens = data
+                                        .pointer("/response/usage/input_tokens")
+                                        .and_then(|v| v.as_u64())
+                                        .unwrap_or(0);
+                                    let output_tokens = data
+                                        .pointer("/response/usage/output_tokens")
+                                        .and_then(|v| v.as_u64())
+                                        .unwrap_or(0);
+                                    let usage_val = json!({
+                                        "input_tokens": input_tokens,
+                                        "output_tokens": output_tokens
+                                    });
+
+                                    // message_delta
+                                    let msg_delta = json!({
+                                        "type": "message_delta",
+                                        "delta": {
+                                            "stop_reason": stop_reason,
+                                            "stop_sequence": null
+                                        },
+                                        "usage": usage_val
+                                    });
+                                    yield Ok(format_sse_event("message_delta", &msg_delta));
+
+                                    // message_stop
+                                    let msg_stop = json!({"type": "message_stop"});
+                                    yield Ok(format_sse_event("message_stop", &msg_stop));
+
+                                    break 'outer;
+                                }
+                            }
+
+                            // 其他事件（output_item.done 等）跳过
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]

@@ -14,8 +14,120 @@ use serde_json::{json, Value};
 /// - usage 字段直接透传（命名相同）
 /// - stop_reason 从 output 内容推断
 /// - id 前缀替换 resp_ → msg_
-pub fn responses_to_anthropic(_body: Value) -> Result<Value, ProxyError> {
-    unimplemented!("TDD RED: responses_to_anthropic 未实现")
+pub fn responses_to_anthropic(body: Value) -> Result<Value, ProxyError> {
+    let output = body
+        .get("output")
+        .and_then(|o| o.as_array())
+        .ok_or_else(|| ProxyError::TranslateError("响应中缺少 output 字段".to_string()))?;
+
+    let mut content: Vec<Value> = Vec::new();
+    let mut has_function_call = false;
+    let mut incomplete_status = false;
+
+    for item in output {
+        let item_type = item.get("type").and_then(|t| t.as_str()).unwrap_or("");
+
+        match item_type {
+            "message" => {
+                // 提取 content 数组，处理 output_text 类型
+                if let Some(parts) = item.get("content").and_then(|c| c.as_array()) {
+                    for part in parts {
+                        let part_type = part.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                        if part_type == "output_text" {
+                            let text = part.get("text").and_then(|t| t.as_str()).unwrap_or("");
+                            content.push(json!({"type": "text", "text": text}));
+                        }
+                    }
+                }
+
+                // 检查 status 是否为 incomplete（max_tokens）
+                if item.get("status").and_then(|s| s.as_str()) == Some("incomplete") {
+                    incomplete_status = true;
+                }
+            }
+            "function_call" => {
+                has_function_call = true;
+
+                // 使用 call_id（不是 id）映射到 tool_use.id
+                let call_id = item
+                    .get("call_id")
+                    .and_then(|c| c.as_str())
+                    .unwrap_or("");
+                let name = item.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                let args_str = item
+                    .get("arguments")
+                    .and_then(|a| a.as_str())
+                    .unwrap_or("{}");
+
+                // arguments 反序列化失败时包装为 {"raw": "原字符串"}
+                let input: Value = serde_json::from_str(args_str)
+                    .unwrap_or_else(|_| json!({"raw": args_str}));
+
+                content.push(json!({
+                    "type": "tool_use",
+                    "id": call_id,
+                    "name": name,
+                    "input": input
+                }));
+            }
+            _ => {}
+        }
+    }
+
+    // stop_reason 推断逻辑
+    let stop_reason = if has_function_call {
+        "tool_use"
+    } else if incomplete_status {
+        "max_tokens"
+    } else {
+        "end_turn"
+    };
+
+    // usage 直接透传（Responses API 命名与 Anthropic 相同）
+    let usage = body.get("usage").cloned().unwrap_or(json!({}));
+    let input_tokens = usage
+        .get("input_tokens")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let output_tokens = usage
+        .get("output_tokens")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let usage_json = json!({
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens
+    });
+
+    // id 前缀替换 resp_ → msg_
+    let raw_id = body.get("id").and_then(|i| i.as_str()).unwrap_or("");
+    let response_id = if raw_id.starts_with("resp_") {
+        format!("msg_{}", &raw_id["resp_".len()..])
+    } else if raw_id.starts_with("msg_") {
+        raw_id.to_string()
+    } else if raw_id.is_empty() {
+        String::new()
+    } else {
+        format!("msg_{}", raw_id)
+    };
+
+    let model = body
+        .get("model")
+        .and_then(|m| m.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let result = json!({
+        "id": response_id,
+        "type": "message",
+        "role": "assistant",
+        "model": model,
+        "content": content,
+        "stop_reason": stop_reason,
+        "stop_sequence": null,
+        "usage": usage_json
+    });
+
+    Ok(result)
 }
 
 #[cfg(test)]
