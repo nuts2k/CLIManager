@@ -1,0 +1,72 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]*.[0-9]*.[0-9]*'  # 仅匹配三段式 tag（v0.2.0），不响应 GSD 两段式 tag（v2.1）
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  publish-tauri:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'macos-latest'
+            args: '--target aarch64-apple-darwin'
+          - platform: 'macos-latest'
+            args: '--target x86_64-apple-darwin'
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: 安装前端依赖
+        run: pnpm install --frozen-lockfile
+
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          APPLE_SIGNING_IDENTITY: "-"
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'CLIManager ${{ github.ref_name }}'
+          releaseDraft: true
+          releaseBody: |
+            ## CLIManager ${{ github.ref_name }}
+
+            完整更新日志请查看 [CHANGELOG.md](https://github.com/nuts2k/CLIManager/blob/main/CHANGELOG.md)
+
+            <details>
+            <summary>macOS 首次安装 Gatekeeper 指引</summary>
+
+            macOS 对未经公证的应用会提示"已损坏"或"无法验证开发者"，请执行以下命令解除限制：
+
+            ```bash
+            xattr -cr "/Applications/CLIManager.app"
+            ```
+
+            然后在「系统设置 → 隐私与安全性」中点击「仍要打开」。
+            </details>
+          args: ${{ matrix.args }}
