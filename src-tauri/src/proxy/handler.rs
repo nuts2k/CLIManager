@@ -261,7 +261,7 @@ pub async fn proxy_handler(
         }
         ProtocolType::OpenAiResponses => {
             if !status.is_success() {
-                // 4xx/5xx 直接透传
+                // 4xx/5xx 直接透传（RESP-05）
                 Body::from_stream(upstream_resp.bytes_stream())
             } else if is_streaming {
                 // 流式：wrap 为 Responses API -> Anthropic SSE 转换流

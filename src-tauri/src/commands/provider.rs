@@ -810,19 +810,20 @@ pub async fn test_provider(provider_id: String) -> Result<TestResult, AppError> 
         .build()
         .map_err(|e| AppError::Http(e.to_string()))?;
 
-    // Use test model from settings if available, otherwise fall back to provider's model
-    let model = settings
+    // Anthropic 用 provider.model（CLI 配置模型名）
+    // OpenAI 类型用 upstream_model（代理转换目标模型名）
+    let test_model_override = settings
         .test_config
         .as_ref()
         .and_then(|c| c.test_model.as_ref())
         .filter(|m| !m.is_empty())
-        .cloned()
-        .unwrap_or_else(|| provider.model.clone());
+        .cloned();
 
     let start = Instant::now();
 
     let result = match provider.protocol_type {
         ProtocolType::Anthropic => {
+            let model = test_model_override.unwrap_or_else(|| provider.model.clone());
             let url = format!("{}/v1/messages", provider.base_url.trim_end_matches('/'));
             client
                 .post(&url)
@@ -837,20 +838,45 @@ pub async fn test_provider(provider_id: String) -> Result<TestResult, AppError> 
                 .send()
                 .await
         }
-        ProtocolType::OpenAiChatCompletions | ProtocolType::OpenAiResponses => {
+        ProtocolType::OpenAiChatCompletions => {
+            let model = test_model_override.clone()
+                .or_else(|| provider.upstream_model.clone())
+                .unwrap_or_default();
             let url = format!(
                 "{}/v1/chat/completions",
                 provider.base_url.trim_end_matches('/')
             );
+            let request_body = serde_json::json!({
+                "model": model,
+                "messages": [{"role": "user", "content": "hi"}],
+                "max_tokens": 1
+            });
             client
                 .post(&url)
                 .header("Authorization", format!("Bearer {}", provider.api_key))
                 .header("content-type", "application/json")
-                .json(&serde_json::json!({
-                    "model": model,
-                    "messages": [{"role": "user", "content": "hi"}],
-                    "max_tokens": 1
-                }))
+                .json(&request_body)
+                .send()
+                .await
+        }
+        ProtocolType::OpenAiResponses => {
+            let model = test_model_override
+                .or_else(|| provider.upstream_model.clone())
+                .unwrap_or_default();
+            let url = format!(
+                "{}/v1/responses",
+                provider.base_url.trim_end_matches('/')
+            );
+            let request_body = serde_json::json!({
+                "model": model,
+                "input": [{"role": "user", "content": "hi"}],
+                "max_output_tokens": 1
+            });
+            client
+                .post(&url)
+                .header("Authorization", format!("Bearer {}", provider.api_key))
+                .header("content-type", "application/json")
+                .json(&request_body)
                 .send()
                 .await
         }
@@ -876,11 +902,13 @@ pub async fn test_provider(provider_id: String) -> Result<TestResult, AppError> 
                 })
             }
         }
-        Err(e) => Ok(TestResult {
-            success: false,
-            elapsed_ms,
-            error: Some(e.to_string()),
-        }),
+        Err(e) => {
+            Ok(TestResult {
+                success: false,
+                elapsed_ms,
+                error: Some(e.to_string()),
+            })
+        }
     }
 }
 
