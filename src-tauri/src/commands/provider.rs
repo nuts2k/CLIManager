@@ -394,6 +394,7 @@ fn _update_provider_in(
     local_settings_path: &Path,
     mut provider: Provider,
     adapter: Option<Box<dyn CliAdapter>>,
+    skip_patch: bool,
 ) -> Result<Provider, AppError> {
     provider = normalize_and_validate_provider(provider)?;
     let existing = crate::storage::icloud::get_provider_in(providers_dir, &provider.id)?;
@@ -408,7 +409,7 @@ fn _update_provider_in(
     provider.updated_at = chrono::Utc::now().timestamp_millis();
     crate::storage::icloud::save_existing_provider_to(providers_dir, &provider)?;
 
-    if is_active {
+    if is_active && !skip_patch {
         if let Err(err) = patch_provider_for_cli(&provider.cli_id, &settings, &provider, adapter) {
             let _ = crate::storage::icloud::save_existing_provider_to(providers_dir, &existing);
             return Err(err);
@@ -523,11 +524,15 @@ pub async fn update_provider(
     let tracker = app_handle.state::<crate::watcher::SelfWriteTracker>();
     tracker.record_write(dir.join(format!("{}.json", provider.id)));
 
-    let result = _update_provider_in(&dir, &settings_path, provider, None)?;
+    // 代理模式检测：若被编辑的 Provider 是某个代理模式 CLI 的活跃 Provider，跳过 patch
+    let settings = crate::storage::local::read_local_settings_from(&settings_path)?;
+    let proxy_cli_ids = find_proxy_cli_ids_for_provider(&settings, &provider.id);
+    let skip_patch = !proxy_cli_ids.is_empty();
+
+    let result = _update_provider_in(&dir, &settings_path, provider, None, skip_patch)?;
 
     // 代理模式联动：如果被编辑的 Provider 是某个代理模式 CLI 的活跃 Provider，更新代理上游
-    let settings = crate::storage::local::read_local_settings_from(&settings_path)?;
-    for cli_id in find_proxy_cli_ids_for_provider(&settings, &result.id) {
+    for cli_id in proxy_cli_ids {
         let upstream = crate::proxy::UpstreamTarget {
             api_key: result.api_key.clone(),
             base_url: extract_origin_base_url(&result.base_url)
@@ -1280,6 +1285,7 @@ mod tests {
                 adapter_config_dir.clone(),
                 adapter_backup_dir,
             ))),
+            false,
         )
         .unwrap();
 
@@ -1322,6 +1328,7 @@ mod tests {
             &settings_path,
             updated,
             Some(Box::new(FailingAdapter)),
+            false,
         )
         .unwrap_err();
 
@@ -1344,7 +1351,7 @@ mod tests {
         let mut updated = provider.clone();
         updated.base_url = "  https://proxy.example.com  ".to_string();
 
-        let stored = _update_provider_in(&providers_dir, &settings_path, updated, None).unwrap();
+        let stored = _update_provider_in(&providers_dir, &settings_path, updated, None, false).unwrap();
 
         assert_eq!(stored.base_url, "https://proxy.example.com");
         assert_eq!(
@@ -1366,7 +1373,7 @@ mod tests {
         let mut updated = provider.clone();
         updated.base_url = "localhost:8080".to_string();
 
-        let err = _update_provider_in(&providers_dir, &settings_path, updated, None).unwrap_err();
+        let err = _update_provider_in(&providers_dir, &settings_path, updated, None, false).unwrap_err();
         assert!(matches!(
             err,
             AppError::Validation(ref message)
@@ -1948,5 +1955,92 @@ mod tests {
 
         let result = check_proxy_blocks_delete(&settings, "p1");
         assert!(result.is_ok());
+    }
+
+    // --- _update_provider_in skip_patch 测试 ---
+
+    #[test]
+    fn test_update_provider_skip_patch_does_not_call_adapter() {
+        // skip_patch=true 时，活跃 Provider 被编辑后文件被保存，但 adapter.patch() 不被调用
+        let tmp = TempDir::new().unwrap();
+        let providers_dir = tmp.path().join("providers");
+        let settings_path = tmp.path().join("local.json");
+        std::fs::create_dir_all(&providers_dir).unwrap();
+
+        let provider = make_provider("p1", "Test Provider", "claude");
+        save_provider_to(&providers_dir, &provider).unwrap();
+
+        // 设置为活跃 Provider
+        let mut settings = LocalSettings::default();
+        settings
+            .active_providers
+            .insert("claude".to_string(), Some("p1".to_string()));
+        write_local_settings_to(&settings_path, &settings).unwrap();
+
+        let mut updated = provider.clone();
+        updated.api_key = "sk-ant-new-key".to_string();
+        updated.base_url = "https://new.example.com".to_string();
+
+        // skip_patch=true：即使传入 None adapter，也不应尝试调用 patch
+        // （若 skip_patch=false 且 adapter=None，会尝试获取真实 adapter 并失败）
+        let result = _update_provider_in(
+            &providers_dir,
+            &settings_path,
+            updated.clone(),
+            None,
+            true, // skip_patch=true
+        )
+        .unwrap();
+
+        // 文件应被保存（updated_at 更新，api_key 更新）
+        assert_eq!(result.api_key, "sk-ant-new-key");
+        let stored = get_provider_in(&providers_dir, "p1").unwrap();
+        assert_eq!(stored.api_key, "sk-ant-new-key");
+        assert_eq!(stored.base_url, "https://new.example.com");
+    }
+
+    #[test]
+    fn test_update_provider_no_skip_patch_calls_adapter_on_active() {
+        // skip_patch=false 时，活跃 Provider 被编辑后 adapter.patch() 被调用（现有行为不变）
+        let tmp = TempDir::new().unwrap();
+        let providers_dir = tmp.path().join("providers");
+        let settings_path = tmp.path().join("local.json");
+        std::fs::create_dir_all(&providers_dir).unwrap();
+
+        let provider = make_provider("p1", "Test Provider", "claude");
+        save_provider_to(&providers_dir, &provider).unwrap();
+
+        let mut settings = LocalSettings::default();
+        settings
+            .active_providers
+            .insert("claude".to_string(), Some("p1".to_string()));
+        write_local_settings_to(&settings_path, &settings).unwrap();
+
+        let adapter_config_dir = tmp.path().join("claude-config");
+        let adapter_backup_dir = tmp.path().join("claude-backup");
+        std::fs::create_dir_all(&adapter_config_dir).unwrap();
+        std::fs::write(adapter_config_dir.join("settings.json"), "{}").unwrap();
+
+        let mut updated = provider.clone();
+        updated.api_key = "sk-ant-patched-key".to_string();
+
+        _update_provider_in(
+            &providers_dir,
+            &settings_path,
+            updated,
+            Some(Box::new(ClaudeAdapter::new_with_paths(
+                adapter_config_dir.clone(),
+                adapter_backup_dir,
+            ))),
+            false, // skip_patch=false
+        )
+        .unwrap();
+
+        // adapter.patch() 被调用：settings.json 应已被 patch
+        let patched: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(adapter_config_dir.join("settings.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(patched["env"]["ANTHROPIC_AUTH_TOKEN"], "sk-ant-patched-key");
     }
 }
