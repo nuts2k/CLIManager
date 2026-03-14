@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -13,7 +15,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useSettings } from "@/hooks/useSettings";
-import { refreshTrayMenu } from "@/lib/tauri";
+import { useProxyStatus } from "@/hooks/useProxyStatus";
+import { refreshTrayMenu, proxySetGlobal } from "@/lib/tauri";
 import i18n from "@/i18n";
 
 interface SettingsPageProps {
@@ -24,8 +27,44 @@ interface SettingsPageProps {
 export function SettingsPage({ onBack, onShowImport }: SettingsPageProps) {
   const { t } = useTranslation();
   const { settings, updateSettings } = useSettings();
+  const { proxyStatus } = useProxyStatus();
 
   const currentLanguage = settings?.language ?? "zh";
+
+  // 代理模式全局开关局部状态（用于乐观更新 + 失败回滚）
+  const [proxyEnabled, setProxyEnabled] = useState(false);
+
+  // 当 proxyStatus 变化时同步 proxyEnabled
+  useEffect(() => {
+    if (proxyStatus) {
+      setProxyEnabled(proxyStatus.global_enabled);
+    }
+  }, [proxyStatus]);
+
+  const handleProxyToggle = async (newValue: boolean) => {
+    const previousValue = proxyEnabled;
+    // 乐观更新
+    setProxyEnabled(newValue);
+    try {
+      await proxySetGlobal(newValue);
+      toast.success(
+        newValue ? t("proxy.globalEnabled") : t("proxy.globalDisabledMsg"),
+      );
+    } catch (err) {
+      // 回滚
+      setProxyEnabled(previousValue);
+      const errorStr = String(err);
+      if (
+        errorStr.includes("绑定失败") ||
+        errorStr.includes("Address already in use") ||
+        errorStr.includes("address already in use")
+      ) {
+        toast.error(t("proxy.portInUse", { port: "15800/15801" }));
+      } else {
+        toast.error(t("proxy.enableFailed") + ": " + errorStr);
+      }
+    }
+  };
 
   // Test config local state
   const [timeout, setTimeout] = useState<number>(
@@ -114,6 +153,24 @@ export function SettingsPage({ onBack, onShowImport }: SettingsPageProps) {
                 </SelectItem>
               </SelectContent>
             </Select>
+          </div>
+        </section>
+
+        <Separator />
+
+        {/* 代理模式 Section */}
+        <section className="space-y-3">
+          <h3 className="text-sm font-medium text-foreground">
+            {t("settings.proxyMode")}
+          </h3>
+          <div className="flex items-center justify-between max-w-xs">
+            <p className="text-sm text-muted-foreground pr-4">
+              {t("settings.proxyModeDescription")}
+            </p>
+            <Switch
+              checked={proxyEnabled}
+              onCheckedChange={handleProxyToggle}
+            />
           </div>
         </section>
 

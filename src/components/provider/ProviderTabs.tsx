@@ -4,6 +4,13 @@ import { toast } from "sonner";
 import { Plus } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { ProviderList } from "@/components/provider/ProviderList";
 import {
   ProviderDialog,
@@ -12,7 +19,8 @@ import {
 import { DeleteConfirmDialog } from "@/components/provider/DeleteConfirmDialog";
 import { useProviders } from "@/hooks/useProviders";
 import { useSettings } from "@/hooks/useSettings";
-import { createProvider, updateProvider, refreshTrayMenu } from "@/lib/tauri";
+import { useProxyStatus } from "@/hooks/useProxyStatus";
+import { createProvider, updateProvider, refreshTrayMenu, proxyEnable, proxyDisable } from "@/lib/tauri";
 import type { Provider } from "@/types/provider";
 
 const CLI_TABS = [
@@ -39,6 +47,45 @@ export function ProviderTabs({ refreshTrigger }: ProviderTabsProps) {
     testProviderConnection,
   } = useProviders(currentCliId);
   const { getActiveProviderId, refresh: refreshSettings } = useSettings();
+  const { proxyStatus } = useProxyStatus();
+
+  // 当前 CLI 的代理状态
+  const cliStatus = proxyStatus?.cli_statuses.find(
+    (s) => s.cli_id === currentCliId,
+  );
+  const globalEnabled = proxyStatus?.global_enabled ?? false;
+  const cliProxyActive = cliStatus?.active ?? false;
+  const hasProvider = cliStatus?.has_provider ?? false;
+  const switchDisabled = !globalEnabled || !hasProvider;
+  const tooltipText = !globalEnabled
+    ? t("proxy.globalDisabled")
+    : !hasProvider
+      ? t("proxy.noProvider")
+      : "";
+
+  const handleCliProxyToggle = async () => {
+    try {
+      if (cliProxyActive) {
+        await proxyDisable(currentCliId);
+        toast.success(t("proxy.disableSuccess"));
+      } else {
+        await proxyEnable(currentCliId);
+        toast.success(t("proxy.enableSuccess"));
+      }
+    } catch (err) {
+      const errorStr = String(err);
+      if (
+        errorStr.includes("绑定失败") ||
+        errorStr.includes("Address already in use") ||
+        errorStr.includes("address already in use")
+      ) {
+        const port = cliStatus?.port ?? "unknown";
+        toast.error(t("proxy.portInUse", { port }));
+      } else {
+        toast.error(t("proxy.enableFailed") + ": " + errorStr);
+      }
+    }
+  };
 
   // Re-fetch when sync trigger changes (skip initial render)
   const isInitialMount = useRef(true);
@@ -164,7 +211,13 @@ export function ProviderTabs({ refreshTrigger }: ProviderTabsProps) {
           <TabsList>
             {CLI_TABS.map((tab) => (
               <TabsTrigger key={tab.id} value={tab.id}>
-                {t(tab.labelKey)}
+                <span className="flex items-center gap-1.5">
+                  {t(tab.labelKey)}
+                  {proxyStatus?.cli_statuses.find((s) => s.cli_id === tab.id)
+                    ?.active && (
+                    <span className="size-2 rounded-full bg-green-500" />
+                  )}
+                </span>
               </TabsTrigger>
             ))}
           </TabsList>
@@ -172,6 +225,32 @@ export function ProviderTabs({ refreshTrigger }: ProviderTabsProps) {
             <Plus className="size-4" />
             {t("actions.create")}
           </Button>
+        </div>
+
+        {/* CLI 代理开关行 */}
+        <div className="flex items-center gap-3 px-1 py-2">
+          <span className="text-sm text-muted-foreground">
+            {t("settings.proxyMode")}
+          </span>
+          {switchDisabled ? (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Switch checked={cliProxyActive} disabled />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{tooltipText}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : (
+            <Switch
+              checked={cliProxyActive}
+              onCheckedChange={handleCliProxyToggle}
+            />
+          )}
         </div>
 
         {CLI_TABS.map((tab) => (
