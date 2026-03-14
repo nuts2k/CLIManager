@@ -143,7 +143,7 @@ pub fn scan_codex_config_in(home_dir: &Path) -> Option<DetectedCliConfig> {
         cli_name: "Codex".to_string(),
         api_key,
         base_url,
-        protocol_type: ProtocolType::OpenAiCompatible,
+        protocol_type: ProtocolType::OpenAiChatCompletions,
         has_api_key,
     })
 }
@@ -338,7 +338,7 @@ mod tests {
         assert_eq!(config.cli_name, "Codex");
         assert_eq!(config.api_key, "sk-openai-test-key-67890");
         assert_eq!(config.base_url, "https://custom.openai.com/v1");
-        assert_eq!(config.protocol_type, ProtocolType::OpenAiCompatible);
+        assert_eq!(config.protocol_type, ProtocolType::OpenAiChatCompletions);
         assert!(config.has_api_key);
     }
 
@@ -477,7 +477,7 @@ base_url = "https://azure.openai.com/v1"
         let result = import_provider_to(
             tmp.path(),
             "Codex Import".to_string(),
-            ProtocolType::OpenAiCompatible,
+            ProtocolType::OpenAiChatCompletions,
             "sk-test-key".to_string(),
             "".to_string(),
             "codex".to_string(),
@@ -491,7 +491,7 @@ base_url = "https://azure.openai.com/v1"
         let result = import_provider_to(
             tmp.path(),
             "Codex Import".to_string(),
-            ProtocolType::OpenAiCompatible,
+            ProtocolType::OpenAiChatCompletions,
             "sk-test-key".to_string(),
             "example.com/v1".to_string(),
             "codex".to_string(),
@@ -505,7 +505,7 @@ base_url = "https://azure.openai.com/v1"
         let result = import_provider_to(
             tmp.path(),
             "Codex Import".to_string(),
-            ProtocolType::OpenAiCompatible,
+            ProtocolType::OpenAiChatCompletions,
             "sk-test-key".to_string(),
             "https://api.openai.com/v1".to_string(),
             "codex".to_string(),

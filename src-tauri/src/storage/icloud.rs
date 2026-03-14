@@ -217,6 +217,8 @@ mod tests {
             model: "claude-sonnet-4-20250514".to_string(),
             model_config: None,
             notes: None,
+            upstream_model: None,
+            upstream_model_map: None,
             created_at,
             updated_at: created_at,
             schema_version: 1,

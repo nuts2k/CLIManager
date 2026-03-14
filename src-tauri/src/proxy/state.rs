@@ -91,7 +91,7 @@ mod tests {
         let new_target = UpstreamTarget {
             api_key: "sk-new-key".to_string(),
             base_url: "https://api.openai.com".to_string(),
-            protocol_type: ProtocolType::OpenAiCompatible,
+            protocol_type: ProtocolType::OpenAiChatCompletions,
         };
         state.update_upstream(new_target).await;
 
@@ -105,13 +105,13 @@ mod tests {
         let target = UpstreamTarget {
             api_key: "key-123".to_string(),
             base_url: "https://example.com".to_string(),
-            protocol_type: ProtocolType::OpenAiCompatible,
+            protocol_type: ProtocolType::OpenAiChatCompletions,
         };
         assert_eq!(target.api_key, "key-123");
         assert_eq!(target.base_url, "https://example.com");
         assert!(matches!(
             target.protocol_type,
-            ProtocolType::OpenAiCompatible
+            ProtocolType::OpenAiChatCompletions
         ));
     }
 }

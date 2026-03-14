@@ -14,9 +14,12 @@ use crate::storage::local::{ProxySettings, ProxyTakeover};
 fn parse_protocol_type(s: &str) -> Result<ProtocolType, String> {
     match s {
         "anthropic" => Ok(ProtocolType::Anthropic),
-        "open_ai_compatible" => Ok(ProtocolType::OpenAiCompatible),
+        "open_ai_compatible" | "open_ai_chat_completions" => {
+            Ok(ProtocolType::OpenAiChatCompletions)
+        }
+        "open_ai_responses" => Ok(ProtocolType::OpenAiResponses),
         other => Err(format!(
-            "无效的 protocol_type: '{}', 期望 'anthropic' 或 'open_ai_compatible'",
+            "无效的 protocol_type: '{}', 期望 'anthropic'、'open_ai_chat_completions' 或 'open_ai_responses'",
             other
         )),
     }
@@ -225,7 +228,7 @@ fn get_adapter_for_cli(
 fn make_proxy_provider(cli_id: &str, port: u16, real_provider: &Provider) -> Provider {
     let (protocol_type, base_url) = match cli_id {
         "codex" => (
-            ProtocolType::OpenAiCompatible,
+            ProtocolType::OpenAiChatCompletions,
             format!("http://127.0.0.1:{}", port),
         ),
         _ => (
@@ -244,6 +247,8 @@ fn make_proxy_provider(cli_id: &str, port: u16, real_provider: &Provider) -> Pro
         model: real_provider.model.clone(),
         model_config: real_provider.model_config.clone(),
         notes: None,
+        upstream_model: None,
+        upstream_model_map: None,
         created_at: real_provider.created_at,
         updated_at: real_provider.updated_at,
         schema_version: real_provider.schema_version,
@@ -873,7 +878,7 @@ mod tests {
         assert_eq!(target.base_url, "https://api.openai.com");
         assert!(matches!(
             target.protocol_type,
-            ProtocolType::OpenAiCompatible
+            ProtocolType::OpenAiChatCompletions
         ));
     }
 
@@ -895,12 +900,14 @@ mod tests {
             id: "p-legacy".to_string(),
             cli_id: "codex".to_string(),
             name: "Legacy".to_string(),
-            protocol_type: ProtocolType::OpenAiCompatible,
+            protocol_type: ProtocolType::OpenAiChatCompletions,
             api_key: "sk-test".to_string(),
             base_url: "https://api.openai.com/v1/chat/completions".to_string(),
             model: "o4-mini".to_string(),
             model_config: None,
             notes: None,
+            upstream_model: None,
+            upstream_model_map: None,
             created_at: 0,
             updated_at: 0,
             schema_version: 1,
@@ -935,6 +942,8 @@ mod tests {
             model: "claude-sonnet-4-20250514".to_string(),
             model_config: None,
             notes: None,
+            upstream_model: None,
+            upstream_model_map: None,
             created_at: 0,
             updated_at: 0,
             schema_version: 1,
@@ -953,12 +962,14 @@ mod tests {
             id: "p2".to_string(),
             cli_id: "codex".to_string(),
             name: "Test Codex".to_string(),
-            protocol_type: ProtocolType::OpenAiCompatible,
+            protocol_type: ProtocolType::OpenAiChatCompletions,
             api_key: "sk-real-key".to_string(),
             base_url: "https://api.openai.com".to_string(),
             model: "o4-mini".to_string(),
             model_config: None,
             notes: None,
+            upstream_model: None,
+            upstream_model_map: None,
             created_at: 0,
             updated_at: 0,
             schema_version: 1,
@@ -969,7 +980,7 @@ mod tests {
         assert_eq!(proxy.base_url, "http://127.0.0.1:15801");
         assert!(matches!(
             proxy.protocol_type,
-            ProtocolType::OpenAiCompatible
+            ProtocolType::OpenAiChatCompletions
         ));
     }
 
@@ -1051,6 +1062,8 @@ mod tests {
             model: "claude-sonnet-4-20250514".to_string(),
             model_config: None,
             notes: None,
+            upstream_model: None,
+            upstream_model_map: None,
             created_at: 1710000000000,
             updated_at: 1710000000000,
             schema_version: 1,

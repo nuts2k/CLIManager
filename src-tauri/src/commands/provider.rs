@@ -833,7 +833,7 @@ pub async fn test_provider(provider_id: String) -> Result<TestResult, AppError> 
                 .send()
                 .await
         }
-        ProtocolType::OpenAiCompatible => {
+        ProtocolType::OpenAiChatCompletions | ProtocolType::OpenAiResponses => {
             let url = format!(
                 "{}/v1/chat/completions",
                 provider.base_url.trim_end_matches('/')
@@ -926,6 +926,8 @@ mod tests {
             model: "claude-sonnet-4-20250514".to_string(),
             model_config: None,
             notes: None,
+            upstream_model: None,
+            upstream_model_map: None,
             created_at: 1710000000000,
             updated_at: 1710000000000,
             schema_version: 1,
@@ -1113,7 +1115,7 @@ mod tests {
         std::fs::create_dir_all(&providers_dir).unwrap();
 
         let mut provider = make_provider("p2", "Codex Provider", "codex");
-        provider.protocol_type = ProtocolType::OpenAiCompatible;
+        provider.protocol_type = ProtocolType::OpenAiChatCompletions;
         provider.api_key = "sk-codex-key".to_string();
         provider.base_url = "https://proxy.example.com".to_string();
         save_provider_to(&providers_dir, &provider).unwrap();

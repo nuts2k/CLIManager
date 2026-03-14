@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 /// 规范化 base_url 为 origin 形式：scheme + host + optional port。
@@ -78,7 +80,9 @@ pub fn extract_origin_base_url(input: &str) -> Result<String, String> {
 #[serde(rename_all = "snake_case")]
 pub enum ProtocolType {
     Anthropic,
-    OpenAiCompatible,
+    #[serde(alias = "open_ai_compatible")]
+    OpenAiChatCompletions,
+    OpenAiResponses,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -107,6 +111,10 @@ pub struct Provider {
     pub model_config: Option<ModelConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upstream_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upstream_model_map: Option<HashMap<String, String>>,
     pub created_at: i64,
     pub updated_at: i64,
     #[serde(default = "default_schema_version")]
@@ -141,6 +149,8 @@ impl Provider {
             model,
             model_config: None,
             notes: None,
+            upstream_model: None,
+            upstream_model_map: None,
             created_at: now,
             updated_at: now,
             schema_version: 1,
@@ -168,6 +178,8 @@ mod tests {
                 reasoning_effort: None,
             }),
             notes: Some("Test provider".to_string()),
+            upstream_model: None,
+            upstream_model_map: None,
             created_at: 1710000000000,
             updated_at: 1710000000000,
             schema_version: 1,
@@ -191,11 +203,94 @@ mod tests {
     }
 
     #[test]
-    fn test_protocol_type_openai_compatible_serde() {
-        let json = serde_json::to_string(&ProtocolType::OpenAiCompatible).unwrap();
-        assert_eq!(json, "\"open_ai_compatible\"");
+    fn test_protocol_type_openai_chat_completions_serde() {
+        // 新名称序列化为 "open_ai_chat_completions"
+        let json = serde_json::to_string(&ProtocolType::OpenAiChatCompletions).unwrap();
+        assert_eq!(json, "\"open_ai_chat_completions\"");
         let deserialized: ProtocolType = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized, ProtocolType::OpenAiCompatible);
+        assert_eq!(deserialized, ProtocolType::OpenAiChatCompletions);
+    }
+
+    #[test]
+    fn test_protocol_type_openai_compatible_alias_forward_compat() {
+        // 旧 JSON 中的 "open_ai_compatible" 通过 alias 反序列化为 OpenAiChatCompletions
+        let legacy_json = "\"open_ai_compatible\"";
+        let deserialized: ProtocolType = serde_json::from_str(legacy_json).unwrap();
+        assert_eq!(deserialized, ProtocolType::OpenAiChatCompletions);
+    }
+
+    #[test]
+    fn test_protocol_type_openai_responses_serde() {
+        let json = serde_json::to_string(&ProtocolType::OpenAiResponses).unwrap();
+        assert_eq!(json, "\"open_ai_responses\"");
+        let deserialized: ProtocolType = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, ProtocolType::OpenAiResponses);
+    }
+
+    #[test]
+    fn test_provider_upstream_model_present() {
+        let mut provider = sample_provider();
+        provider.upstream_model = Some("gpt-4o".to_string());
+        let json = serde_json::to_string(&provider).unwrap();
+        assert!(json.contains("upstream_model"));
+        assert!(json.contains("gpt-4o"));
+    }
+
+    #[test]
+    fn test_provider_upstream_model_none_skipped() {
+        let provider = sample_provider();
+        // sample_provider 未设 upstream_model，应为 None，序列化时 skip
+        let json = serde_json::to_string(&provider).unwrap();
+        assert!(!json.contains("upstream_model"));
+    }
+
+    #[test]
+    fn test_provider_upstream_model_map_present() {
+        let mut provider = sample_provider();
+        let mut map = HashMap::new();
+        map.insert("claude-3-5-sonnet".to_string(), "gpt-4o".to_string());
+        provider.upstream_model_map = Some(map);
+        let json = serde_json::to_string(&provider).unwrap();
+        assert!(json.contains("upstream_model_map"));
+        assert!(json.contains("claude-3-5-sonnet"));
+        assert!(json.contains("gpt-4o"));
+    }
+
+    #[test]
+    fn test_provider_upstream_model_map_none_skipped() {
+        let provider = sample_provider();
+        let json = serde_json::to_string(&provider).unwrap();
+        assert!(!json.contains("upstream_model_map"));
+    }
+
+    #[test]
+    fn test_provider_old_json_without_upstream_fields_deserializes() {
+        // 旧 JSON（无 upstream_model/upstream_model_map）反序列化不崩溃，两字段为 None
+        let json = r#"{
+            "id": "test-id",
+            "name": "Test",
+            "protocol_type": "anthropic",
+            "api_key": "sk-test",
+            "base_url": "https://api.example.com",
+            "model": "test-model",
+            "created_at": 1710000000000,
+            "updated_at": 1710000000000
+        }"#;
+        let provider: Provider = serde_json::from_str(json).unwrap();
+        assert_eq!(provider.upstream_model, None);
+        assert_eq!(provider.upstream_model_map, None);
+    }
+
+    #[test]
+    fn test_provider_round_trip_with_new_fields() {
+        let mut provider = sample_provider();
+        let mut map = HashMap::new();
+        map.insert("claude-3-5-sonnet".to_string(), "gpt-4o".to_string());
+        provider.upstream_model = Some("gpt-4o-mini".to_string());
+        provider.upstream_model_map = Some(map);
+        let json = serde_json::to_string_pretty(&provider).unwrap();
+        let deserialized: Provider = serde_json::from_str(&json).unwrap();
+        assert_eq!(provider, deserialized);
     }
 
     #[test]

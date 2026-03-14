@@ -93,7 +93,7 @@ pub async fn proxy_handler(
             ProtocolType::Anthropic => {
                 req_builder = req_builder.header("x-api-key", &upstream.api_key);
             }
-            ProtocolType::OpenAiCompatible => {
+            ProtocolType::OpenAiChatCompletions | ProtocolType::OpenAiResponses => {
                 req_builder =
                     req_builder.header("Authorization", format!("Bearer {}", upstream.api_key));
             }
