@@ -61,7 +61,7 @@
 **Goal**: Provider 数据模型扩展完成，请求转换、响应转换、流式 SSE 三个转换模块全部实现并通过单元测试，可独立于 handler 验证
 **Depends on**: Phase 13 (v2.1 代理基础设施就绪)
 **Requirements**: MODL-01, MODL-02, REQT-01, REQT-02, REQT-03, REQT-04, REQT-05, REQT-06, REQT-07, REQT-08, RESP-01, RESP-02, RESP-03, RESP-04, RESP-05, STRM-01, STRM-02, STRM-03, STRM-04
-**Plans:** 1/4 plans executed
+**Plans:** 2/4 plans executed
 
 Plans:
 - [ ] 14-01-PLAN.md — 数据模型扩展（ProtocolType 三变体 + upstream 映射字段 + 模块骨架）
@@ -130,7 +130,7 @@ Plans:
 | 11. 代理感知修复与文档同步 | v2.0 | 1/1 | Complete | 2026-03-14 |
 | 12. 全栈实现 | v2.1 | 4/4 | Complete | 2026-03-14 |
 | 13. 端到端验证 | v2.1 | 1/1 | Complete | 2026-03-14 |
-| 14. 数据模型 + 转换核心 | 1/4 | In Progress|  | - |
+| 14. 数据模型 + 转换核心 | 2/4 | In Progress|  | - |
 | 15. Handler 集成与协议路由 | v2.2 | 0/? | Not started | - |
 | 16. Responses API + Provider UI | v2.2 | 0/? | Not started | - |
 

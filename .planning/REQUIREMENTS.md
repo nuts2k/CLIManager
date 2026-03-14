@@ -14,14 +14,14 @@ Requirements for v2.2 协议转换。让 Claude Code 通过代理模式使用 Op
 
 ### 请求转换
 
-- [ ] **REQT-01**: 系统提示正确转换（顶层 `system` 字段 → messages 数组首条 system 消息）
-- [ ] **REQT-02**: 消息数组格式转换（text/tool_use/tool_result content blocks → OpenAI 对应格式）
-- [ ] **REQT-03**: 工具定义转换（`input_schema` → `function.parameters`，添加 `type:"function"` 包装）
-- [ ] **REQT-04**: 端点重写（`/v1/messages` → `/v1/chat/completions`）
-- [ ] **REQT-05**: 图片/多模态内容转换（base64 content block → `image_url` data URL）
-- [ ] **REQT-06**: JSON Schema 清理（移除 OpenAI 不兼容的 `format` 字段等）
-- [ ] **REQT-07**: cache_control 字段透传到 OpenAI 请求
-- [ ] **REQT-08**: 标准参数透传与重命名（`stop_sequences` → `stop` 等）
+- [x] **REQT-01**: 系统提示正确转换（顶层 `system` 字段 → messages 数组首条 system 消息）
+- [x] **REQT-02**: 消息数组格式转换（text/tool_use/tool_result content blocks → OpenAI 对应格式）
+- [x] **REQT-03**: 工具定义转换（`input_schema` → `function.parameters`，添加 `type:"function"` 包装）
+- [x] **REQT-04**: 端点重写（`/v1/messages` → `/v1/chat/completions`）
+- [x] **REQT-05**: 图片/多模态内容转换（base64 content block → `image_url` data URL）
+- [x] **REQT-06**: JSON Schema 清理（移除 OpenAI 不兼容的 `format` 字段等）
+- [x] **REQT-07**: cache_control 字段透传到 OpenAI 请求
+- [x] **REQT-08**: 标准参数透传与重命名（`stop_sequences` → `stop` 等）
 
 ### 响应转换
 
@@ -82,14 +82,14 @@ Requirements for v2.2 协议转换。让 Claude Code 通过代理模式使用 Op
 |-------------|-------|--------|
 | MODL-01 | Phase 14 | Complete |
 | MODL-02 | Phase 14 | Complete |
-| REQT-01 | Phase 14 | Pending |
-| REQT-02 | Phase 14 | Pending |
-| REQT-03 | Phase 14 | Pending |
-| REQT-04 | Phase 14 | Pending |
-| REQT-05 | Phase 14 | Pending |
-| REQT-06 | Phase 14 | Pending |
-| REQT-07 | Phase 14 | Pending |
-| REQT-08 | Phase 14 | Pending |
+| REQT-01 | Phase 14 | Complete |
+| REQT-02 | Phase 14 | Complete |
+| REQT-03 | Phase 14 | Complete |
+| REQT-04 | Phase 14 | Complete |
+| REQT-05 | Phase 14 | Complete |
+| REQT-06 | Phase 14 | Complete |
+| REQT-07 | Phase 14 | Complete |
+| REQT-08 | Phase 14 | Complete |
 | RESP-01 | Phase 14 | Pending |
 | RESP-02 | Phase 14 | Pending |
 | RESP-03 | Phase 14 | Pending |
