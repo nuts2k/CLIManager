@@ -29,7 +29,7 @@ Requirements for Release Engineering milestone. Each maps to roadmap phases.
 ### Release Tooling
 
 - [x] **REL-01**: Cargo.toml 作为唯一版本来源，tauri.conf.json 省略 version 字段
-- [ ] **REL-02**: 项目专用发版技能（非全局 `/release`），bump Cargo.toml → CHANGELOG → commit → tag → push
+- [x] **REL-02**: 项目专用发版技能（非全局 `/release`），bump Cargo.toml → CHANGELOG → commit → tag → push
 - [x] **REL-03**: GitHub Release Notes 包含 Gatekeeper 安装指引
 
 ## Future Requirements

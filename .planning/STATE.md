@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Release Engineering
 status: executing
-stopped_at: Completed 12-02-PLAN.md
-last_updated: "2026-03-14T08:15:01.715Z"
-last_activity: 2026-03-14 — 12-01 完成（版本统一 + Ed25519 密钥 + updater/process 插件注册）
+stopped_at: Completed 12-04-PLAN.md
+last_updated: "2026-03-14T08:15:00.000Z"
+last_activity: 2026-03-14 — 12-04 完成（/ship 一键发版技能 + CHANGELOG.md）
 progress:
   total_phases: 2
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 4
-  completed_plans: 2
+  completed_plans: 4
 ---
 
 # Project State
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-03-14)
 ## Current Position
 
 Phase: 12 of 13 (全栈实现)
-Plan: 1 of 4 in current phase
-Status: executing
-Last activity: 2026-03-14 — 12-01 完成（版本统一 + Ed25519 密钥 + updater/process 插件注册）
+Plan: 4 of 4 in current phase
+Status: completed
+Last activity: 2026-03-14 — 12-04 完成（/ship 一键发版技能 + CHANGELOG.md）
 
 ## Performance Metrics
 
@@ -43,6 +43,7 @@ Last activity: 2026-03-14 — 12-01 完成（版本统一 + Ed25519 密钥 + upd
 |------|----------|-------|-------|
 | 12-01 | 12min | 2 | 6 |
 | Phase 12 P02 | 3min | 1 tasks | 1 files |
+| Phase 12 P04 | 2min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -57,6 +58,8 @@ Last activity: 2026-03-14 — 12-01 完成（版本统一 + Ed25519 密钥 + upd
 - [v2.1]: GSD 里程碑 tag (v2.1) 与产品版本 tag (v0.2.1) 解耦
 - [v2.1]: CI 只匹配三段式 v*.*.* tag，不响应 GSD 两段式 tag
 - [Phase 12-02]: 使用 tauri-action@v1 + 双架构矩阵，releaseBody 链接 CHANGELOG.md 而非内联日志
+- [Phase 12-04]: 版本来源唯一——仅修改 src-tauri/Cargo.toml，tauri.conf.json 无 version 字段
+- [Phase 12-04]: 零外部依赖 CHANGELOG——git log + Python 内置处理，不引入 git-cliff 等工具
 
 ### Pending Todos
 
@@ -70,6 +73,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-14T08:15:01.713Z
-Stopped at: Completed 12-02-PLAN.md
-Resume file: None
+Last session: 2026-03-14T08:15:00.000Z
+Stopped at: Completed 12-04-PLAN.md
+Resume file: .planning/phases/12-full-stack-impl/12-04-SUMMARY.md
