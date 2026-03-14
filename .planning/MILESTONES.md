@@ -1,5 +1,14 @@
 # Milestones
 
+## v2.1 Release Engineering (Shipped: 2026-03-14)
+
+**Phases completed:** 2 phases, 5 plans, 1 tasks
+
+**Key accomplishments:**
+- (none recorded)
+
+---
+
 ## v2.0 Local Proxy (Shipped: 2026-03-14)
 
 **Phases completed:** 4 phases, 7 plans, 0 tasks

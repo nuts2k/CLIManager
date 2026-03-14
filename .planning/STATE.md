@@ -4,7 +4,7 @@ milestone: v2.1
 milestone_name: Release Engineering
 status: completed
 stopped_at: Completed 13-01-PLAN.md
-last_updated: "2026-03-14T09:32:43.872Z"
+last_updated: "2026-03-14T09:54:10.943Z"
 last_activity: "2026-03-14 — 13-01 完成（releaseDraft: false 配置，e2e 验证框架就绪）"
 progress:
   total_phases: 2
