@@ -23,14 +23,19 @@ export function useProxyStatus() {
     refresh();
   }, [refresh]);
 
-  // 监听 proxy-mode-changed 事件，自动刷新状态
+  // 监听 proxy-mode-changed 和 providers-changed 事件，自动刷新状态
+  // providers-changed：激活/删除 Provider 会影响 has_provider 字段
   useEffect(() => {
-    const unlisten = listen<void>("proxy-mode-changed", async () => {
+    const unlistenProxy = listen<void>("proxy-mode-changed", async () => {
+      await refresh();
+    });
+    const unlistenProviders = listen<void>("providers-changed", async () => {
       await refresh();
     });
 
     return () => {
-      unlisten.then((fn) => fn());
+      unlistenProxy.then((fn) => fn());
+      unlistenProviders.then((fn) => fn());
     };
   }, [refresh]);
 

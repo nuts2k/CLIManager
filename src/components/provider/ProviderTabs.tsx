@@ -47,7 +47,7 @@ export function ProviderTabs({ refreshTrigger }: ProviderTabsProps) {
     testProviderConnection,
   } = useProviders(currentCliId);
   const { getActiveProviderId, refresh: refreshSettings } = useSettings();
-  const { proxyStatus } = useProxyStatus();
+  const { proxyStatus, refresh: refreshProxyStatus } = useProxyStatus();
 
   // 当前 CLI 的代理状态
   const cliStatus = proxyStatus?.cli_statuses.find(
@@ -109,8 +109,9 @@ export function ProviderTabs({ refreshTrigger }: ProviderTabsProps) {
   const currentTabLabel =
     CLI_TABS.find((tab) => tab.id === currentCliId)?.labelKey ?? currentCliId;
 
-  const handleSwitch = (providerId: string) => {
-    switchProvider(providerId, refreshSettings);
+  const handleSwitch = async (providerId: string) => {
+    await switchProvider(providerId, refreshSettings);
+    refreshProxyStatus();
   };
 
   const handleDelete = (provider: Provider) => {
@@ -120,6 +121,7 @@ export function ProviderTabs({ refreshTrigger }: ProviderTabsProps) {
   const handleConfirmDelete = async () => {
     if (!deletingProvider) return;
     await removeProvider(deletingProvider.id, refreshSettings);
+    refreshProxyStatus();
     setDeletingProvider(null);
   };
 
@@ -191,6 +193,7 @@ export function ProviderTabs({ refreshTrigger }: ProviderTabsProps) {
 
       await refreshSettings();
       await refresh();
+      refreshProxyStatus();
       refreshTrayMenu().catch(() => {});
     } catch (err) {
       toast.error(String(err));

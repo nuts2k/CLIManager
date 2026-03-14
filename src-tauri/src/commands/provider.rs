@@ -212,12 +212,20 @@ fn _reconcile_missing_active_provider_in(
     Ok(())
 }
 
+/// reconcile 的返回结果
+struct ReconcileResult {
+    /// 是否有 CLI 被 repatch
+    repatched: bool,
+    /// 代理模式下活跃 Provider 被删除的 CLI 列表（需要调用方异步关闭代理）
+    proxy_cli_ids_to_disable: Vec<String>,
+}
+
 fn _reconcile_active_providers_in_with_adapter(
     providers_dir: &Path,
     local_settings_path: &Path,
     changed_provider_ids: Option<&[String]>,
     mut adapter: Option<Box<dyn CliAdapter>>,
-) -> Result<bool, AppError> {
+) -> Result<ReconcileResult, AppError> {
     let changed: Option<HashSet<&str>> =
         changed_provider_ids.map(|ids| ids.iter().map(String::as_str).collect());
     let settings = crate::storage::local::read_local_settings_from(local_settings_path)?;
@@ -239,10 +247,50 @@ fn _reconcile_active_providers_in_with_adapter(
         .collect();
 
     if active_targets.is_empty() {
-        return Ok(false);
+        return Ok(ReconcileResult {
+            repatched: false,
+            proxy_cli_ids_to_disable: vec![],
+        });
     }
 
+    // 代理模式下的 CLI：
+    // - Provider 仍存在 → 跳过 patch（CLI 应指向 localhost:port，上游由 update_proxy_upstream_if_needed 处理）
+    // - Provider 被删除 → 记录到 proxy_cli_ids_to_disable，由调用方异步关闭代理后正常 reconcile
+    let proxy_cli_ids: HashSet<String> = settings
+        .proxy_takeover
+        .as_ref()
+        .map(|t| t.cli_ids.iter().cloned().collect())
+        .unwrap_or_default();
+
+    let mut proxy_cli_ids_to_disable: Vec<String> = vec![];
+
     for (cli_id, provider_id) in &active_targets {
+        if proxy_cli_ids.contains(cli_id) {
+            // 代理模式 CLI：检查 Provider 是否仍存在
+            match crate::storage::icloud::get_provider_in(providers_dir, provider_id) {
+                Ok(_) => {
+                    // Provider 存在，内容变更 → 跳过 patch
+                    log::info!(
+                        "reconcile：CLI {} 处于代理模式，跳过 patch（代理上游另行更新）",
+                        cli_id
+                    );
+                    continue;
+                }
+                Err(AppError::NotFound(_)) | Err(AppError::Json(_)) => {
+                    // Provider 被删除 → 需要关闭代理
+                    log::warn!(
+                        "reconcile：CLI {} 处于代理模式但活跃 Provider {} 已被删除，需关闭代理",
+                        cli_id,
+                        provider_id
+                    );
+                    proxy_cli_ids_to_disable.push(cli_id.clone());
+                    // 不在这里做 reconcile，等调用方关闭代理后 reconcile 会被重新触发
+                    continue;
+                }
+                Err(err) => return Err(err),
+            }
+        }
+
         match crate::storage::icloud::get_provider_in(providers_dir, provider_id) {
             Ok(provider) => {
                 let settings =
@@ -262,14 +310,17 @@ fn _reconcile_active_providers_in_with_adapter(
         }
     }
 
-    Ok(true)
+    Ok(ReconcileResult {
+        repatched: true,
+        proxy_cli_ids_to_disable,
+    })
 }
 
 fn _reconcile_active_providers_in(
     providers_dir: &Path,
     local_settings_path: &Path,
     changed_provider_ids: Option<&[String]>,
-) -> Result<bool, AppError> {
+) -> Result<ReconcileResult, AppError> {
     _reconcile_active_providers_in_with_adapter(
         providers_dir,
         local_settings_path,
@@ -576,17 +627,85 @@ pub(crate) async fn _set_active_provider_in_proxy_mode(
     Ok(settings)
 }
 
-pub fn sync_changed_active_providers(changed_provider_ids: &[String]) -> Result<bool, AppError> {
+/// 代理模式下活跃 Provider 被同步删除时，异步关闭代理并 reconcile。
+/// 供 watcher 和 sync_active_providers 使用。
+pub(crate) async fn disable_proxy_for_deleted_providers(
+    app_handle: &tauri::AppHandle,
+    cli_ids: Vec<String>,
+) {
+    let proxy_service = app_handle.state::<crate::proxy::ProxyService>();
+    let providers_dir = match crate::storage::icloud::get_icloud_providers_dir() {
+        Ok(d) => d,
+        Err(e) => {
+            log::error!("代理联动：获取 providers 目录失败: {}", e);
+            return;
+        }
+    };
+    let settings_path = crate::storage::local::get_local_settings_path();
+
+    for cli_id in &cli_ids {
+        log::info!(
+            "代理联动：活跃 Provider 被同步删除，关闭代理: cli_id={}",
+            cli_id
+        );
+        if let Err(e) = crate::commands::proxy::_proxy_disable_in(
+            &providers_dir,
+            &settings_path,
+            cli_id,
+            &proxy_service,
+            None,
+        )
+        .await
+        {
+            log::error!(
+                "代理联动：关闭代理失败: cli_id={}, err={}",
+                cli_id,
+                e
+            );
+        }
+    }
+
+    // 代理关闭后重新 reconcile（此时 CLI 已脱离代理模式，正常切换到下一个 Provider）
+    if let Err(e) = _reconcile_active_providers_in(&providers_dir, &settings_path, None) {
+        log::error!("代理联动：关闭代理后 reconcile 失败: {}", e);
+    }
+
+    // 通知前端刷新代理状态
+    use tauri::Emitter;
+    app_handle.emit("proxy-mode-changed", ()).ok();
+}
+
+/// sync 返回结果，供 watcher 使用
+pub struct SyncResult {
+    pub repatched: bool,
+    /// 代理模式下活跃 Provider 被删除的 CLI 列表（需要异步关闭代理）
+    pub proxy_cli_ids_to_disable: Vec<String>,
+}
+
+pub fn sync_changed_active_providers(changed_provider_ids: &[String]) -> Result<SyncResult, AppError> {
     let dir = crate::storage::icloud::get_icloud_providers_dir()?;
     let settings_path = crate::storage::local::get_local_settings_path();
-    _reconcile_active_providers_in(&dir, &settings_path, Some(changed_provider_ids))
+    let result = _reconcile_active_providers_in(&dir, &settings_path, Some(changed_provider_ids))?;
+    Ok(SyncResult {
+        repatched: result.repatched,
+        proxy_cli_ids_to_disable: result.proxy_cli_ids_to_disable,
+    })
 }
 
 #[tauri::command]
 pub fn sync_active_providers(app: tauri::AppHandle) -> Result<(), AppError> {
     let dir = crate::storage::icloud::get_icloud_providers_dir()?;
     let settings_path = crate::storage::local::get_local_settings_path();
-    _reconcile_active_providers_in(&dir, &settings_path, None)?;
+    let result = _reconcile_active_providers_in(&dir, &settings_path, None)?;
+
+    // 代理模式下 Provider 被删除的 CLI：异步关闭代理
+    if !result.proxy_cli_ids_to_disable.is_empty() {
+        let app_clone = app.clone();
+        tauri::async_runtime::spawn(async move {
+            disable_proxy_for_deleted_providers(&app_clone, result.proxy_cli_ids_to_disable).await;
+        });
+    }
+
     #[cfg(desktop)]
     crate::tray::update_tray_menu(&app);
     Ok(())
@@ -1232,7 +1351,7 @@ mod tests {
         )
         .unwrap();
 
-        let repatched = _reconcile_active_providers_in_with_adapter(
+        let result = _reconcile_active_providers_in_with_adapter(
             &providers_dir,
             &settings_path,
             Some(&["p2".to_string()]),
@@ -1243,7 +1362,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(!repatched);
+        assert!(!result.repatched);
         let patched: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(config_dir.join("settings.json")).unwrap(),
         )
@@ -1279,7 +1398,7 @@ mod tests {
         std::fs::write(config_dir.join("settings.json"), "{}").unwrap();
         std::fs::remove_file(providers_dir.join("p1.json")).unwrap();
 
-        let repatched = _reconcile_active_providers_in_with_adapter(
+        let result = _reconcile_active_providers_in_with_adapter(
             &providers_dir,
             &settings_path,
             None,
@@ -1290,7 +1409,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(repatched);
+        assert!(result.repatched);
         assert_eq!(
             read_local_settings_from(&settings_path)
                 .unwrap()
@@ -1335,7 +1454,7 @@ mod tests {
         .unwrap();
         std::fs::write(providers_dir.join("p1.json"), "{ invalid json }").unwrap();
 
-        let repatched = _reconcile_active_providers_in_with_adapter(
+        let result = _reconcile_active_providers_in_with_adapter(
             &providers_dir,
             &settings_path,
             Some(&["p1".to_string()]),
@@ -1346,7 +1465,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(repatched);
+        assert!(result.repatched);
         assert_eq!(
             read_local_settings_from(&settings_path)
                 .unwrap()

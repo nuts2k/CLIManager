@@ -52,14 +52,27 @@ fn process_events(events: Vec<DebouncedEvent>, app_handle: &AppHandle) {
     }
 
     // Auto re-patch CLI configs
-    let repatched = match crate::commands::provider::sync_changed_active_providers(&changed_files) {
-        Ok(repatched) => repatched,
-        Err(e) => {
-            log::error!("Failed to re-patch CLI configs after sync: {:?}", e);
-            let _ = app_handle.emit("sync-repatch-failed", e.to_string());
-            false
-        }
-    };
+    let (repatched, proxy_cli_ids_to_disable) =
+        match crate::commands::provider::sync_changed_active_providers(&changed_files) {
+            Ok(result) => (result.repatched, result.proxy_cli_ids_to_disable),
+            Err(e) => {
+                log::error!("Failed to re-patch CLI configs after sync: {:?}", e);
+                let _ = app_handle.emit("sync-repatch-failed", e.to_string());
+                (false, vec![])
+            }
+        };
+
+    // 代理模式下活跃 Provider 被同步删除：异步关闭代理并重新 reconcile
+    if !proxy_cli_ids_to_disable.is_empty() {
+        let handle_clone = app_handle.clone();
+        tauri::async_runtime::spawn(async move {
+            crate::commands::provider::disable_proxy_for_deleted_providers(
+                &handle_clone,
+                proxy_cli_ids_to_disable,
+            )
+            .await;
+        });
+    }
 
     // 代理模式联动：iCloud 同步变更活跃 Provider 时，自动更新代理上游
     update_proxy_upstream_if_needed(app_handle, &changed_files);
