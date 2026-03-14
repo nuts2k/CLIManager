@@ -1,8 +1,8 @@
 # Feature Research
 
-**Domain:** Release Engineering — Tauri 2 macOS 桌面应用的 CI/CD、代码签名与自动更新
+**Domain:** 协议转换层 — Anthropic Messages API ↔ OpenAI Chat Completions API
 **Researched:** 2026-03-14
-**Confidence:** HIGH（Tauri 官方文档 + tauri-action GitHub 仓库 + 社区实战文章 + macOS Gatekeeper 官方行为验证）
+**Confidence:** HIGH（cc-switch 参考实现 + Anthropic 官方文档 + OpenAI 官方文档 + 现有 CLIManager 代理架构分析）
 
 ---
 
@@ -10,32 +10,40 @@
 
 ### Table Stakes（用户预期的基本功能）
 
-这些特性是发版工程的基线。缺少任何一项 = 发版流程不完整，app 无法持续迭代分发。
+这些特性是 Anthropic→OpenAI 协议转换层的基线。缺少任何一项 = Claude Code 无法正常使用 OpenAI 兼容的 Provider，功能残缺。
 
 | Feature | 为何必须 | 复杂度 | 备注 |
 |---------|---------|--------|------|
-| GitHub Actions tag 触发构建 | push git tag → 自动出 DMG，没有这条工程流水线就无法持续分发 | LOW | `on: push: tags: 'v*'`；用 `tauri-apps/tauri-action@v0`；matrix 跑 macOS aarch64 + x86_64 |
-| tauri-action 构建 + 发布 Release | 官方 action，自动编译、签名（如有）、上传 artifacts、创建 GitHub Release | LOW | 产出：DMG（Intel + Apple Silicon）、`latest.json` 更新描述文件、`.app.tar.gz` + `.sig` 更新包 |
-| Ad-hoc 代码签名 | Apple Silicon Mac 要求所有从网络下载的 app 必须签名才能运行（macOS 15+）；无签名 = 部分设备无法运行 | LOW | `APPLE_SIGNING_IDENTITY="-"`；不需要 Apple Developer 账号；仅需 CI 环境变量一行 |
-| 版本号与 git tag 对齐 | `tauri.conf.json` version 必须与 tag 一致，否则 `latest.json` 中版本混乱，自动更新失效 | LOW | 最简方案：省略 `tauri.conf.json` 中的 version 字段，Tauri 自动读取 `Cargo.toml` 的版本；发版脚本统一修改 `Cargo.toml` |
-| `latest.json` 自动生成 + 上传 | `tauri-plugin-updater` 的静态端点依赖这个文件；`tauri-action` 自动生成并上传到 Release | LOW | 文件包含各平台的 `url`（下载地址）+ `signature`（`.sig` 文件内容）+ `version` + `pub_date` |
-| 更新包签名密钥对（updater keypair） | `tauri-plugin-updater` 强制要求签名验证；没有密钥对 = 无法启用自动更新 | LOW | `tauri signer generate -w ~/.tauri/cli-manager.key`；公钥写入 `tauri.conf.json plugins.updater.pubkey`；私钥存 GitHub Secret 供 CI 使用 |
-| tauri-plugin-updater 集成 | app 启动时检查更新，提示用户下载安装 | MEDIUM | 插件注册（Rust + JS 两端）；配置 endpoints 指向 GitHub Releases 的 `latest.json`；需配置 capabilities 权限 |
-| Gatekeeper 用户引导 | Ad-hoc 签名不能绕过 Gatekeeper；用户首次打开会被拦截；必须提供清晰说明 | LOW | 在 Release Notes 和 README 中说明：前往「系统设置 → 隐私与安全性」点击「仍要打开」；macOS 15+ 不再支持 Control-click 直接打开 |
+| **请求格式转换：消息数组** | Claude Code 发送 Anthropic `messages` 数组格式；OpenAI Provider 只接受 `messages` 数组但字段结构不同。core 差异：content 可能是字符串或数组，角色相同但语义处理不同 | MEDIUM | Anthropic: `{"role":"user","content": str or array}`；OpenAI: `{"role":"user","content": str or array of content parts}` |
+| **请求格式转换：系统提示** | Anthropic 的 `system` 是顶层独立字段（字符串或 content block 数组）；OpenAI 没有顶层 system 字段，system prompt 必须作为 `{"role":"system","content":"..."}` 消息放到 messages 数组开头 | LOW | 支持两种 Anthropic 格式：`system: "string"` 和 `system: [{type:"text", text:"..."}]` |
+| **请求格式转换：工具定义** | Anthropic tools 结构：`{name, description, input_schema}`；OpenAI tools 结构：`{type:"function", function:{name, description, parameters}}`。字段名和嵌套层次不同 | MEDIUM | `input_schema` → `parameters`；包裹在 `function` 子对象中；`type:"function"` 固定值需添加。需过滤 Anthropic 特有的 `BatchTool` 类型 |
+| **请求格式转换：标准参数透传** | `max_tokens`, `temperature`, `top_p`, `stream` 等参数名相同，直接透传。`stop_sequences` → `stop` 字段名不同 | LOW | 大部分参数一一对应；只有 `stop_sequences`→`stop` 有重命名 |
+| **响应格式转换：非流式** | OpenAI 响应结构：`{id, choices:[{message:{role,content,tool_calls}, finish_reason}], usage:{prompt_tokens, completion_tokens}}`；Anthropic 期望：`{id, type:"message", role:"assistant", content:[{type:"text",text:"..."}], stop_reason, usage:{input_tokens, output_tokens}}` | MEDIUM | finish_reason 映射：`"stop"→"end_turn"`，`"length"→"max_tokens"`，`"tool_calls"→"tool_use"` |
+| **响应格式转换：工具调用（非流式）** | OpenAI 工具调用放在 `message.tool_calls[]`，函数参数是 JSON 字符串；Anthropic 期望 `content` 数组中的 `{type:"tool_use", id, name, input}` 块，input 是 JSON 对象（不是字符串） | MEDIUM | 需要 JSON 反序列化：`arguments`（字符串）→ `input`（对象）。`stop_reason` 必须为 `"tool_use"` |
+| **流式 SSE 转换：基本文本** | OpenAI 流式格式：`data: {id, choices:[{delta:{content:"..."},finish_reason:null}]}\n\n` → `data: [DONE]`；Anthropic 流式格式：`message_start` → `content_block_start` → `content_block_delta{type:"text_delta"}` → `content_block_stop` → `message_delta` → `message_stop` 事件序列 | HIGH | 需要有状态流转换器：追踪 message_id、content index 计数器、当前块类型 |
+| **流式 SSE 转换：工具调用** | OpenAI 流式工具调用：分批到来的 `delta.tool_calls[{index, id?, function:{name?, arguments?}}]`；Anthropic 期望：`content_block_start{type:"tool_use", id, name}` → `content_block_delta{type:"input_json_delta", partial_json:"..."}` 序列 | HIGH | 关键挑战：OpenAI 可能先发 arguments 再发 id/name；需要 pending buffer 等待 id+name 就绪后才能发出 content_block_start。多个并发工具调用通过 `index` 字段区分，各自独立追踪 |
+| **流式 SSE 转换：finish_reason/stop_reason** | OpenAI finish_reason 在最后一个 choices chunk 中；Anthropic 用 `message_delta` 事件携带 `stop_reason`；之后发 `message_stop` | MEDIUM | `message_delta` 之后必须紧接 `message_stop`；OpenAI 的 `[DONE]` 对应 Anthropic 的 `message_stop` |
+| **Usage 字段映射** | OpenAI: `{prompt_tokens, completion_tokens}`；Anthropic: `{input_tokens, output_tokens}`；流式下 usage 通常在最后一个 chunk 中 | LOW | 直接重命名两个字段；如上游返回 `prompt_tokens_details.cached_tokens`，映射为 `cache_read_input_tokens` |
+| **错误响应透传** | 上游 OpenAI Provider 返回 4xx/5xx 时，错误体不需要转换，直接透传状态码和响应体；Claude Code 会读取错误信息展示给用户 | LOW | 不转换错误响应；只需确保非 200 响应不进入转换路径 |
+| **协议路由：按 Provider 自动选择** | 代理层需要知道当前 Provider 是 Anthropic 协议还是 OpenAI 兼容协议，据此决定是透传还是转换 | LOW | 基于已有的 `ProtocolType` 枚举（`Anthropic` vs `OpenAiCompatible`）；OpenAiCompatible = 需要转换 |
+| **端点重写：/v1/messages → /v1/chat/completions** | Claude Code 固定请求 `/v1/messages`；OpenAI Provider 接受 `/v1/chat/completions`；转换模式下必须改写目标端点 | LOW | 直接字符串替换；只在 `needs_transform` 为 true 时生效 |
 
 ---
 
 ### Differentiators（竞争优势特性）
 
-提升体验但非必须。与项目定位（macOS 开发者工具）高度相关。
+这些特性提升兼容性和稳定性，但非转换层基本可用的前提。
 
 | Feature | 价值主张 | 复杂度 | 备注 |
 |---------|---------|--------|------|
-| 发版一键脚本（bump + tag + push） | 消除手动改多文件版本号的烦恼；保证 `Cargo.toml` / `tauri.conf.json` / `package.json` 三者一致 | LOW | Shell 脚本：读取新版本号 → 更新 Cargo.toml → 提交 → 打 tag → push；触发 CI 自动构建 |
-| CHANGELOG 自动生成（git-cliff） | 每次 Release 自动生成 changelog；规范 commit message（Conventional Commits） | LOW | `git-cliff` 是 Rust 编写的 changelog 生成器，与 Tauri 生态契合；配置 `cliff.toml`；生成内容填入 GitHub Release body |
-| 自动更新 UI（进度展示）| 内置对话框简陋（无进度条、无"稍后提醒"）；自定义 UI 提升体验 | MEDIUM | 关闭 `tauri.conf.json` 中的内置 dialog；前端 React 实现进度条 + "现在更新/稍后提醒" 按钮；监听 `tauri-plugin-updater` 的 download progress 事件 |
-| Release Draft 审核 | `releaseDraft: true` 先创建草稿，人工审核后手动 publish；防止构建错误直接对用户可见 | LOW | tauri-action 默认支持；Review artifacts → publish → 更新端点生效 |
-| 双架构 DMG（Intel + Apple Silicon）| 同一 Release 分发两个架构的 DMG；用户无需关心架构 | LOW | matrix 中配置两个 macOS runner：`--target aarch64-apple-darwin` 和 `--target x86_64-apple-darwin` |
+| **图片/多模态内容转换** | Anthropic 图片格式：`{type:"image", source:{type:"base64", media_type:"image/jpeg", data:"..."}}` → OpenAI 格式：`{type:"image_url", image_url:{url:"data:image/jpeg;base64,..."}}`；让 Claude Code 的视觉功能在 OpenAI Provider 上可用 | MEDIUM | 仅支持 base64 → data URL 转换；不支持 Anthropic URL/file 类型图片（OpenAI Provider 可能支持直接 URL，但转换逻辑更复杂）|
+| **工具调用多 index 并发支持** | 单次响应中 Claude Code 可能调用多个工具；OpenAI 通过 `index` 字段区分，Anthropic 通过 content block index 区分；需要独立状态机追踪每个工具 | HIGH | cc-switch 参考实现中有完整的 `ToolBlockState` 映射表（HashMap<index, ToolBlockState>），值得复用设计 |
+| **cache_control 透传** | Anthropic prompt caching 的 `cache_control` 字段在转换到 OpenAI 格式后透传给支持此字段的 OpenAI 兼容 Provider（如某些中转服务）；不丢失 caching 元数据 | LOW | cc-switch 实现中已处理：system block、text block、tool 定义的 `cache_control` 字段透传到 OpenAI 请求 |
+| **cache token 字段映射（响应）** | OpenAI 标准：`usage.prompt_tokens_details.cached_tokens`；某些兼容服务直接返回 `cache_read_input_tokens`；Anthropic 格式：`usage.cache_read_input_tokens` / `cache_creation_input_tokens`；正确映射让 UI 展示准确的 cache token 消耗 | LOW | 两个来源都要处理：先检查直接字段，再检查嵌套 details |
+| **JSON Schema 清理（clean_schema）** | Anthropic 的 tool input_schema 可能包含 `"format":"uri"` 等 OpenAI 不支持的 JSON Schema 格式，直接透传会导致 400 错误 | LOW | 递归遍历 schema，移除已知不兼容字段（`format: "uri"` 等）；同时处理嵌套的 properties 和 items |
+| **tool_choice 字段透传** | Anthropic 和 OpenAI 的 `tool_choice` 语法大致兼容（`"auto"`, `"none"`, `{type:"tool", name:...}`）；直接透传通常可工作 | LOW | 当前 cc-switch 直接透传 `tool_choice`，不做结构转换，实践中工作正常 |
+| **旧版 function_call 格式兼容** | 部分 OpenAI 兼容 Provider 返回旧版 `message.function_call` 而非 `message.tool_calls`；响应转换层需处理两种格式 | LOW | cc-switch 响应转换中已处理 legacy `function_call` → Anthropic `tool_use` 的路径 |
+| **content_filter finish_reason 处理** | OpenAI 的 `content_filter` finish_reason 没有 Anthropic 对应值；映射为 `end_turn` 保持流程可继续 | LOW | 已在 cc-switch stop_reason 映射表中处理 |
 
 ---
 
@@ -43,88 +51,105 @@
 
 | Anti-Feature | 为何不做 | 替代方案 |
 |--------------|---------|---------|
-| Apple Developer 账号代码签名 + 公证（Notarization） | 需要付费 Developer 账号（$99/年）；CI 配置复杂（APPLE_CERTIFICATE / APPLE_ID / APPLE_TEAM_ID 等多个 secret）；公证需要网络往返 Apple 服务器，构建时间增加 5-10 分钟；v2.1 是内部工具阶段，ad-hoc 签名够用 | Ad-hoc 签名解决 Apple Silicon 运行问题；正式分发 v3.x 里程碑再升级 |
-| Windows / Linux 构建 | 项目明确 macOS 优先（iCloud Drive 依赖）；跨平台构建 matrix 增加 CI 复杂度和构建时间 | 仅构建 macOS，CI 矩阵保持简单 |
-| 自动推送至 macOS App Store | App Store 需要 Notarization + 沙箱限制；本地 HTTP 代理（axum 监听 127.0.0.1）在沙箱中受限 | GitHub Releases 直接分发；绕开 App Store 沙箱 |
-| Tauri 内置 updater dialog（默认对话框） | 没有进度条、没有"稍后提醒"；UX 粗糙；且启用内置 dialog 后会禁用 JS 侧的更新事件 | 自定义更新 UI（Differentiator 中列出） |
-| Sparkle 框架集成（tauri-plugin-sparkle-updater）| 虽然 native macOS 体验更好，但增加一个额外 native 依赖；`tauri-plugin-updater` 对于 macOS 单平台工具已足够；Sparkle 主要优势在多平台跨平台场景 | 标准 `tauri-plugin-updater` + 自定义 React UI |
-| release-please / semantic-release 自动化 | 这类工具解决大团队版本号管理问题；单人/小团队项目手写脚本更直接可控 | 简单 bump 脚本（< 30 行 shell） |
-| CDN / S3 托管 latest.json | GitHub Releases 原生支持 + tauri-action 自动上传；额外 CDN 增加运维复杂度而无收益 | GitHub Releases 直接作为 update endpoint |
+| **反向转换：OpenAI → Anthropic（Codex 使用 Anthropic Provider）** | PROJECT.md 明确列为 Out of Scope：v2.2 只做 Anthropic→OpenAI 方向 | v3.0 全功能网关里程碑再实现 |
+| **OpenAI Responses API 格式支持** | cc-switch 有 `transform_responses.rs` 支持新 Responses API 格式，但结构更复杂。v2.2 优先完成 Chat Completions 格式，Responses API 留后续 | 当前 v2.2 只需 Chat Completions 格式 |
+| **流量监控与 token 使用统计** | Out of Scope，独立里程碑（v2.3） | 代理层可记录日志，UI 展示留给 v2.3 |
+| **请求体中未知字段的精确过滤** | Claude Code 可能发送一些 Anthropic 特有字段（如 `thinking`, `betas`）；OpenAI Provider 遇到未知字段通常忽略（不报错）；精确过滤增加复杂度、维护成本高，但收益小 | 只过滤已知的不兼容字段（如 `BatchTool`），其他未知字段直接透传 |
+| **模型名称映射（Claude 名 → OpenAI 名）** | 用户自己在 Provider 配置中填写正确的模型名；代理层不做自动模型名映射 | 格式转换层只做结构转换，不做模型名映射（cc-switch `transform.rs` 的设计原则：注释明确说明"模型映射由上游统一处理") |
+| **prompt_cache_key 注入** | cc-switch 有注入 `prompt_cache_key` 的逻辑（用于某些 OpenAI 兼容服务的 cache routing）；CLIManager 的 Provider 数据模型尚无 `cache_key` 字段，加入会扩大本里程碑范围 | 初版不注入，后续有需要时在 Provider 模型中加字段 |
+| **多 choices 响应处理** | OpenAI 响应可能包含多个 choices（当 `n > 1`）；Claude Code 不会发送 `n > 1`，始终只需要第一个 choice | 只处理 `choices[0]`，简化实现 |
+| **WebSocket 流式传输** | OpenAI Responses API 支持 WebSocket 模式；Claude Code 用标准 HTTP SSE；不需要 WebSocket 支持 | 仅支持 HTTP SSE |
 
 ---
 
 ## Feature Dependencies
 
 ```
-[GitHub Actions 工作流]
-    └──requires──> [tauri-action 工具链]
-    └──requires──> [Cargo.toml 版本是 source of truth]
-    └──requires──> [GitHub Token write 权限（contents: write）]
+[协议路由（ProtocolType 检测）]
+    └──requires──> [现有 ProtocolType 枚举（Anthropic / OpenAiCompatible）]
+    └──决定──> [是否进入转换路径 vs 透传路径]
 
-[tauri-action 构建]
-    └──produces──> [DMG 安装包]
-    └──produces──> [.app.tar.gz + .app.tar.gz.sig（更新包）]
-    └──produces──> [latest.json（更新描述文件）]
-    └──requires──> [APPLE_SIGNING_IDENTITY="-"（ad-hoc 签名）]
-    └──requires──> [TAURI_SIGNING_PRIVATE_KEY（更新包签名私钥）]
+[请求格式转换（anthropic_to_openai）]
+    └──requires──> [协议路由]
+    └──requires──> [系统提示转换]
+    └──requires──> [消息数组转换]
+        └──requires──> [tool_use content block → tool_calls 转换]
+        └──requires──> [tool_result content block → tool role 消息转换]
+        └──requires──> [image content block → image_url 转换]
+    └──requires──> [工具定义转换（input_schema → parameters）]
+    └──produces──> [OpenAI 格式请求体]
 
-[tauri-plugin-updater]
-    └──requires──> [latest.json 可访问端点]
-    └──requires──> [更新包签名密钥对（public key in tauri.conf.json）]
-    └──requires──> [capabilities 权限配置（updater:default, process:allow-restart）]
-    └──produces──> [用户更新提示 → 下载 → 安装 → 重启]
+[端点重写]
+    └──requires──> [协议路由（needs_transform 标志）]
+    └──produces──> [/v1/chat/completions 目标端点]
 
-[自定义更新 UI]
-    └──requires──> [tauri-plugin-updater 集成]
-    └──requires──> [内置 dialog 关闭（tauri.conf.json plugins.updater.dialog: false）]
-    └──requires──> [@tauri-apps/plugin-updater JS 绑定]
-    └──requires──> [@tauri-apps/plugin-process（用于 relaunch）]
+[响应格式转换（openai_to_anthropic）]
+    └──requires──> [非流式响应检测（非 SSE）]
+    └──requires──> [tool_calls → tool_use content block 转换]
+    └──requires──> [finish_reason → stop_reason 映射]
+    └──requires──> [usage 字段重命名]
+    └──produces──> [Anthropic 格式响应体]
 
-[发版脚本]
-    └──requires──> [Conventional Commits 规范（git-cliff 依赖）]
-    └──produces──> [版本 bump commit + git tag]
-    └──triggers──> [GitHub Actions 工作流]
+[流式 SSE 转换（create_anthropic_sse_stream）]
+    └──requires──> [流式响应检测（Content-Type: text/event-stream / request.stream: true）]
+    └──requires──> [有状态流转换器（message_id, content index 计数器）]
+    └──requires──> [文本 delta 转换（OpenAI content → Anthropic text_delta）]
+    └──requires──> [工具调用流式转换（delta.tool_calls → input_json_delta）]
+        └──requires──> [pending buffer（等待 id+name 就绪）]
+        └──requires──> [工具块状态映射（HashMap<index, ToolBlockState>）]
+    └──requires──> [finish_reason → stop_reason 映射（流式版本）]
+    └──produces──> [Anthropic SSE 事件流]
 
-[CHANGELOG 生成（git-cliff）]
-    └──requires──> [git 历史中的 Conventional Commits]
-    └──produces──> [CHANGELOG.md + GitHub Release body]
+[图片转换] ──enhances──> [请求格式转换]
+[cache_control 透传] ──enhances──> [请求格式转换]
+[JSON Schema 清理] ──requires──> [工具定义转换]
 
-[Ad-hoc 签名] ──enhances──> [macOS Apple Silicon 可运行性]
-    └──does NOT bypass──> [Gatekeeper（用户仍需手动批准）]
+[非流式转换路径]
+    └──requires──> [请求格式转换]
+    └──requires──> [响应格式转换]
+    └──conflicts──> [流式转换路径]（二者互斥，由 request.stream 字段决定）
 
-[Apple Developer 签名 + Notarization] ──conflicts──> [Ad-hoc 签名]
-    （两者互斥；v2.1 只做 ad-hoc）
+[流式转换路径]
+    └──requires──> [请求格式转换]
+    └──requires──> [流式 SSE 转换]
+    └──conflicts──> [非流式转换路径]
 ```
 
 ### 依赖关键说明
 
-- **更新包签名密钥对与 macOS 代码签名完全独立**：`TAURI_SIGNING_PRIVATE_KEY` 用于 tauri updater 验证更新包完整性（Ed25519 签名），与 `APPLE_SIGNING_IDENTITY` 的 macOS 代码签名是两个不同的签名机制，互不干扰。前者必须做，后者 ad-hoc 足够。
-- **latest.json 是 tauri-plugin-updater 的依赖**：updater 插件从配置的 endpoint 拉取 `latest.json`，比较版本号，决定是否提示更新。此文件由 tauri-action 自动生成并上传到 GitHub Release。
-- **tauri.conf.json version 必须与 git tag 一致**：`tauri-action` 读取 `tauri.conf.json`（或 fallback 到 `Cargo.toml`）的版本号生成 tag 占位符（`__VERSION__`）。如果版本号与 tag 不一致，`latest.json` 中的版本会错乱，自动更新无效。
+- **流式检测 requires 请求体解析**：代理层在转换模式下必须解析请求 JSON 才能读取 `stream` 字段决定走哪条路径。现有 `proxy_handler` 的透传模式不解析请求体（raw bytes 透传），转换模式需要先 `serde_json::from_bytes`。
+- **流式工具调用 depends on 有状态 buffer**：OpenAI 流式协议下，tool call 的 `id` 和 `name` 可能在 `arguments` 之后到达。转换器必须缓存未完成的工具块，等 id+name 均就绪后再发出 `content_block_start`。
+- **端点重写 depends on 协议路由**：必须在发送请求前就知道 `needs_transform`，才能改写 URL 路径。这要求在 `build_url` 阶段（请求构建时）就做判断，不能在响应阶段才处理。
+- **响应转换不能与流式转换共存**：收到响应后，通过 Content-Type 头（`text/event-stream`）或请求中的 `stream: true` 判断走哪条路径。两条路径互斥，不能叠加应用。
 
 ---
 
 ## MVP Definition
 
-### v2.1 Launch With（必做）
+### v2.2 Launch With（必做）
 
-- [ ] **GitHub Actions 工作流** — tag 触发，macOS aarch64 + x86_64 双架构构建，创建 Release Draft
-- [ ] **Ad-hoc 代码签名** — `APPLE_SIGNING_IDENTITY="-"`，Apple Silicon 运行能力，1 行 env var 搞定
-- [ ] **更新包签名密钥对** — `tauri signer generate`，公钥入 `tauri.conf.json`，私钥入 GitHub Secret
-- [ ] **tauri-plugin-updater 集成** — endpoints 指向 GitHub Releases 的 `latest.json`；app 启动时检查更新
-- [ ] **发版脚本** — bump `Cargo.toml` → commit → tag → push；单命令触发全流程
-- [ ] **Gatekeeper 用户引导文档** — Release Notes 中说明 macOS 安全提示处理步骤
+- [ ] **协议路由**：检测 Provider `ProtocolType == OpenAiCompatible`，决定进入转换路径 — 无此功能转换层完全无法工作
+- [ ] **请求格式转换：系统提示**：`system` 字段 → messages 数组首条 `{role:"system"}` — Claude Code 在几乎所有请求中都带 system prompt
+- [ ] **请求格式转换：消息数组**：字符串 content 直接透传；content block 数组中 text/tool_use/tool_result 各类型正确转换 — 核心对话流程
+- [ ] **请求格式转换：工具定义**：`input_schema` → `function.parameters`；添加 `type:"function"` 包装；过滤 BatchTool — Claude Code 重度依赖工具调用
+- [ ] **端点重写**：`/v1/messages` → `/v1/chat/completions` — 没有端点重写转换无意义
+- [ ] **非流式响应转换**：choices → content blocks；finish_reason → stop_reason；usage 重命名 — 基本请求-响应循环
+- [ ] **非流式工具调用响应转换**：`tool_calls` → `tool_use` content blocks；arguments JSON 字符串反序列化为对象 — 工具调用核心
+- [ ] **流式 SSE 转换：文本**：OpenAI `content` delta → Anthropic `text_delta` 事件序列（message_start → content_block_start → content_block_delta → content_block_stop → message_delta → message_stop）— 流式是 Claude Code 默认模式
+- [ ] **流式 SSE 转换：工具调用**：delta.tool_calls with pending buffer → content_block_start/delta 序列 — 工具调用流式版本
+- [ ] **流式 SSE 转换：finish_reason**：最终 message_delta 携带 stop_reason — 没有正确 stop_reason，Claude Code 无法判断生成完毕
 
-### Add After Validation（v2.1.x）
+### Add After Validation（v2.2.x）
 
-- [ ] **CHANGELOG 自动生成（git-cliff）** — 条件：团队已稳定遵守 Conventional Commits 规范后才有意义
-- [ ] **自定义更新 UI** — 条件：v2.1 核心更新流程验证可用后；内置 dialog 暂时够用
-- [ ] **Release Draft → 审核发布流程** — 已通过 tauri-action `releaseDraft: true` 内建支持，不额外开发
+- [ ] **图片/多模态转换**：base64 图片 → `image_url` data URL — 触发条件：用户开始在 Claude Code 中传图片给 OpenAI Provider
+- [ ] **cache_control 透传**：保留 cache_control 字段透传 — 触发条件：用户使用支持 prompt caching 的 OpenAI 兼容 Provider
+- [ ] **旧版 function_call 格式兼容**：处理部分 Provider 的旧版响应格式 — 触发条件：遇到返回 function_call 而非 tool_calls 的 Provider
 
-### Future Consideration（v3.x）
+### Future Consideration（v3.0+）
 
-- [ ] **Apple Developer 账号签名 + Notarization** — 条件：app 需要更广泛发布（非开发者用户），或 App Store 分发
-- [ ] **Windows / Linux 分发** — 条件：iCloud 同步依赖解耦之后
+- [ ] **反向转换（OpenAI→Anthropic）**：Codex 使用 Anthropic Provider — 在 v3.0 全功能网关里程碑
+- [ ] **OpenAI Responses API 格式支持**：新 Responses API 结构不同于 Chat Completions — cc-switch 已有参考实现 (`transform_responses.rs`)
+- [ ] **模型名称映射配置**：允许用户配置模型名映射表 — 当前用户自行填写正确模型名
 
 ---
 
@@ -132,155 +157,118 @@
 
 | Feature | 用户价值 | 实现成本 | 优先级 |
 |---------|---------|---------|--------|
-| GitHub Actions 工作流（tauri-action） | HIGH | LOW | P1 |
-| Ad-hoc 代码签名 | HIGH | LOW | P1 |
-| 更新包签名密钥对生成 | HIGH | LOW | P1 |
-| tauri-plugin-updater 集成（基本） | HIGH | MEDIUM | P1 |
-| 发版 bump 脚本 | HIGH | LOW | P1 |
-| Gatekeeper 用户引导文档 | HIGH | LOW | P1 |
-| CHANGELOG 生成（git-cliff） | MEDIUM | LOW | P2 |
-| Release Draft 审核流程 | MEDIUM | LOW | P2 |
-| 自定义更新 UI（进度条 + 稍后提醒） | MEDIUM | MEDIUM | P2 |
-| 双架构 DMG 分发 | MEDIUM | LOW | P1（matrix 配置即可） |
-| Apple Developer 签名 + Notarization | LOW（当前阶段） | HIGH | P3 |
+| 协议路由（ProtocolType 检测） | HIGH | LOW | P1 |
+| 请求转换：系统提示 | HIGH | LOW | P1 |
+| 请求转换：消息数组（text/tool_use/tool_result） | HIGH | MEDIUM | P1 |
+| 请求转换：工具定义 | HIGH | MEDIUM | P1 |
+| 端点重写 /v1/messages → /v1/chat/completions | HIGH | LOW | P1 |
+| 非流式响应转换（文本） | HIGH | MEDIUM | P1 |
+| 非流式响应转换（工具调用） | HIGH | MEDIUM | P1 |
+| 流式 SSE 转换（文本） | HIGH | HIGH | P1 |
+| 流式 SSE 转换（工具调用 + pending buffer） | HIGH | HIGH | P1 |
+| 流式 finish_reason → stop_reason | HIGH | LOW | P1 |
+| Usage 字段映射 | MEDIUM | LOW | P1 |
+| JSON Schema 清理 | MEDIUM | LOW | P1 |
+| 图片/多模态转换 | MEDIUM | MEDIUM | P2 |
+| cache_control 透传 | LOW | LOW | P2 |
+| cache token 字段映射 | LOW | LOW | P2 |
+| 旧版 function_call 兼容 | LOW | LOW | P2 |
+| content_filter finish_reason 处理 | LOW | LOW | P2 |
+
+**优先级说明：**
+- P1: v2.2 必须实现，缺少则 Claude Code 无法用 OpenAI Provider
+- P2: 提升兼容性和稳定性，v2.2.x 或按需加入
+- P3: 超出 v2.2 范围
 
 ---
 
-## 关键技术细节
+## 协议格式对照速查
 
-### GitHub Actions 工作流结构
+### 请求：系统提示
 
-```yaml
-on:
-  push:
-    tags: ['v*']
+| 方向 | 格式 |
+|------|------|
+| Anthropic（输入） | `{"system": "You are helpful"}` 或 `{"system": [{"type":"text","text":"...","cache_control":{...}}]}` |
+| OpenAI（输出） | `{"messages": [{"role":"system","content":"You are helpful"}, ...]}` |
 
-jobs:
-  publish-tauri:
-    permissions:
-      contents: write        # 必须，否则 GITHUB_TOKEN 无权创建 Release
-    strategy:
-      matrix:
-        include:
-          - platform: macos-latest
-            args: '--target aarch64-apple-darwin'
-          - platform: macos-latest
-            args: '--target x86_64-apple-darwin'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
-      - uses: swatinem/rust-cache@v2
-      - uses: actions/setup-node@v4
-        with: { node-version: lts/*, cache: npm }
-      - run: npm ci
-      - uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_SIGNING_IDENTITY: '-'
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tagName: v__VERSION__          # __VERSION__ 自动替换为 tauri.conf.json 中的版本
-          releaseName: 'CLIManager v__VERSION__'
-          releaseDraft: true
-          prerelease: false
-          args: ${{ matrix.args }}
-```
+### 请求：工具定义
 
-**关键点：**
-- `__VERSION__` 占位符由 tauri-action 自动替换为 `tauri.conf.json`（或 fallback `Cargo.toml`）中的版本号
-- 如果省略 `tauri.conf.json` 中的 `version` 字段，Tauri 自动读取 `Cargo.toml [package] version`——这是最简洁的单一来源策略
-- 两个 macOS matrix entry 分别针对 Apple Silicon 和 Intel，生成独立的 DMG 和更新包
-- `APPLE_SIGNING_IDENTITY: '-'` 是 ad-hoc 签名的完整配置，不需要任何证书文件
+| 字段 | Anthropic | OpenAI |
+|------|-----------|--------|
+| 顶层结构 | `tools: [{name, description, input_schema}]` | `tools: [{type:"function", function:{name, description, parameters}}]` |
+| Schema 字段名 | `input_schema` | `parameters` |
+| 类型标识 | 无（隐式） | `type: "function"` 必须 |
+| 特殊类型 | `type: "BatchTool"` 需过滤 | 无对应 |
 
-### tauri-plugin-updater 端点配置
+### 请求：消息中的工具调用（assistant 发出的）
 
-`tauri.conf.json` 中：
-```json
-{
-  "plugins": {
-    "updater": {
-      "endpoints": [
-        "https://github.com/{owner}/{repo}/releases/latest/download/latest.json"
-      ],
-      "pubkey": "内容来自 ~/.tauri/cli-manager.key.pub",
-      "dialog": false
-    }
-  }
-}
-```
+| 字段 | Anthropic | OpenAI |
+|------|-----------|--------|
+| 位置 | `message.content` 数组中的 `{type:"tool_use", id, name, input}` | `message.tool_calls: [{id, type:"function", function:{name, arguments}}]` |
+| 参数格式 | `input`: JSON 对象 | `function.arguments`: JSON 字符串 |
 
-`latest.json` 格式（由 tauri-action 自动生成）：
-```json
-{
-  "version": "v2.1.0",
-  "notes": "Release notes text",
-  "pub_date": "2026-03-14T12:00:00Z",
-  "platforms": {
-    "darwin-aarch64": {
-      "url": "https://github.com/.../CLIManager_2.1.0_aarch64.app.tar.gz",
-      "signature": ".sig 文件的内容（字符串）"
-    },
-    "darwin-x86_64": {
-      "url": "https://github.com/.../CLIManager_2.1.0_x86_64.app.tar.gz",
-      "signature": ".sig 文件的内容（字符串）"
-    }
-  }
-}
-```
+### 请求：工具结果（user 回传的）
 
-### Ad-hoc 签名 vs 不签名的实际差异
+| 字段 | Anthropic | OpenAI |
+|------|-----------|--------|
+| 角色 | user（content 数组中有 `{type:"tool_result", tool_use_id, content}`）| tool（独立消息：`{role:"tool", tool_call_id, content}`）|
+| 变化 | 1 条 user 消息含多个 tool_result | 每个 tool_result 变成 1 条独立的 tool 角色消息 |
 
-| 场景 | 无签名 | Ad-hoc 签名 |
-|------|--------|------------|
-| Apple Silicon 运行 | 无法运行（macOS 15+ 强制要求签名） | 可运行（签名验证通过） |
-| Intel Mac 运行 | 可运行，但被 Gatekeeper 拦截 | 可运行，但被 Gatekeeper 拦截 |
-| Gatekeeper 警告 | "无法验证开发者" | "无法验证开发者"（警告措辞略有不同，但同样需要手动批准） |
-| 用户操作 | 系统设置 → 隐私与安全性 → 仍要打开 | 系统设置 → 隐私与安全性 → 仍要打开 |
-| macOS 15 Control-click | 已移除（Sequoia 15.0 取消此快捷方式） | 已移除 |
-| Gatekeeper 彻底绕过 | 不可（需 Notarization） | 不可（需 Notarization） |
+### 响应：stop_reason / finish_reason 映射
 
-**结论：** Ad-hoc 签名是 Apple Silicon 的运行前提，但两种情况都需要用户在「系统设置」中手动批准一次。首次安装摩擦不可避免，靠清晰文档引导解决。
+| OpenAI finish_reason | Anthropic stop_reason |
+|---------------------|----------------------|
+| `"stop"` | `"end_turn"` |
+| `"length"` | `"max_tokens"` |
+| `"tool_calls"` | `"tool_use"` |
+| `"function_call"` | `"tool_use"`（旧版兼容）|
+| `"content_filter"` | `"end_turn"`（无精确对应）|
 
-### 更新用户体验流程
+### 流式事件序列对照
 
-**使用 tauri-plugin-updater（基本流程）：**
-1. app 启动时 JS 调用 `check()` → 请求 endpoints 中的 `latest.json`
-2. 比较 `latest.json` 中的 version 与当前 app version（semver 比较，必须是更大的版本才触发）
-3. 有更新 → 下载 `.app.tar.gz`（macOS），验证 `.sig` 签名（Ed25519）
-4. 签名验证通过 → 解压替换 `.app`，调用 `relaunch()` 重启
-5. 无更新 → 静默
+| 阶段 | OpenAI SSE | Anthropic SSE |
+|------|-----------|---------------|
+| 开始 | 第一个 chunk（含 id, model）| `event: message_start` |
+| 文本开始 | delta.content 首次非空 | `event: content_block_start {type:"text"}` |
+| 文本片段 | `delta.content: "..."` | `event: content_block_delta {type:"text_delta", text:"..."}` |
+| 文本结束 | finish_reason 到来 | `event: content_block_stop` |
+| 工具调用开始 | `delta.tool_calls[{index, id, function:{name}}]` | `event: content_block_start {type:"tool_use", id, name}` |
+| 工具参数片段 | `delta.tool_calls[{function:{arguments:"..."}}]` | `event: content_block_delta {type:"input_json_delta", partial_json:"..."}` |
+| 工具调用结束 | finish_reason 到来 | `event: content_block_stop` |
+| 终止 | `finish_reason: "stop"/"tool_calls"` | `event: message_delta {stop_reason:"..."}` |
+| 流结束 | `data: [DONE]` | `event: message_stop` |
 
-**内置 dialog 模式（`dialog: true`）：**
-- 显示 release notes + "安装并重启" / "取消" 两个按钮
-- 没有进度条，没有"稍后提醒"
-- 一旦启用内置 dialog，JS 端的更新事件不触发
+---
 
-**自定义 UI 模式（`dialog: false`）：**
-- 完全自定义：进度条、稍后提醒、更新通知徽章等
-- 需要自己处理 `downloadProgress` 事件和 `relaunch()`
+## 与现有架构的集成点
+
+基于对 `src-tauri/src/proxy/handler.rs` 和 `state.rs` 的分析：
+
+| 集成点 | 现状 | v2.2 需要的变更 |
+|--------|------|----------------|
+| `ProxyState.UpstreamTarget` | 已有 `ProtocolType` 字段 | 无需改动；`OpenAiCompatible` 即转换触发条件 |
+| `proxy_handler` | 读取 raw bytes 透传 | 转换模式下需解析 JSON 并调用转换函数，然后序列化回 bytes 转发 |
+| 响应路径 | `Body::from_stream(upstream_resp.bytes_stream())` 直接流式透传 | 转换模式下：非流式需缓冲全部响应体再转换；流式需接入 `create_anthropic_sse_stream` 流转换器 |
+| 端点 URL | 直接拼接 `base_url + path` | 转换模式下将 path 中的 `/v1/messages` 替换为 `/v1/chat/completions` |
+| 请求头 `Accept` | 透传 | 可能需要确保转发到 OpenAI Provider 时 Accept 头兼容；通常无需改动 |
 
 ---
 
 ## Sources
 
-- [Tauri v2 GitHub Actions 官方文档](https://v2.tauri.app/distribute/pipelines/github/) — 工作流结构、matrix 配置 [HIGH]
-- [tauri-apps/tauri-action GitHub 仓库](https://github.com/tauri-apps/tauri-action) — `__VERSION__` 占位符、`tagName`/`releaseDraft` 参数 [HIGH]
-- [tauri-plugin-updater 官方文档](https://v2.tauri.app/plugin/updater/) — endpoints 配置、JSON 格式、签名机制 [HIGH]
-- [Tauri v2 macOS 代码签名官方文档](https://v2.tauri.app/distribute/sign/macos/) — Ad-hoc 签名配置、Apple Developer 签名对比 [HIGH]
-- [Ship Your Tauri v2 App Like a Pro: Part 1（代码签名）](https://dev.to/tomtomdu73/ship-your-tauri-v2-app-like-a-pro-code-signing-for-macos-and-windows-part-12-3o9n) — 实战签名配置 [MEDIUM]
-- [Ship Your Tauri v2 App Like a Pro: Part 2（发布自动化）](https://dev.to/tomtomdu73/ship-your-tauri-v2-app-like-a-pro-github-actions-and-release-automation-part-22-2ef7) — release bump 脚本 + CI 触发 [MEDIUM]
-- [How to make automatic updates work with Tauri v2 and GitHub](https://thatgurjot.com/til/tauri-auto-updater/) — latest.json 端点配置实例 [MEDIUM]
-- [Native macOS Updates in Tauri Shouldn't Be This Hard](https://yuexun.me/native-macos-updates-in-tauri/) — 内置 dialog 局限性分析；Sparkle 对比 [MEDIUM]
-- [tauri-apps/tauri discussions #6347: version sync](https://github.com/tauri-apps/tauri/discussions/6347) — `tauri.conf.json` version 省略后 fallback 到 `Cargo.toml` 的官方确认 [HIGH]
-- [Tauri 2 Configuration Files 官方文档](https://v2.tauri.app/develop/configuration-files/) — version 字段语义 [HIGH]
-- [git-cliff 官方文档](https://git-cliff.org/) — changelog 生成工具，Rust 生态原生 [HIGH]
-- [macOS Sequoia Gatekeeper 变更 (iDownloadBlog)](https://www.idownloadblog.com/2024/08/07/apple-macos-sequoia-gatekeeper-change-install-unsigned-apps-mac/) — Control-click bypass 移除确认 [HIGH]
-- [macOS 15.1 unsigned app discussion (MacRumors)](https://forums.macrumors.com/threads/macos-15-1-completely-removes-ability-to-launch-unsigned-applications.2441792/) — 当前 Gatekeeper 行为 [MEDIUM]
-- [HackMD: Generating TAURI_SIGNING_PRIVATE_KEY](https://hackmd.io/@zo-el/S1vu7IFrxx) — 密钥对生成步骤 [MEDIUM]
+- [Anthropic Messages API 文档](https://docs.anthropic.com/en/api/messages) — 请求/响应格式规范 [HIGH]
+- [Anthropic Streaming Messages 文档](https://docs.anthropic.com/en/api/messages-streaming) — SSE 事件序列规范 [HIGH]
+- [Anthropic Errors 文档](https://docs.anthropic.com/en/api/errors) — 错误类型与 HTTP 状态码映射 [HIGH]
+- [OpenAI Chat Completions API 参考](https://platform.openai.com/docs/api-reference/chat/create) — 请求/响应格式规范 [HIGH]
+- [cc-switch transform.rs](../../../cc-switch/src-tauri/src/proxy/providers/transform.rs) — `anthropic_to_openai` 和 `openai_to_anthropic` 参考实现 [HIGH]
+- [cc-switch streaming.rs](../../../cc-switch/src-tauri/src/proxy/providers/streaming.rs) — `create_anthropic_sse_stream` 流式转换参考实现（含多工具调用 + pending buffer）[HIGH]
+- [cc-switch models/anthropic.rs](../../../cc-switch/src-tauri/src/proxy/providers/models/anthropic.rs) — Anthropic 数据模型定义 [HIGH]
+- [cc-switch models/openai.rs](../../../cc-switch/src-tauri/src/proxy/providers/models/openai.rs) — OpenAI 数据模型定义 [HIGH]
+- [cc-switch claude.rs](../../../cc-switch/src-tauri/src/proxy/providers/claude.rs) — `needs_transform` 判断逻辑 + `transform_request`/`transform_response` 实现 [HIGH]
+- [CLIManager src/proxy/handler.rs](../../../src-tauri/src/proxy/handler.rs) — 现有代理处理器架构 [HIGH]
+- [CLIManager src/proxy/state.rs](../../../src-tauri/src/proxy/state.rs) — `UpstreamTarget` + `ProtocolType` 字段 [HIGH]
 
 ---
-*Feature research for: Release Engineering (v2.1 milestone)*
+
+*Feature research for: 协议转换层（v2.2 milestone）*
 *Researched: 2026-03-14*

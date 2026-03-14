@@ -1,592 +1,584 @@
-# Architecture Research: Release Engineering Integration
+# Architecture Research: 协议转换集成架构
 
-**Domain:** CI/CD + 代码签名 + 自动更新集成（Tauri 2 桌面应用发布工程）
+**Domain:** Anthropic→OpenAI 协议转换，集成到现有 axum 0.8 代理管道
 **Researched:** 2026-03-14
-**Confidence:** HIGH（官方文档 + tauri-action README 直接验证）
+**Confidence:** HIGH（基于现有代码库直接分析 + cc-switch 参考实现）
+
+---
+
+## 现有代理管道回顾
+
+在设计集成点之前，先明确当前 `proxy_handler` 的请求管道步骤：
+
+```
+步骤 A  获取上游目标（UpstreamTarget，含 protocol_type）
+步骤 B  提取方法/路径/查询字符串
+步骤 C  读取请求 body bytes（200MB 上限）
+步骤 D  拼接上游 URL（base_url + path + query）
+步骤 E  过滤 hop-by-hop headers
+步骤 F  检测占位凭据（PROXY_MANAGED）
+步骤 G  注入真实凭据（按 protocol_type 注入 x-api-key 或 Bearer）
+步骤 H  发送请求到上游
+步骤 I  透传响应 status + headers
+步骤 J  流式透传响应 body
+```
+
+协议转换需要在步骤 C 和 D 之间插入请求转换，在步骤 I 和 J 之间插入响应转换。
+
+---
 
 ## Standard Architecture
 
 ### System Overview
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                     本地开发工作流                             │
-├──────────────────────────────────────────────────────────────┤
-│  ┌────────────┐  ┌────────────┐  ┌──────────────────────┐    │
-│  │ scripts/   │  │ CHANGELOG  │  │  git tag + push      │    │
-│  │ release.sh │→ │ 更新       │→ │  v2.1.0              │    │
-│  └────────────┘  └────────────┘  └──────────┬───────────┘    │
-└─────────────────────────────────────────────┼────────────────┘
-                                              │ tag push 触发
-┌─────────────────────────────────────────────▼────────────────┐
-│                    GitHub Actions (.github/workflows/)        │
-├──────────────────────────────────────────────────────────────┤
-│                                                              │
-│  ┌─────────────────────────────────────────────────────┐     │
-│  │ release.yml (tag: v*)                               │     │
-│  │                                                     │     │
-│  │  ┌──────────────┐    ┌─────────────────────────┐   │     │
-│  │  │ matrix:      │    │ steps:                  │   │     │
-│  │  │ macos-latest │    │ 1. checkout             │   │     │
-│  │  │ (arm64)      │    │ 2. extract version      │   │     │
-│  │  │ macos-latest │    │ 3. setup pnpm + Node    │   │     │
-│  │  │ (x86_64)     │    │ 4. install Rust          │   │     │
-│  │  └──────────────┘    │ 5. rust-cache            │   │     │
-│  │                      │ 6. pnpm install          │   │     │
-│  │                      │ 7. tauri-action@v0       │   │     │
-│  │                      │    (--config version     │   │     │
-│  │                      │     inject + ad-hoc sign)│   │     │
-│  │                      └─────────────────────────┘   │     │
-│  └─────────────────────────────────────────────────────┘     │
-│                              │                               │
-│                              ▼                               │
-│              tauri-action 生成并上传到 GitHub Release:        │
-│              ┌──────────────────────────────────────┐        │
-│              │  CLIManager_2.1.0_aarch64.dmg         │        │
-│              │  CLIManager_2.1.0_aarch64.dmg.sig     │        │
-│              │  CLIManager_2.1.0_x64.dmg             │        │
-│              │  CLIManager_2.1.0_x64.dmg.sig         │        │
-│              │  latest.json  ← updater 端点           │        │
-│              └──────────────────────────────────────┘        │
-└──────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                    Claude Code CLI（端口 15800）                  │
+│                  发出 Anthropic Messages API 请求                  │
+└─────────────────────────────┬───────────────────────────────────┘
+                              │  POST /v1/messages（Anthropic 格式）
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                   CLIManager 本地代理（axum 0.8）                  │
+│                                                                   │
+│  ┌─────────────────────────────────────────────────────────┐     │
+│  │                     proxy_handler                        │     │
+│  │                                                         │     │
+│  │  1. 读取 UpstreamTarget（含 protocol_type）               │     │
+│  │  2. 读取请求 body                                         │     │
+│  │  3. 【判断点】protocol_type == OpenAiCompatible？          │     │
+│  │     │                                                    │     │
+│  │     ├── 是 → 【请求转换】                                  │     │
+│  │     │      ┌──────────────────────────────────────┐      │     │
+│  │     │      │ translate_request()                   │      │     │
+│  │     │      │  anthropic_to_openai(body)            │      │     │
+│  │     │      │  改写 path: /v1/messages               │      │     │
+│  │     │      │           → /v1/chat/completions       │      │     │
+│  │     │      │  改写 headers: x-api-key → Bearer      │      │     │
+│  │     │      └──────────────────────────────────────┘      │     │
+│  │     │                                                    │     │
+│  │     └── 否 → 直传（现有逻辑不变）                           │     │
+│  │                                                         │     │
+│  │  4. 发送请求到上游                                         │     │
+│  │  5. 读取上游响应                                           │     │
+│  │  6. 【判断点】was_translated？                            │     │
+│  │     │                                                    │     │
+│  │     ├── 是（非流式）→ 【响应转换】                           │     │
+│  │     │      openai_to_anthropic(body)                     │     │
+│  │     │      重写 Content-Type: application/json            │     │
+│  │     │                                                    │     │
+│  │     ├── 是（流式 SSE）→ 【流式响应转换】                      │     │
+│  │     │      create_anthropic_sse_stream(upstream_stream)  │     │
+│  │     │      重写 Content-Type: text/event-stream          │     │
+│  │     │                                                    │     │
+│  │     └── 否 → 直传（现有逻辑不变）                           │     │
+│  └─────────────────────────────────────────────────────────┘     │
+└─────────────────────────────────────────────────────────────────┘
                               │
-                   ┌──────────▼──────────┐
-                   │  运行中的 CLIManager  │
-                   │  tauri-plugin-updater│
-                   │  轮询 latest.json   │
-                   │  下载+安装新版本     │
-                   └─────────────────────┘
+          ┌───────────────────┴──────────────────────┐
+          ▼                                          ▼
+┌─────────────────────┐                  ┌──────────────────────┐
+│  Anthropic 官方 API  │                  │  OpenAI 兼容 Provider │
+│  api.anthropic.com  │                  │  （直传，无需转换）    │
+│  （直传，无需转换）   │                  │  OpenRouter, etc.    │
+└─────────────────────┘                  └──────────────────────┘
 ```
 
 ### Component Responsibilities
 
-| 组件 | 职责 | 实现位置 |
-|------|------|----------|
-| `scripts/release.sh` | 本地发版：版本号更新三文件 + CHANGELOG + git tag + push | 新增文件 |
-| `release.yml` | CI 构建：tag 触发 → 版本注入 → 构建 → 签名 → 上传 Release | `.github/workflows/release.yml` |
-| `tauri.conf.json` updater config | 声明更新端点 URL 和 pubkey，开启 createUpdaterArtifacts | 修改现有文件 |
-| `src-tauri/Cargo.toml` updater dep | 引入 tauri-plugin-updater 依赖 | 修改现有文件 |
-| `src-tauri/src/lib.rs` plugin init | 注册 tauri-plugin-updater 插件 | 修改现有文件 |
-| `src-tauri/capabilities/default.json` | 新增 updater 相关权限 | 修改现有文件 |
-| `src/lib/updater.ts` | 前端：调用 check() → downloadAndInstall() → relaunch() | 新增文件 |
+| 组件 | 职责 | 状态 |
+|------|------|------|
+| `proxy/handler.rs` → `proxy_handler()` | 请求管道编排，判断是否需要转换，调用转换函数 | 已有，需扩展 |
+| `proxy/state.rs` → `UpstreamTarget` | 持有 `protocol_type`，作为转换决策依据 | 已有，无需改动 |
+| `proxy/translate/` → `translate_request()` | Anthropic 请求 → OpenAI 请求结构转换，路径重写 | 新建 |
+| `proxy/translate/` → `translate_response()` | OpenAI 响应 → Anthropic 响应结构转换（非流式） | 新建 |
+| `proxy/translate/` → `translate_stream()` | OpenAI SSE 流 → Anthropic SSE 流实时转换 | 新建 |
+| `proxy/error.rs` → `ProxyError` | 新增 `TransformError(String)` 变体 | 已有，需扩展 |
+| `provider.rs` → `ProtocolType` | 已有 `Anthropic` / `OpenAiCompatible` 枚举 | 已有，无需改动 |
+
+---
 
 ## Recommended Project Structure
 
 ```
-CLIManager/
-├── .github/
-│   └── workflows/
-│       └── release.yml          # 新增：tag 触发构建发布
-├── scripts/
-│   └── release.sh               # 新增：本地发版脚本
-├── src/
-│   └── lib/
-│       └── updater.ts           # 新增：前端更新检查逻辑
-├── src-tauri/
-│   ├── Cargo.toml               # 修改：新增 tauri-plugin-updater 依赖
-│   ├── tauri.conf.json          # 修改：新增 updater 配置块
-│   ├── src/
-│   │   └── lib.rs               # 修改：注册 updater 插件
-│   └── capabilities/
-│       └── default.json         # 修改：新增 updater 权限
-└── package.json                 # 修改：版本号（发版时更新）
+src-tauri/src/proxy/
+├── mod.rs                # 已有：pub use 新增 translate 子模块
+├── error.rs              # 已有：新增 TransformError 变体
+├── handler.rs            # 已有：扩展 proxy_handler 插入转换逻辑
+├── server.rs             # 已有：无需改动
+├── state.rs              # 已有：无需改动（UpstreamTarget.protocol_type 已存在）
+└── translate/            # 新建子模块
+    ├── mod.rs            # pub use 导出，定义转换入口函数
+    ├── request.rs        # anthropic_to_openai() 请求结构转换
+    ├── response.rs       # openai_to_anthropic() 响应结构转换
+    └── stream.rs         # create_anthropic_sse_stream() 流式转换
 ```
 
 ### Structure Rationale
 
-- **`.github/workflows/`**: GitHub Actions 约定目录，不可改
-- **`scripts/`**: 本地开发辅助脚本，与 src 代码分开
-- **`src/lib/updater.ts`**: 更新逻辑独立文件，不污染业务组件
+- **`translate/` 子模块**：转换逻辑与转发逻辑完全分离，单独可测。cc-switch 将转换放在 `proxy/providers/transform.rs` + `streaming.rs`，功能正确但与 Provider 路由逻辑耦合过深。独立 `translate/` 更清晰。
+- **`handler.rs` 内联判断**：转换决策（是否需要转换、是否流式）保留在 handler 中，translate 子模块只负责纯函数转换，不感知 axum 上下文。
+- **不引入 trait 抽象**：v2.2 只做 Anthropic→OpenAI 单向转换，无需 Provider adapter 抽象层（cc-switch 的 `ProviderAdapter` trait 是为支持 Codex/Gemini 多协议设计的，我们不需要）。
 
-## 数据流：从 tag push 到 updater 生效
-
-### Release 触发流
-
-```
-开发者本地执行 scripts/release.sh v2.1.0
-    ↓
-脚本更新三文件版本号：
-  package.json.version = "2.1.0"
-  src-tauri/Cargo.toml [package].version = "2.1.0"
-  src-tauri/tauri.conf.json.version = "2.1.0"
-    ↓
-脚本更新 Cargo.lock（cargo update --workspace --precise）
-    ↓
-脚本生成/更新 CHANGELOG.md
-    ↓
-脚本 git commit -am "chore: release v2.1.0"
-    ↓
-脚本 git tag v2.1.0 && git push origin main --tags
-    ↓
-GitHub Actions release.yml 触发（on.push.tags: v*）
-```
-
-### CI 构建流
-
-```
-GitHub Actions release.yml
-    ↓
-步骤 1: actions/checkout@v4
-    ↓
-步骤 2: 提取版本号
-  VERSION="${GITHUB_REF_NAME#v}"  # 从 v2.1.0 提取 2.1.0
-    ↓
-步骤 3: setup pnpm（actions/setup-node + npm install -g pnpm）
-步骤 4: dtolnay/rust-toolchain@stable
-        targets: aarch64-apple-darwin,x86_64-apple-darwin
-步骤 5: swatinem/rust-cache@v2
-步骤 6: pnpm install
-    ↓
-步骤 7: tauri-apps/tauri-action@v0
-  env:
-    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-    TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-  with:
-    tagName: v__VERSION__           # __VERSION__ 替换为 tauri.conf.json 中的版本
-    releaseName: CLIManager v__VERSION__
-    releaseDraft: true
-    includeUpdaterJson: true         # 生成 latest.json
-    args: --target aarch64-apple-darwin  # (matrix 另一个 job 为 x86_64)
-    tauriScript: pnpm tauri          # 显式指定，避免 pnpm-lock.yaml 检测问题
-    # tauri-action 内部调用：
-    # pnpm tauri build --target {arch} --config '{"version":"2.1.0"}'
-    # + 环境变量 TAURI_SIGNING_PRIVATE_KEY 驱动 ad-hoc 签名
-    ↓
-产物上传到 GitHub Release (draft):
-  CLIManager_2.1.0_aarch64.dmg
-  CLIManager_2.1.0_aarch64.dmg.sig  (tauri updater 签名文件)
-  CLIManager_2.1.0_x64.dmg
-  CLIManager_2.1.0_x64.dmg.sig
-  latest.json                        (updater 端点清单)
-```
-
-### Updater 检查流（应用运行时）
-
-```
-CLIManager 启动 / 用户触发检查更新
-    ↓
-tauri-plugin-updater check()
-    ↓
-GET https://github.com/[owner]/CLIManager/releases/latest/download/latest.json
-    ↓
-解析 latest.json:
-  {
-    "version": "2.1.0",
-    "platforms": {
-      "darwin-aarch64": { "url": "...", "signature": "..." },
-      "darwin-x86_64":  { "url": "...", "signature": "..." }
-    }
-  }
-    ↓
-比较 latest.json.version > 当前版本？
-  否 → 无更新，静默返回
-  是 → 提示用户更新
-    ↓
-用户确认 → update.downloadAndInstall()
-    ↓
-下载对应平台 .dmg.tar.gz
-    ↓
-用 tauri.conf.json 中的 pubkey 验证签名
-    ↓
-验证通过 → 安装 + relaunch()
-```
+---
 
 ## Architectural Patterns
 
-### Pattern 1: 版本号注入 — 通过 --config 覆盖（不修改文件）
+### Pattern 1: 请求管道内的条件转换分支
 
-**What:** tauri build 的 `--config` 参数支持 JSON Merge Patch（RFC 7396）。tauri-action 会把 `--config '{"version":"X.Y.Z"}'` 拼接到构建命令里，让 CI 构建使用正确的版本号，而不需要在 CI 里修改源文件。
+**What:** 在现有 `proxy_handler` 内，步骤 C（读取 body）之后、步骤 D（拼接 URL）之前，根据 `upstream.protocol_type` 执行条件分支：
+- `ProtocolType::Anthropic` → 直传路径，不修改 body/path（现有行为保留）
+- `ProtocolType::OpenAiCompatible` → 转换路径，调用 `translate_request()`
 
-**When to use:** 版本号已在发版脚本里写入三个文件，CI 只是验证一致性+构建，不需要再次修改文件。
+同样地，在步骤 H（发送请求）之后，根据"是否已转换"标志决定如何处理响应：已转换则调用 `translate_response()` 或 `translate_stream()`，否则直传。
 
-**Trade-offs:**
-- 好处：CI 步骤简洁，不产生额外 git diff
-- 坏处：如果发版脚本忘记更新文件，CI 产物版本会与 tag 不一致（需发版脚本做 sanity check）
-
-**实际用法（tauri-action 自动处理，不需要手写）:**
-
-```yaml
-# tauri-action 内部等效于：
-- run: pnpm tauri build --target aarch64-apple-darwin
-  env:
-    TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-```
-
-**注意：** tauri-action 的 `tagName: v__VERSION__` 的 `__VERSION__` 是从 `tauri.conf.json` 的 `version` 字段读取的，所以 tauri.conf.json 必须已经是正确的版本号（由发版脚本写入）。
-
-### Pattern 2: Ad-hoc 签名 — TAURI_SIGNING_PRIVATE_KEY 驱动
-
-**What:** macOS 应用必须签名。没有 Apple Developer 证书时，用 `signingIdentity: "-"` 进行 ad-hoc 签名。ad-hoc 签名让 macOS 内核接受应用运行，但不建立信任链，用户首次安装仍需在「隐私与安全性」中允许。
-
-tauri-plugin-updater 的签名（用于验证更新包完整性）是独立的机制：用 `TAURI_SIGNING_PRIVATE_KEY` 对 `.dmg` 生成 `.sig` 文件，安装更新时用 tauri.conf.json 里的 pubkey 验证。
-
-**When to use:** 团队内分发 / 开发者自用场景。面向公开用户分发时需要 Apple Developer 证书和公证（notarization）。
+**When to use:** 每个请求只经历一次判断，零开销分支。条件写在同一个函数内，便于追踪完整请求生命周期。
 
 **Trade-offs:**
-- 好处：无需 Apple Developer 账号（$99/年），CI 配置简单
-- 坏处：用户体验差（需要手动授权），macOS Gatekeeper 拦截
+- 好处：handler 内逻辑线性可读，调试容易
+- 坏处：handler 函数变长，需注意保持关注点分离（判断逻辑 vs 转换细节）
 
-**tauri.conf.json 配置：**
+**核心实现骨架（扩展后的 proxy_handler）：**
 
-```json
-{
-  "bundle": {
-    "macOS": {
-      "signingIdentity": "-"
+```rust
+pub async fn proxy_handler(
+    State(state): State<ProxyState>,
+    req: axum::extract::Request,
+) -> Result<Response, ProxyError> {
+    let upstream = state.get_upstream().await.ok_or(ProxyError::NoUpstreamConfigured)?;
+
+    let method = req.method().clone();
+    let path = req.uri().path().to_string();
+    let query = req.uri().query().map(|q| format!("?{}", q)).unwrap_or_default();
+    let headers = req.headers().clone();
+
+    // 步骤 C：读取 body
+    let body_bytes = axum::body::to_bytes(req.into_body(), 200 * 1024 * 1024).await
+        .map_err(|e| ProxyError::Internal(format!("读取请求体失败: {}", e)))?;
+
+    // 【新增】步骤 C.5：检查是否需要协议转换
+    let needs_translation = matches!(upstream.protocol_type, ProtocolType::OpenAiCompatible)
+        && path == "/v1/messages";
+
+    // 【新增】转换请求（body + path）
+    let (final_body, final_path) = if needs_translation {
+        let body_json: Value = serde_json::from_slice(&body_bytes)
+            .map_err(|e| ProxyError::TransformError(format!("解析请求体失败: {}", e)))?;
+        let is_streaming = body_json.get("stream").and_then(|v| v.as_bool()).unwrap_or(false);
+        let openai_body = translate::request::anthropic_to_openai(body_json)?;
+        (serde_json::to_vec(&openai_body)
+            .map_err(|e| ProxyError::TransformError(e.to_string()))?,
+         "/v1/chat/completions".to_string())
+    } else {
+        (body_bytes.to_vec(), path.clone())
+    };
+
+    // 步骤 D：拼接上游 URL（使用可能已重写的 path）
+    let upstream_url = format!("{}{}{}", upstream.base_url.trim_end_matches('/'), final_path, query);
+
+    // 步骤 E-G：构建请求、过滤 headers、注入凭据（现有逻辑不变）
+    // ...
+
+    // 步骤 H：发送请求
+    let upstream_resp = req_builder.body(final_body).send().await
+        .map_err(|e| ProxyError::UpstreamUnreachable(e.to_string()))?;
+
+    // 步骤 I：构建响应
+    let status = upstream_resp.status();
+    let resp_headers = upstream_resp.headers().clone();
+
+    // 【新增】步骤 I.5：判断是否为流式响应
+    let is_sse = resp_headers
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .map(|ct| ct.contains("text/event-stream"))
+        .unwrap_or(false);
+
+    // 步骤 J：响应体处理
+    if needs_translation && is_sse {
+        // 流式转换路径
+        let translated_stream = translate::stream::create_anthropic_sse_stream(
+            upstream_resp.bytes_stream()
+        );
+        // ... 返回 SSE 响应
+    } else if needs_translation {
+        // 非流式转换路径
+        let resp_bytes = upstream_resp.bytes().await
+            .map_err(|e| ProxyError::Internal(e.to_string()))?;
+        let openai_resp: Value = serde_json::from_slice(&resp_bytes)
+            .map_err(|e| ProxyError::TransformError(e.to_string()))?;
+        let anthropic_resp = translate::response::openai_to_anthropic(openai_resp)?;
+        // ... 返回 JSON 响应
+    } else {
+        // 直传路径（现有逻辑）
+        let body = Body::from_stream(upstream_resp.bytes_stream());
+        // ...
     }
-  }
 }
 ```
 
-**CI secrets 配置：**
-- `TAURI_SIGNING_PRIVATE_KEY`：updater 私钥内容（`tauri signer generate` 生成）
-- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`：私钥密码（生成时设置）
+### Pattern 2: 纯函数转换层（无副作用）
 
-### Pattern 3: tauri-plugin-updater 静态端点 — GitHub Releases latest.json
+**What:** `translate/request.rs`、`translate/response.rs`、`translate/stream.rs` 均为纯函数，输入 JSON 值/字节流，输出 JSON 值/字节流。不持有状态，不访问 `ProxyState`，无异步（stream 除外）。
 
-**What:** 使用 GitHub Releases 的 `latest.json` 文件作为 updater 端点，不需要额外的更新服务器。tauri-action 在构建时生成这个文件并上传到 Release。
+这与 cc-switch 的 `proxy/providers/transform.rs` 设计一致，已验证可行：
 
-**When to use:** 免服务器分发，GitHub 作为唯一基础设施。
+- `anthropic_to_openai(body: Value) -> Result<Value, ProxyError>` — 纯结构转换
+- `openai_to_anthropic(body: Value) -> Result<Value, ProxyError>` — 纯结构转换
+- `create_anthropic_sse_stream(stream: impl Stream<...>) -> impl Stream<...>` — 流适配器
+
+**When to use:** 转换逻辑单元测试极简，只需构造 JSON 值验证输出，无需启动代理服务器。
 
 **Trade-offs:**
-- 好处：零额外服务器成本，运维负担极低
-- 坏处：不支持灰度发布（所有用户同时看到新版本）；GitHub raw 访问在某些地区可能较慢
+- 好处：测试覆盖率高，逻辑清晰
+- 坏处：stream 转换函数签名较复杂（泛型 + lifetime），需要 `async-stream` crate
 
-**端点 URL 格式：**
+**注意（来自 cc-switch 经验）：** 流式工具调用存在"先到参数后到 id/name"的情况，需要缓冲 pending_args 直到 id 和 name 就绪再发送 `content_block_start`。这是流式转换最复杂的边缘情况。
 
-```json
-{
-  "plugins": {
-    "updater": {
-      "endpoints": [
-        "https://github.com/[owner]/CLIManager/releases/latest/download/latest.json"
-      ]
-    }
-  }
-}
+### Pattern 3: 转换决策由 ProtocolType + path 双重判断
+
+**What:** 仅当满足两个条件时触发转换：
+1. `upstream.protocol_type == ProtocolType::OpenAiCompatible`
+2. 请求路径为 `/v1/messages`（Anthropic Messages API 端点）
+
+其他路径（如 `/v1/models`、`/health`）即使是 OpenAI 兼容 Provider 也直传，因为这些路径无需协议差异处理。
+
+**When to use:** 避免误转换非 Messages API 的请求（如 Claude Code 也会发 `/v1/complete`、`/v1/token_count` 等）。
+
+**Trade-offs:**
+- 好处：精确，不影响其他 API 端点
+- 坏处：如果 Claude Code 未来增加新端点需要更新判断逻辑
+
+---
+
+## Data Flow
+
+### 请求转换流（非流式，protocol_type = OpenAiCompatible）
+
+```
+Claude Code CLI
+    │  POST /v1/messages HTTP/1.1
+    │  x-api-key: PROXY_MANAGED
+    │  Content-Type: application/json
+    │  Body: {
+    │    "model": "claude-sonnet-4-5",
+    │    "max_tokens": 8096,
+    │    "system": "You are a helpful assistant.",
+    │    "messages": [{"role": "user", "content": "Hello"}],
+    │    "tools": [...],
+    │    "stream": false
+    │  }
+    ▼
+proxy_handler（步骤 A-C）
+    │  检测：protocol_type == OpenAiCompatible && path == /v1/messages
+    ▼
+translate_request::anthropic_to_openai()
+    │  system → messages[0]{role: system}
+    │  messages → messages（role/content 结构转换）
+    │  tools → tools（input_schema → parameters，name/desc 保留）
+    │  max_tokens → max_tokens
+    │  path 重写：/v1/messages → /v1/chat/completions
+    ▼
+proxy_handler（步骤 E-G）
+    │  headers 过滤，注入凭据：
+    │  x-api-key 占位 → Authorization: Bearer {api_key}
+    │  POST /v1/chat/completions HTTP/1.1
+    ▼
+上游 OpenAI 兼容 Provider
+    │  响应：{
+    │    "id": "chatcmpl-xxx",
+    │    "choices": [{
+    │      "message": {"role": "assistant", "content": "Hello!"},
+    │      "finish_reason": "stop"
+    │    }],
+    │    "usage": {"prompt_tokens": 10, "completion_tokens": 5}
+    │  }
+    ▼
+translate_response::openai_to_anthropic()
+    │  choices[0].message → content blocks
+    │  finish_reason "stop" → stop_reason "end_turn"
+    │  usage.prompt_tokens → usage.input_tokens
+    │  usage.completion_tokens → usage.output_tokens
+    ▼
+Claude Code CLI
+    │  响应：{
+    │    "id": "chatcmpl-xxx",
+    │    "type": "message",
+    │    "role": "assistant",
+    │    "content": [{"type": "text", "text": "Hello!"}],
+    │    "stop_reason": "end_turn",
+    │    "usage": {"input_tokens": 10, "output_tokens": 5}
+    │  }
 ```
 
-**注意：** 这是静态 URL，不含 `{{target}}` / `{{arch}}` 变量。latest.json 文件本身包含各平台的条目，updater 插件会自动选择当前平台对应的条目。
+### 流式请求转换流（stream: true，protocol_type = OpenAiCompatible）
 
-### Pattern 4: Matrix 构建 — 同一 runner 两个 target
+```
+Claude Code CLI
+    │  POST /v1/messages
+    │  Body: { ..., "stream": true }
+    ▼
+proxy_handler → translate_request::anthropic_to_openai()
+    │  请求转换同上，含 "stream": true
+    ▼
+上游 OpenAI 兼容 Provider（SSE 流式响应）
+    │  Content-Type: text/event-stream
+    │  data: {"id":"chatcmpl-xxx","choices":[{"delta":{"content":"Hello"}}]}
+    │  data: {"choices":[{"delta":{"content":"!"}}]}
+    │  data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{...}}
+    │  data: [DONE]
+    ▼
+translate_stream::create_anthropic_sse_stream()（逐 chunk 转换）
+    │  第一个有效 chunk → 生成 message_start 事件（含 usage.input_tokens）
+    │  delta.content → content_block_start{type:text} + content_block_delta{text_delta}
+    │  delta.tool_calls → content_block_start{type:tool_use} + input_json_delta
+    │  finish_reason → 关闭所有 content blocks + message_delta{stop_reason} + message_stop
+    │  [DONE] → message_stop
+    ▼
+Claude Code CLI
+    │  event: message_start
+    │  data: {"type":"message_start","message":{...,"usage":{"input_tokens":10}}}
+    │
+    │  event: content_block_start
+    │  data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+    │
+    │  event: content_block_delta
+    │  data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello!"}}
+    │
+    │  event: content_block_stop
+    │  data: {"type":"content_block_stop","index":0}
+    │
+    │  event: message_delta
+    │  data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":5}}
+    │
+    │  event: message_stop
+    │  data: {"type":"message_stop"}
+```
 
-**What:** macOS 需要分别为 `aarch64-apple-darwin`（Apple Silicon）和 `x86_64-apple-darwin`（Intel）构建，两个 job 都在 `macos-latest` runner 上运行，通过 matrix 的 `args` 字段区分。
+### 直传流（protocol_type = Anthropic，保持现有行为）
 
-**When to use:** 需要同时支持 M1+ 和 Intel Mac 用户。
+```
+Claude Code CLI → proxy_handler → 无转换 → Anthropic API → 直传响应
+```
 
-**Trade-offs:**
-- 好处：原生编译，性能最优，无需 cross-compilation 工具链
-- 坏处：需要两个 CI job，运行时间翻倍（Rust 编译约 10-20 分钟/个）
-- 替代方案：Universal binary（`lipo` 合并两个架构），但 Tauri 目前不原生支持自动生成 Universal DMG
+---
 
-## New vs Modified Files
+## New vs Modified Components
 
 ### 新增文件
 
 | 文件 | 作用 | 关键内容 |
 |------|------|----------|
-| `.github/workflows/release.yml` | CI/CD 主工作流 | tag 触发，matrix 构建，tauri-action 调用 |
-| `scripts/release.sh` | 本地发版脚本 | 更新三个文件版本号 + Cargo.lock + git tag |
-| `src/lib/updater.ts` | 前端更新检查 | check() + downloadAndInstall() + relaunch() |
+| `src-tauri/src/proxy/translate/mod.rs` | 转换子模块入口 | pub use 导出，无业务逻辑 |
+| `src-tauri/src/proxy/translate/request.rs` | 请求结构转换 | `anthropic_to_openai()`，纯函数，单元测试覆盖各 content 类型 |
+| `src-tauri/src/proxy/translate/response.rs` | 响应结构转换 | `openai_to_anthropic()`，纯函数，单元测试覆盖 tool_calls/finish_reason 映射 |
+| `src-tauri/src/proxy/translate/stream.rs` | 流式 SSE 转换 | `create_anthropic_sse_stream()`，async-stream，缓冲工具调用状态 |
 
 ### 修改现有文件
 
-| 文件 | 修改内容 | 为什么 |
-|------|----------|--------|
-| `src-tauri/tauri.conf.json` | 新增 `bundle.createUpdaterArtifacts: true`，新增 `bundle.macOS.signingIdentity: "-"`，新增 `plugins.updater.pubkey` + `plugins.updater.endpoints` | updater 插件配置和 ad-hoc 签名 |
-| `src-tauri/Cargo.toml` | 新增 `tauri-plugin-updater` 依赖（desktop-only target） | Rust 插件依赖 |
-| `src-tauri/src/lib.rs` | `setup()` 中注册 `tauri_plugin_updater::Builder::new().build()` | 插件初始化 |
-| `src-tauri/capabilities/default.json` | 新增 `"updater:default"` 权限 | 前端调用 check/install 需要权限 |
-| `package.json` | 新增 `@tauri-apps/plugin-updater` 依赖 | 前端 JS 绑定 |
+| 文件 | 修改内容 | 影响范围 |
+|------|----------|----------|
+| `src-tauri/src/proxy/mod.rs` | `pub mod translate;` 新增子模块声明 | 无运行时影响 |
+| `src-tauri/src/proxy/error.rs` | 新增 `TransformError(String)` 变体，`IntoResponse` 返回 422 | ProxyError 的 HTTP 映射语义变化 |
+| `src-tauri/src/proxy/handler.rs` | 在步骤 C-D 间插入转换分支，步骤 J 插入响应/流转换分支 | 核心修改，影响所有请求路径（但 Anthropic 直传路径代码逻辑不变） |
+| `src-tauri/Cargo.toml` | 可能需要 `async-stream` + `bytes` crate（如不在 reqwest 依赖树中） | 构建依赖 |
+
+**不需要修改的文件：**
+
+| 文件 | 原因 |
+|------|------|
+| `proxy/state.rs` | `UpstreamTarget.protocol_type` 已存在，转换决策直接读取即可 |
+| `proxy/server.rs` | 路由构建不变（`/health` + fallback `proxy_handler`） |
+| `provider.rs` | `ProtocolType` 枚举已满足需求 |
+| `commands/proxy.rs` | 上游配置逻辑不变，protocol_type 已经正确传入 `UpstreamTarget` |
+| `storage/`, `adapter/`, `tray.rs` | 与代理转发层无关联 |
+
+---
 
 ## Integration Points
 
-### External Services
+### 转换决策集成点
 
-| 服务 | 集成方式 | 注意事项 |
-|------|----------|----------|
-| GitHub Actions | `on.push.tags: v*` 触发 workflow | 需要在 Settings > Actions > General 开启 Read and write permissions |
-| GitHub Releases | tauri-action 自动创建 Draft release 并上传产物 | 手动 publish draft 后才对 updater 可见（推荐：先 publish draft 验证产物，再设置为正式 release） |
-| GitHub Releases latest.json | updater 端点（静态文件） | release 必须 publish（非 draft）updater 才能拉到；latest release 变化时所有在线用户下次检查时收到更新 |
+| 集成位置 | 判断条件 | 处理方式 |
+|----------|----------|----------|
+| `proxy_handler` 步骤 C 之后 | `upstream.protocol_type == OpenAiCompatible && path == "/v1/messages"` | 调用 `translate::request::anthropic_to_openai()`，重写 path |
+| `proxy_handler` 步骤 H 之后 | `needs_translation && is_sse` | 调用 `translate::stream::create_anthropic_sse_stream()` |
+| `proxy_handler` 步骤 H 之后 | `needs_translation && !is_sse` | 全量读取响应 body，调用 `translate::response::openai_to_anthropic()` |
 
-### Internal Boundaries
+### UpstreamTarget 已有字段的使用
 
-| 边界 | 通信方式 | 注意事项 |
-|------|----------|----------|
-| CI → tauri.conf.json | `--config` JSON override（tauri-action 内部） | tauri.conf.json 必须提前写好正确版本号（由发版脚本完成） |
-| tauri-plugin-updater (Rust) ↔ 前端 | Tauri 命令：`updater:allow-check`、`updater:allow-download-and-install` | 需要在 capabilities/default.json 声明权限 |
-| 前端 updater.ts ↔ 用户界面 | 由调用方决定（可以是 Settings 页面的「检查更新」按钮，也可以是启动时静默检查） | v2.1 范围：触发机制交给实现阶段决定 |
+```
+UpstreamTarget {
+    api_key: String,         // 凭据注入（已有逻辑）
+    base_url: String,        // 上游 URL 拼接（已有逻辑）
+    protocol_type: ProtocolType,  // 【新用途】转换决策依据
+}
+```
+
+`protocol_type` 字段已存在于 `UpstreamTarget` 且已在步骤 G 中用于凭据注入（Anthropic 用 `x-api-key`，OpenAI 用 `Authorization: Bearer`）。转换决策复用相同字段，无需扩展数据结构。
+
+### 凭据注入与协议转换的交互
+
+转换后请求发往 OpenAI 兼容 Provider，凭据格式必须是 `Authorization: Bearer`（而非 Anthropic 的 `x-api-key`）。**现有步骤 G 已按 `protocol_type` 注入正确格式**，与转换逻辑天然配合，无需额外处理。
+
+---
 
 ## Build Order
 
 基于文件依赖关系，推荐以下构建顺序（每步可独立验证）：
 
 ```
-步骤 1: 生成 updater 签名密钥对
-  命令: pnpm tauri signer generate -w ~/.tauri/climanager.key
-  产出: 私钥文件 + 公钥字符串
-  验证: 公钥字符串备好，准备写入 tauri.conf.json
+步骤 1：实现 translate/request.rs（纯函数，最小依赖）
+  新增: src-tauri/src/proxy/translate/mod.rs（空模块入口）
+  新增: src-tauri/src/proxy/translate/request.rs
+    - anthropic_to_openai(body: Value) -> Result<Value, ProxyError>
+    - 覆盖：string content，array content（text/image/tool_use/tool_result）
+    - 工具调用格式转换：input_schema → parameters，clean_schema()
+    - system → messages[0]{role: system}
+  验证: cargo test proxy::translate::request（纯单元测试，不需要运行服务器）
 
-步骤 2: 修改 tauri.conf.json
-  新增: bundle.createUpdaterArtifacts: true
-  新增: bundle.macOS.signingIdentity: "-"
-  新增: plugins.updater.pubkey = "<公钥字符串>"
-  新增: plugins.updater.endpoints = ["https://...latest.json"]
-  验证: pnpm tauri build 本地成功（含 .sig 文件生成）
+步骤 2：实现 translate/response.rs（纯函数，最小依赖）
+  新增: src-tauri/src/proxy/translate/response.rs
+    - openai_to_anthropic(body: Value) -> Result<Value, ProxyError>
+    - 覆盖：text content，tool_calls，function_call（遗留格式）
+    - finish_reason 映射：stop→end_turn，length→max_tokens，tool_calls→tool_use
+    - usage 映射：prompt_tokens→input_tokens，completion_tokens→output_tokens
+    - cache tokens：prompt_tokens_details.cached_tokens → cache_read_input_tokens
+  验证: cargo test proxy::translate::response
 
-步骤 3: 集成 tauri-plugin-updater（Rust + 前端）
-  修改: src-tauri/Cargo.toml 新增依赖
-  修改: src-tauri/src/lib.rs 注册插件
-  修改: src-tauri/capabilities/default.json 新增权限
-  修改: package.json 新增 @tauri-apps/plugin-updater
-  新增: src/lib/updater.ts
-  验证: pnpm tauri build 编译通过，无权限报错
+步骤 3：实现 translate/stream.rs（流适配器，需要 async-stream）
+  新增: src-tauri/src/proxy/translate/stream.rs
+    - create_anthropic_sse_stream(stream: impl Stream<...>) -> impl Stream<...>
+    - 状态机：message_id，model，content_block_index，tool_blocks 缓冲
+    - 处理：reasoning delta（thinking block），text delta，tool_calls delta
+    - 工具调用延迟发送：pending_args 直到 id+name 就绪
+    - finish_reason 处理：关闭所有块，发送 message_delta + message_stop
+    - 错误处理：上游流错误 → SSE error 事件
+  验证: cargo test proxy::translate::stream（使用 tokio::test + 模拟 SSE bytes）
 
-步骤 4: 配置 GitHub Actions
-  新增: .github/workflows/release.yml
-  配置: GitHub repo secrets（TAURI_SIGNING_PRIVATE_KEY + PASSWORD）
-  验证: 推送 test tag，观察 CI 流程，确认 artifacts 生成
+步骤 4：扩展 ProxyError + 修改 mod.rs
+  修改: src-tauri/src/proxy/error.rs
+    - 新增 TransformError(String) 变体
+    - IntoResponse 映射：422 Unprocessable Entity
+  修改: src-tauri/src/proxy/mod.rs
+    - pub mod translate;
+  验证: cargo build（确保编译通过）
 
-步骤 5: 编写本地发版脚本
-  新增: scripts/release.sh
-  测试: 本地 dry-run 验证三个文件版本号更新
-  验证: 推送 tag，CI 构建，Release draft 出现正确产物
+步骤 5：修改 handler.rs 插入转换逻辑（核心集成）
+  修改: src-tauri/src/proxy/handler.rs → proxy_handler()
+    - 步骤 C 后：检查 needs_translation（protocol_type + path 双重判断）
+    - 条件调用 translate::request::anthropic_to_openai()，重写 path
+    - 步骤 H 后：检查 is_sse（Content-Type: text/event-stream）
+    - 条件分支：流式转换 / 非流式转换 / 直传
+  验证: cargo test proxy::handler（现有测试全通过）
+        cargo test proxy（全模块测试通过）
+
+步骤 6：端到端集成测试
+  新增: 在 proxy/mod.rs 或 handler.rs 的 tests 模块增加 e2e 测试
+    - 启动 mock OpenAI 兼容上游（接收 Chat Completions 请求）
+    - 向代理发送 Anthropic Messages API 请求（protocol_type = OpenAiCompatible）
+    - 验证上游收到正确的 OpenAI 格式请求
+    - 验证代理响应符合 Anthropic Messages API 格式
+    - 流式版本：验证 SSE 事件序列正确
+  验证: cargo test（全部 lib tests 通过，基准线 221 tests）
 ```
 
 **依赖约束：**
-- 步骤 2 必须在步骤 1 之后（需要公钥）
-- 步骤 3 可与步骤 4 并行（互不依赖）
-- 步骤 5 必须在步骤 4 之后（需要知道 tag 格式约定）
+- 步骤 1、2、3 相互独立，可并行
+- 步骤 4 依赖步骤 1-3（需要 TransformError 在转换函数中使用）
+- 步骤 5 依赖步骤 1-4
+- 步骤 6 依赖步骤 5
+
+---
 
 ## Anti-Patterns
 
-### Anti-Pattern 1: 在 CI 中修改源文件进行版本注入
+### Anti-Pattern 1: 在流式路径缓冲完整响应后再转换
 
-**What people do:** 在 CI workflow 里用 `sed` 或 `node -e` 修改 `package.json`/`Cargo.toml`/`tauri.conf.json` 的版本号，然后再构建。
+**What people do:** 等 SSE 流全部接收完毕，拼接成完整 JSON，调用非流式转换函数，然后"模拟"成 SSE 一次性输出。
 
 **Why it's wrong:**
-- 产生 git dirty state（除非显式 commit，但 commit 回到 main 需要额外权限配置）
-- 三个文件修改顺序有讲究，容易脚本写法不一致
-- `Cargo.lock` 也需要同步更新，容易遗漏
+- Claude Code 对第一个 SSE token 的到达时间敏感（用于显示响应进度）
+- 缓冲完整响应会使流式请求退化为阻塞请求，用户体验极差
+- 大型响应（长文本 + 多工具调用）可能占用大量内存
 
-**Do this instead:** 本地发版脚本统一更新三个文件 + Cargo.lock，commit 后 push tag。CI 只做构建，不修改文件。版本号从 tauri.conf.json 读取（tauri-action 的 `__VERSION__` 机制）。
+**Do this instead:** 使用 `create_anthropic_sse_stream()` 逐 chunk 转换，token 到达即转发，不缓冲完整响应。
 
-### Anti-Pattern 2: 用 tauri-action@v0 时不指定 tauriScript: pnpm tauri
+### Anti-Pattern 2: 在非流式路径使用流式转换
 
-**What people do:** 在 pnpm 项目中使用 tauri-action 时省略 `tauriScript` 参数，依赖自动检测。
+**What people do:** 统一使用流式转换处理所有响应（无论 `stream` 参数是否为 true）。
 
-**Why it's wrong:** tauri-action 通过 lockfile 检测包管理器，但在某些 runner 环境下 `pnpm-lock.yaml` 检测可能失效（尤其是 checkout 深度或工作目录不匹配时），导致 fallback 到 npm，进而找不到 `@tauri-apps/cli`。
+**Why it's wrong:**
+- 非流式响应没有 SSE 格式，强行走流式解析路径会失败（JSON 不是 `data: {...}\n\n` 格式）
+- 非流式响应 body 通常需要完整读取才能正确转换（如 `usage` 字段在最后）
 
-**Do this instead:**
+**Do this instead:** 根据响应的 `Content-Type` header 判断：`text/event-stream` 走流式转换，`application/json` 走非流式转换。
 
-```yaml
-with:
-  tauriScript: pnpm tauri
-```
+### Anti-Pattern 3: 对所有 OpenAiCompatible 请求都转换路径
 
-显式指定，消除歧义。
+**What people do:** 只根据 `protocol_type == OpenAiCompatible` 决定是否转换，对该 Provider 的所有请求（包括 `/v1/models`、`/v1/token_count`）都走转换路径。
 
-### Anti-Pattern 3: 将 updater 私钥提交到 repo
+**Why it's wrong:**
+- Claude Code 发送的不仅仅是 `/v1/messages` 请求，还有 `/v1/complete`、`/v1/token_count` 等
+- 这些端点无需协议转换（OpenAI 兼容 Provider 通常也支持这些端点或可直传）
+- 误转换会导致请求格式错误
 
-**What people do:** 将 `TAURI_SIGNING_PRIVATE_KEY` 的内容存为文件并提交到 repo，或写死在 workflow YAML 里。
+**Do this instead:** 转换决策使用双重判断：`protocol_type == OpenAiCompatible && path == "/v1/messages"`。其他路径直传。
 
-**Why it's wrong:** 私钥泄露后无法撤销。攻击者可以签发伪造的更新包，通过 updater 推送给所有已安装用户。
+### Anti-Pattern 4: 复用 cc-switch 的 ProviderAdapter trait 架构
 
-**Do this instead:** 私钥只存于 GitHub repo secrets（`Settings > Secrets and variables > Actions`）。本地开发时通过 `TAURI_SIGNING_PRIVATE_KEY` 环境变量传入，不写文件，不提交。
+**What people do:** 引入 `ProviderAdapter` trait（参考 cc-switch），为每种协议定义一个 adapter，handler 通过动态分发调用。
 
-### Anti-Pattern 4: Release draft 未 publish 就以为 updater 生效
+**Why it's wrong:**
+- v2.2 只做 Anthropic→OpenAI 单向，不需要多协议适配层
+- trait 对象（`Box<dyn ProviderAdapter>`）引入不必要的动态分发开销
+- cc-switch 的 adapter 与 Provider 数据库模型深度耦合，而我们的 Provider 数据模型更简洁
 
-**What people do:** tauri-action 创建 Release draft 后，以为 `latest.json` 已经可以被 updater 访问。
+**Do this instead:** 纯函数 + 条件分支，直接在 handler 内判断。待 v3.0 需要 Gemini/其他协议时再考虑引入抽象。
 
-**Why it's wrong:** GitHub 的 `releases/latest` 路由只指向最新 published（非 draft）release。draft release 的文件不在 `releases/latest/download/` 路径下。
+### Anti-Pattern 5: 转换错误返回 502
 
-**Do this instead:** 先手动验证 draft release 中的产物（DMG 可安装、.sig 文件存在、latest.json 格式正确），然后 publish release。publish 后 updater 才能拉到更新。
+**What people do:** 将所有代理错误（含转换失败）都返回 502 Bad Gateway。
 
-### Anti-Pattern 5: 不做 macOS Universal Binary 而在 latest.json 中只提供一个架构
+**Why it's wrong:**
+- 502 的语义是"上游不可达"，转换失败是代理内部错误
+- Claude Code 对不同错误码有不同的重试和错误展示策略，错误码不准确影响调试
 
-**What people do:** 只构建 aarch64，latest.json 里只有 `darwin-aarch64` 条目，Intel Mac 用户无法更新。
+**Do this instead:** `TransformError` 返回 422 Unprocessable Entity（代理无法处理客户端发来的格式），与 502（上游不可达）和 503（无上游配置）区分。
 
-**Why it's wrong:** updater 会找当前平台对应的条目，找不到就静默失败（无更新提示）。Intel Mac 用户会永远停留在旧版本。
+---
 
-**Do this instead:** matrix 构建两个架构，tauri-action 的 `includeUpdaterJson: true` 会在第一个完成的 job 上传 latest.json（只有一个平台），第二个 job 会 merge。**注意：** 两个 job 需要同一个 release，tauri-action 会自动 upsert latest.json 里的平台条目。
+## Scaling Considerations
 
-## 现有文件修改详情
+这是桌面应用本地代理，不存在多用户并发压力。唯一关注点是单请求的内存和延迟：
 
-### src-tauri/tauri.conf.json — 新增配置块
+| 关注点 | 当前设计 | 上限 |
+|--------|----------|------|
+| 非流式请求 body 内存 | 读 body bytes + 解析 JSON + 序列化 | 200MB 限制（继承现有） |
+| 流式响应内存 | 逐 chunk 转换，不缓冲 | 单 chunk ~几 KB，无积累 |
+| 工具调用 pending_args 缓冲 | 仅在 id/name 就绪前缓冲参数字符串 | 实际工具参数通常 <1KB |
+| 转换延迟 | 单次 JSON 解析+序列化，通常 <1ms | 不影响用户体验 |
 
-```json
-{
-  "$schema": "https://schema.tauri.app/config/2",
-  "productName": "CLIManager",
-  "version": "0.1.0",
-  "bundle": {
-    "active": true,
-    "targets": "all",
-    "createUpdaterArtifacts": true,
-    "macOS": {
-      "signingIdentity": "-"
-    },
-    "icon": [...]
-  },
-  "plugins": {
-    "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6...",
-      "endpoints": [
-        "https://github.com/[owner]/CLIManager/releases/latest/download/latest.json"
-      ]
-    }
-  }
-}
-```
-
-### src-tauri/capabilities/default.json — 新增 updater 权限
-
-```json
-{
-  "permissions": [
-    "core:default",
-    "opener:default",
-    "updater:default"
-  ]
-}
-```
-
-`updater:default` 包含 `allow-check`、`allow-download`、`allow-install`、`allow-download-and-install`。
-
-### src-tauri/src/lib.rs — 注册 updater 插件
-
-在现有 `Builder::default()` 链中追加，与 `tauri_plugin_opener::init()` 同层：
-
-```rust
-let builder = tauri::Builder::default()
-    .plugin(tauri_plugin_opener::init())
-    .setup(|app| {
-        #[cfg(desktop)]
-        app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
-        // ... 现有 setup 代码不变 ...
-        Ok(())
-    })
-```
-
-**注意：** updater 插件用 `#[cfg(desktop)]` 包裹（与现有 tray 模块一致的 desktop-only 模式）。
-
-### src-tauri/Cargo.toml — 新增依赖
-
-```toml
-[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
-tauri-plugin-updater = "2"
-```
-
-用 target-specific dependency 限定只在桌面平台引入。
-
-## .github/workflows/release.yml — 结构概览
-
-```yaml
-name: Release
-
-on:
-  push:
-    tags:
-      - 'v*'
-
-jobs:
-  release:
-    permissions:
-      contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: macos-latest
-            args: --target aarch64-apple-darwin
-          - platform: macos-latest
-            args: --target x86_64-apple-darwin
-
-    runs-on: ${{ matrix.platform }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: lts/*
-
-      - run: npm install -g pnpm
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
-
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: './src-tauri -> target'
-
-      - run: pnpm install
-
-      - uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tagName: v__VERSION__
-          releaseName: CLIManager v__VERSION__
-          releaseBody: See CHANGELOG.md for details.
-          releaseDraft: true
-          prerelease: false
-          includeUpdaterJson: true
-          args: ${{ matrix.args }}
-          tauriScript: pnpm tauri
-```
-
-## scripts/release.sh — 结构概览
-
-```bash
-#!/usr/bin/env bash
-# 用法: ./scripts/release.sh 2.1.0
-VERSION=$1
-
-# 1. 更新 package.json
-node -e "const f='package.json'; const p=JSON.parse(require('fs').readFileSync(f));
-  p.version='$VERSION'; require('fs').writeFileSync(f, JSON.stringify(p,null,2)+'\n')"
-
-# 2. 更新 src-tauri/tauri.conf.json
-node -e "const f='src-tauri/tauri.conf.json'; const p=JSON.parse(require('fs').readFileSync(f));
-  p.version='$VERSION'; require('fs').writeFileSync(f, JSON.stringify(p,null,2)+'\n')"
-
-# 3. 更新 src-tauri/Cargo.toml（只改 [package] 下的第一个 version = 行）
-sed -i '' "0,/^version = .*/s/^version = .*/version = \"$VERSION\"/" src-tauri/Cargo.toml
-
-# 4. 更新 Cargo.lock
-cargo update --manifest-path src-tauri/Cargo.toml --package cli-manager
-
-# 5. Commit + tag
-git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
-git commit -m "chore: release v$VERSION"
-git tag "v$VERSION"
-git push origin main --tags
-```
-
-## 扩展性考量
-
-| 关注点 | 当前阶段（v2.1） | 未来 |
-|--------|------------------|------|
-| 代码签名 | Ad-hoc（`signingIdentity: "-"`） | Apple Developer 证书 + 公证（notarization）解锁公开分发 |
-| 更新端点 | 静态 GitHub Releases latest.json | 可改为动态服务器实现灰度发布/强制更新 |
-| 构建平台 | macOS only（arm64 + x86_64） | 按需加 Linux/Windows job |
-| 发版流程 | 手动运行 release.sh | 可加 `release-please` 自动化 CHANGELOG + PR |
-| 更新 UI | 基础 check + install | 可加进度条、版本详情展示 |
+---
 
 ## Sources
 
-- [Tauri v2 Updater Plugin 官方文档](https://v2.tauri.app/plugin/updater/) — HIGH confidence（直接验证 tauri.conf.json 结构、Rust 注册方式、capabilities 权限）
-- [Tauri v2 GitHub Actions 官方文档](https://v2.tauri.app/distribute/pipelines/github/) — HIGH confidence（workflow 结构、tag 触发、tauri-action 参数）
-- [macOS 代码签名官方文档](https://v2.tauri.app/distribute/sign/macos/) — HIGH confidence（signingIdentity: "-" 配置）
-- [tauri-apps/tauri-action README](https://github.com/tauri-apps/tauri-action) — HIGH confidence（action 参数、pnpm 检测行为、includeUpdaterJson）
-- [Tauri v2 Configuration Files 官方文档](https://v2.tauri.app/develop/configuration-files/) — HIGH confidence（--config JSON override 机制验证）
-- [DEV: Ship Tauri v2 App Like a Pro (Part 2/2)](https://dev.to/tomtomdu73/ship-your-tauri-v2-app-like-a-pro-github-actions-and-release-automation-part-22-2ef7) — MEDIUM confidence（社区实践验证，与官方文档一致）
+- **现有代码库分析（HIGH confidence）：**
+  - `/src-tauri/src/proxy/handler.rs` — 现有请求管道步骤
+  - `/src-tauri/src/proxy/state.rs` — `UpstreamTarget.protocol_type` 字段已存在
+  - `/src-tauri/src/proxy/error.rs` — 现有错误类型结构
+  - `/src-tauri/src/provider.rs` — `ProtocolType` 枚举（Anthropic / OpenAiCompatible）
+
+- **cc-switch 参考实现（HIGH confidence，直接代码分析）：**
+  - `cc-switch/src-tauri/src/proxy/providers/transform.rs` — `anthropic_to_openai()` / `openai_to_anthropic()` 完整实现，含测试
+  - `cc-switch/src-tauri/src/proxy/providers/streaming.rs` — `create_anthropic_sse_stream()` 完整实现，含工具调用缓冲逻辑
+
+- **转换实现细节（HIGH confidence，来自 cc-switch 代码）：**
+  - 工具调用延迟发送（pending_args）：streaming.rs 第 280-347 行
+  - finish_reason 映射表：stop→end_turn，length→max_tokens，tool_calls→tool_use
+  - usage cache tokens 映射：`prompt_tokens_details.cached_tokens` → `cache_read_input_tokens`
+  - schema 清理（移除 `"format": "uri"`）：`clean_schema()` 函数
 
 ---
-*Architecture research for: CLIManager v2.1 Release Engineering*
+*Architecture research for: CLIManager v2.2 协议转换*
 *Researched: 2026-03-14*

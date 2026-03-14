@@ -1,338 +1,223 @@
 # Stack Research
 
-**Domain:** Release Engineering — CI/CD, code signing, auto-update for Tauri 2 macOS desktop app
+**Domain:** Anthropic → OpenAI 协议转换（axum 0.8 代理层扩展，v2.2 里程碑）
 **Researched:** 2026-03-14
-**Confidence:** HIGH (核心版本号均经官方文档和 npm/crates.io 多源交叉验证)
+**Confidence:** HIGH
 
-## Scope
+---
 
-本文档只覆盖 v2.1 Release Engineering 所需的**增量**技术栈。现有已验证技术栈（Tauri 2.10, React 19, Vite 7, axum 0.8, shadcn/ui, Tailwind CSS v4, Rust 后端 serde/toml_edit/notify 等）不在本文件重新评估。
+## 里程碑范围说明
+
+本文档只覆盖 v2.2 协议转换所需的**增量**栈变化。以下技术已在 v2.0/v2.1 验证，**不重复研究**：
+
+- Tauri 2.10, React 19, Vite 7, shadcn/ui, Tailwind CSS v4, i18next
+- serde, serde_json (preserve_order), toml_edit, notify, uuid, chrono
+- reqwest 0.12 (+stream), axum 0.8, tower-http 0.6, tokio
 
 ---
 
 ## 核心发现摘要
 
-v2.1 需要四项新能力：**GitHub Actions CI/CD**、**CI 版本注入**、**macOS ad-hoc 签名**、**Tauri 自动更新**。这四项能力的实现成本极低：
+v2.2 协议转换**不需要引入任何新 crate**。所有能力可由以下手段实现：
 
-- 只新增 2 个 Rust crate（`tauri-plugin-updater` + `tauri-plugin-process`）
-- 只新增 2 个 npm 包（`@tauri-apps/plugin-updater` + `@tauri-apps/plugin-process`）
-- GitHub Actions 用官方 `tauri-apps/tauri-action@v1` 覆盖构建+发布
-- 版本注入用 `sed` 脚本（无额外工具依赖）
-- Ad-hoc 签名用单个环境变量 `APPLE_SIGNING_IDENTITY=-`（无需证书）
+1. `serde_json::Value` —— 动态 JSON 转换（已有）
+2. `bytes` —— SSE 流 item 类型（**已作为传递依赖锁定在 Cargo.lock**，仅需显式声明）
+3. `futures` —— 流组合子 StreamExt（**已作为传递依赖锁定在 Cargo.lock**，仅需显式声明）
+4. `reqwest` bytes_stream() + `axum` Body::from_stream() —— 流式代理管道（已有，v2.0 已用）
 
-**置信度:** HIGH
+cc-switch 参考实现（`transform.rs` 775行 + `streaming.rs` 744行）用同款方案完整实现了 Anthropic ↔ OpenAI Chat Completions 双向协议转换，包含工具调用、图片/多模态、流式 SSE。
+
+**Cargo.toml 只需新增 2 行显式声明。**
 
 ---
 
 ## Recommended Stack
 
-### 核心新增技术
+### 新增显式依赖（共 2 项）
 
 | Technology | Version | Purpose | Why Recommended |
 |------------|---------|---------|-----------------|
-| `tauri-plugin-updater` | 2.10.0 | Tauri 内置自动更新插件 | 官方插件，与 Tauri 2.10 版本对应。**2.10.0 是关键版本**：`tauri-apps/tauri-action@v1` 生成的新格式 `latest.json`（含 `{os}-{arch}-{installer}` 键）要求 updater >= 2.10.0，低版本无法解析。作为 Rust crate 与同版本 npm 包必须严格同步。 |
-| `tauri-plugin-process` | 2.3.1 | 更新完成后重启应用 | 官方插件，updater 的标准配套：`downloadAndInstall()` 后调用 `relaunch()` 重启 app 完成更新。无其他实现方式。 |
-| `tauri-apps/tauri-action@v1` | v1 (latest stable) | GitHub Actions 构建 + 发布 Tauri app | 官方维护的 GitHub Action。自动完成 `tauri build`、生成 `latest.json`（updater 需要）、上传 DMG + `.sig` 文件到 GitHub Releases。`@v1` 是当前推荐标签（`@v0` 已过时，部分官方文档引用但 README 已指向 v1）。 |
-| `actions/checkout@v4` | v4 | Checkout 代码 | GitHub 官方推荐版本 |
-| `actions/setup-node@v4` | v4 | 安装 Node.js | GitHub 官方推荐版本 |
-| `dtolnay/rust-toolchain@stable` | stable | 安装 Rust toolchain | Tauri CI 生态标准选择，比官方 `actions-rs/toolchain` 更轻量且维护活跃 |
+| `bytes` | `"1"` | SSE 流转换中的 `Bytes` 类型——axum Body::from_stream 和 reqwest bytes_stream 的共同 item 类型 | tokio-rs 生态标配；已作为传递依赖锁定为 1.11.1（验证：`Cargo.lock` 中 `name = "bytes" / version = "1.11.1"`）；cc-switch 同款（`bytes = "1.5"`）；无额外下载开销 |
+| `futures` | `"0.3"` | `Stream`、`StreamExt`、`stream::once` 等流组合子——SSE 转换层逐 chunk 映射所需 | futures-rs 生态标准库；已作为传递依赖锁定为 0.3.32（验证：`Cargo.lock` 中 `name = "futures" / version = "0.3.32"`）；cc-switch 同款（`futures = "0.3"`）；`dev-dependencies` 中已声明，升为 `dependencies` 无风险 |
 
-### 版本注入工具
+### 无需引入的新 crate
 
-| Tool | Version | Purpose | When to Use |
-|------|---------|---------|-------------|
-| `sed` (macOS runner 内置) | 系统内置 | 从 git tag 提取版本号、注入到 Cargo.toml 和 tauri.conf.json | 每次 CI 构建触发时。无需额外安装，macOS runner 内置。 |
-| `git describe` / `GITHUB_REF_NAME` | 系统内置 | 从触发 workflow 的 tag 提取版本号 | 推荐用 `GITHUB_REF_NAME` 而非 `git describe`，前者在 tag push 触发时直接获得 tag 名，更可靠。 |
-
-### 签名工具
-
-| Tool | Version | Purpose | Notes |
-|------|---------|---------|-------|
-| `APPLE_SIGNING_IDENTITY=-` | 环境变量（无需安装） | macOS ad-hoc 代码签名 | Tauri bundler 读取此环境变量，使用 macOS 内置 `codesign` 工具以 `-`（dash）身份签名。macOS runner 内置 `codesign`，无需额外安装任何工具。 |
-| `TAURI_SIGNING_PRIVATE_KEY` | 环境变量（密钥内容） | 为 updater 生成的 `.sig` 文件签名 | 由本地运行 `pnpm tauri signer generate` 生成的 minisign 私钥，以 base64 内容存入 GitHub Secret。与 Apple 代码签名无关，是 Tauri updater 校验机制。 |
+| 需要的能力 | 现有满足方案 |
+|------------|-------------|
+| JSON 请求体解析与序列化 | `serde_json` 已有，`Value` 动态访问足以应对所有字段转换 |
+| HTTP 请求构建与发送 | `reqwest` 0.12 已有，`.body(bytes)`、`.bytes_stream()` v2.0 已用 |
+| 流式 SSE 响应写出 | `axum::body::Body::from_stream()` v2.0 proxy 中已用 |
+| 异步运行时 | `tokio` 已有 |
+| OpenAI API 客户端 | **不需要**（见「不使用」） |
+| Anthropic API 客户端 | **不需要**（见「不使用」） |
 
 ---
 
-## Recommended Stack（汇总表）
-
-### Rust Crates（新增到 src-tauri/Cargo.toml）
-
-| Library | Version | Purpose | When to Use |
-|---------|---------|---------|-------------|
-| `tauri-plugin-updater` | 2.10.0 | 应用内自动更新（检查、下载、安装） | 所有桌面平台（非 iOS/Android），用 `cfg` target 限定 |
-| `tauri-plugin-process` | 2.3.1 | 更新安装后重启应用（`relaunch()`） | 与 updater 配合，更新完成后触发重启 |
-
-### npm Packages（新增到 package.json）
-
-| Library | Version | Purpose | When to Use |
-|---------|---------|---------|-------------|
-| `@tauri-apps/plugin-updater` | 2.10.0 | updater 插件前端 bindings | 与 Rust crate 严格同版本 |
-| `@tauri-apps/plugin-process` | 2.3.1 | process 插件前端 bindings | 与 Rust crate 严格同版本 |
-
-### GitHub Actions（.github/workflows/release.yml）
-
-| Tool | Version | Purpose | Notes |
-|------|---------|---------|-------|
-| `actions/checkout` | v4 | checkout 仓库代码 | 标准 |
-| `actions/setup-node` | v4 | 安装 Node.js LTS | 配合 pnpm cache |
-| `dtolnay/rust-toolchain` | stable | 安装 Rust + targets | `targets: aarch64-apple-darwin,x86_64-apple-darwin` |
-| `tauri-apps/tauri-action` | v1 | 构建 + 打包 + 发布 GitHub Release | 生成 DMG、`.sig`、`latest.json` |
-
----
-
-## Installation
+## Cargo.toml 变更（最小化）
 
 ```toml
-# src-tauri/Cargo.toml — 新增（只覆盖桌面平台）
-[target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
-tauri-plugin-updater = "2.10.0"
-tauri-plugin-process = "2.3.1"
+# src-tauri/Cargo.toml —— 在现有 [dependencies] 中追加两行
+bytes = "1"
+futures = "0.3"
 ```
 
-```bash
-# npm 前端 bindings（版本与 Rust crate 严格对齐）
-pnpm add @tauri-apps/plugin-updater@2.10.0
-pnpm add @tauri-apps/plugin-process@2.3.1
+```toml
+# [dev-dependencies] 中已有 futures = "0.3"，保持不变
 ```
 
 ---
 
-## Configuration Changes
+## 协议转换层技术方案
 
-### tauri.conf.json 新增配置
+### 请求体转换（非流式）
 
-```json
-{
-  "bundle": {
-    "active": true,
-    "targets": "all",
-    "createUpdaterArtifacts": true
-  },
-  "plugins": {
-    "updater": {
-      "pubkey": "<内容来自 ~/.tauri/climanager.key.pub>",
-      "endpoints": [
-        "https://github.com/YOUR_USERNAME/CLIManager/releases/latest/download/latest.json"
-      ]
-    }
-  }
-}
+使用已有的 `axum::body::to_bytes` 读全量请求体，`serde_json::from_slice` 解析为 `Value`，逐字段映射转换后 `serde_json::to_vec` 序列化，`reqwest::RequestBuilder::body(bytes)` 发出。
+
+**关键字段映射（Anthropic Messages → OpenAI Chat Completions）：**
+
+| Anthropic 字段 | OpenAI 字段 | 转换规则 |
+|---------------|------------|---------|
+| `system` (str 或 array) | `messages[0]` with `role: "system"` | 字符串直接用，array 取 `text` 字段 |
+| `messages[].content` (array of blocks) | `messages[].content` (string 或 parts array) | text 块 → 文本；image 块 → `image_url` data URI；tool_use 块 → `tool_calls`；tool_result 块 → 新 `role: "tool"` 消息 |
+| `tools[].input_schema` | `tools[].function.parameters` | 包裹为 `{"type": "function", "function": {...}}` |
+| `max_tokens` (必填) | `max_tokens` (可选) | 直接透传 |
+| URL 路径 `/v1/messages` | `/v1/chat/completions` | handler 层重写路径 |
+
+### 响应体转换（非流式）
+
+上游返回 OpenAI 格式响应，用 `reqwest::Response::bytes().await` 全量读取，`serde_json::from_slice` 解析，字段映射后序列化为 Anthropic 格式，`axum::Body::from(bytes)` 返回。
+
+**关键字段映射（OpenAI Chat Completions → Anthropic Messages）：**
+
+| OpenAI 字段 | Anthropic 字段 | 转换规则 |
+|------------|---------------|---------|
+| `choices[0].message.content` | `content[].type: "text"` | 包裹为 content block |
+| `choices[0].message.tool_calls` | `content[].type: "tool_use"` | `function.arguments` (string) → `input` (parsed JSON) |
+| `choices[0].finish_reason` | `stop_reason` | `"stop"` → `"end_turn"`；`"tool_calls"` → `"tool_use"` |
+| `usage.prompt_tokens` | `usage.input_tokens` | 直接映射 |
+| `usage.completion_tokens` | `usage.output_tokens` | 直接映射 |
+
+### 流式 SSE 转换
+
+这是唯一需要 `bytes` + `futures` 的场景：
+
+```
+reqwest bytes_stream()
+  → Stream<Item = Result<Bytes, reqwest::Error>>
+  → 状态机：逐行解析 SSE，缓冲工具调用 delta，生成 Anthropic 格式事件
+  → Stream<Item = Result<Bytes, io::Error>>
+  → axum Body::from_stream()
 ```
 
-关键点：
-- `createUpdaterArtifacts: true` 让 Tauri bundler 生成 `.sig` 签名文件（updater 校验用）
-- `pubkey` 必须是 `.pub` 文件内容，不能是文件路径
-- `endpoints` 直接指向 GitHub Releases 上的 `latest.json`
-
-### capabilities/default.json 新增权限
-
-```json
-{
-  "permissions": [
-    "updater:default",
-    "process:allow-relaunch"
-  ]
-}
+**OpenAI SSE chunk 结构：**
+```
+data: {"id":"chatcmpl-xxx","object":"chat.completion.chunk","choices":[{"delta":{"content":"hello"},"finish_reason":null}]}
 ```
 
-### CI 环境变量（GitHub Secrets）
+**对应 Anthropic SSE 事件序列：**
+```
+event: message_start
+data: {"type":"message_start","message":{"id":"msg_xxx","type":"message","role":"assistant","content":[],"model":"..."}}
 
-| Secret | Value | Purpose |
-|--------|-------|---------|
-| `TAURI_SIGNING_PRIVATE_KEY` | minisign 私钥内容（`cat ~/.tauri/climanager.key`） | 对 updater 产物（.sig 文件）签名 |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 生成密钥时设置的密码（可为空） | 解密私钥 |
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
 
-无需 `APPLE_SIGNING_IDENTITY` secret——只需在 workflow env 段直接写 `-`（非 secret，ad-hoc 无证书无需保密）。
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hello"}}
 
----
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
 
-## 版本注入方案
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":N}}
 
-**设计决策：以 git tag 为版本唯一来源，CI 注入 Cargo.toml 和 tauri.conf.json，不预先提交版本号。**
-
-```yaml
-# .github/workflows/release.yml 版本注入步骤
-- name: Inject version from tag
-  run: |
-    # GITHUB_REF_NAME 在 tag push 时为 "v2.1.0"
-    VERSION="${GITHUB_REF_NAME#v}"
-    # 注入 Cargo.toml（[package] version 字段）
-    sed -i '' "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
-    # 注入 tauri.conf.json
-    sed -i '' "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
+event: message_stop
+data: {"type":"message_stop"}
 ```
 
-注意：macOS 的 `sed -i` 需要 `''` 参数（空字符串），Linux 不需要。macOS runner 用 `sed -i ''`，无跨平台问题（本项目 CI 仅跑 macOS）。
+**状态机需跟踪（参考 cc-switch streaming.rs）：**
+- `message_id`、`model`（从第一个 chunk 的 `id`/`model` 提取）
+- `has_sent_message_start`（第一个 content chunk 前发送 message_start + content_block_start）
+- `tool_call_accumulators`（按 `index` 聚合 tool call delta，`finish_reason: "tool_calls"` 时才输出）
+- `content_index`（文本 block 0，工具调用 block 从 1 开始）
 
 ---
 
-## GitHub Actions Workflow 结构
+## 与现有 proxy 的集成点
 
-```yaml
-name: Release
-
-on:
-  push:
-    tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
-
-jobs:
-  release:
-    permissions:
-      contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: macos-latest
-            args: '--target aarch64-apple-darwin'
-          - platform: macos-latest
-            args: '--target x86_64-apple-darwin'
-
-    runs-on: ${{ matrix.platform }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: lts/*
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
-
-      - name: Install pnpm and dependencies
-        run: |
-          npm install -g pnpm
-          pnpm install
-
-      - name: Inject version from tag
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          sed -i '' "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
-          sed -i '' "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
-
-      - uses: tauri-apps/tauri-action@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_SIGNING_IDENTITY: '-'
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'CLIManager ${{ github.ref_name }}'
-          releaseBody: 'See CHANGELOG for details.'
-          releaseDraft: true
-          prerelease: false
-          args: ${{ matrix.args }}
-```
+| 现有文件 | v2.2 变化方向 |
+|----------|--------------|
+| `proxy/handler.rs` | 核心改动：检测上游 `protocol_type == OpenAiCompatible` 时进入转换路径：转换请求体 → 改写 URL 路径 → 根据 `is_stream` 分叉处理响应（流式/非流式） |
+| `proxy/state.rs` | `UpstreamTarget` 目前已有 `protocol_type: ProtocolType` 字段，OpenAiCompatible 分支触发转换，**可能无需改结构** |
+| `provider.rs` | `ProtocolType::OpenAiCompatible` 已存在，无需新枚举值 |
+| 新增 `proxy/translate/mod.rs` | 协议转换模块入口 |
+| 新增 `proxy/translate/request.rs` | `anthropic_to_openai(Value) -> Result<Value>` 纯函数 |
+| 新增 `proxy/translate/response.rs` | `openai_to_anthropic(Value) -> Result<Value>` 纯函数 |
+| 新增 `proxy/translate/streaming.rs` | OpenAI SSE stream → Anthropic SSE stream 转换器 |
 
 ---
 
-## Ad-hoc 签名说明与局限
+## 不使用
 
-**Ad-hoc 签名是什么：** macOS 要求所有代码必须签名，特别是 Apple Silicon（arm64）上运行的 app。Ad-hoc 签名使用 `-` 作为身份，只做 checksum 校验，无证书验证链。
-
-**Tauri 支持方式：** 将 `APPLE_SIGNING_IDENTITY=-` 设入 CI 环境，Tauri bundler 调用系统内置 `codesign` 工具完成 ad-hoc 签名，无需额外安装任何工具。
-
-**已知局限（HIGH 置信度，官方文档明确说明）：**
-
-| 场景 | 结果 |
-|------|------|
-| 用户下载后首次从 Finder 双击打开 | macOS GateKeeper 弹出"无法验证开发者"对话框，用户需在系统偏好设置 > 安全性中手动点"仍要打开" |
-| 自动更新（updater）下载新版本后重启 | updater 会替换 app bundle，但新版本同样是 ad-hoc 签名，用户需再次手动授权 |
-| 终端直接运行 `open CLIManager.app` | 正常，无弹窗 |
-| 复制到其他 Mac 后运行 | 被 GateKeeper 拦截，需同样手动授权 |
-
-**对 v2.1 的影响：** ad-hoc 签名足够让开发者和早期用户测试，但正式向公众分发前需要 Apple Developer 证书（$99/年）+ notarization。v2.1 里程碑 scope 明确是 ad-hoc，这是合理的阶段性目标。
+| 避免引入 | 原因 | 替代方案 |
+|----------|------|---------|
+| `async-openai` / `openai` crate | 面向 API 调用方设计的 typed client，无法用于协议桥接；引入大量无用依赖（reqwest、tokio-tungstenite 等）| 手写 `serde_json::Value` 字段映射 |
+| `anthropic-rs` / `anthropic` crate | 同上，且对 Messages API streaming 的支持不完整 | 手写转换函数 |
+| `async-stream` crate | cc-switch 使用它做流生成器宏，但 `futures::stream::StreamExt` 组合子（`.flat_map()`、`.filter_map()`）完全可替代，不值得多一个依赖 | `futures::StreamExt` |
+| `hyper` 直接依赖 | axum 0.8 已包含 hyper，不需要直接操作底层 | axum 高层 API |
+| `regex` crate | SSE 行解析用标准库 `str::strip_prefix("data: ")` 和 `str::trim()` 足够 | 标准库字符串方法 |
+| `base64` crate | v2.2 范围内图片转换只需将 Anthropic base64 data 直接拼成 `data:{media_type};base64,{data}` URI，无需 encode/decode | 字符串拼接 |
 
 ---
 
-## Alternatives Considered
+## 版本兼容性
 
-| 推荐 | 备选 | 不选原因 |
-|------|------|---------|
-| `tauri-apps/tauri-action@v1` | 自写 `cargo tauri build` + `gh release create` | 官方 action 自动处理 `latest.json` 生成、多平台 artifact 上传、updater `.sig` 收集，自写至少 50 行 YAML 且易出错 |
-| `APPLE_SIGNING_IDENTITY=-`（ad-hoc） | Apple Developer 证书签名 + notarization | v2.1 无 Apple 账号；ad-hoc 对内部/开发者分发足够，避免 $99/年费用和 notarization 流程复杂性 |
-| `sed` 版本注入 | `cargo-release`、`release-plz`、`standard-version` | v2.1 只需 tag → 版本号，`sed` 两行脚本无新工具依赖；`cargo-release` 功能完整但学习和配置成本高于需求 |
-| `GITHUB_REF_NAME` 取 tag | `git describe --tags` | `git describe` 在浅克隆（`actions/checkout` 默认）下可能失败，`GITHUB_REF_NAME` 是 GitHub Actions 原生环境变量更可靠 |
-| GitHub Releases（静态 JSON） | CrabNebula Cloud / 自建更新服务器 | GitHub Releases 零成本、无额外账号、`tauri-action@v1` 原生支持；自建服务器增加运维复杂度，v2.1 不值得 |
+| Package | 锁定版本 | 兼容性说明 |
+|---------|---------|-----------|
+| `bytes = "1"` | 1.11.1 (Cargo.lock 已有) | 与 axum 0.8、reqwest 0.12、tokio 1 完全兼容，同属 tokio-rs 生态统一维护 |
+| `futures = "0.3"` | 0.3.32 (Cargo.lock 已有) | 与 tokio 1 完全兼容；`dev-dependencies` 中已声明为 `"0.3"`，升为 `dependencies` 使用相同版本说明符，无冲突 |
+| `serde_json = "1"` | 已有（preserve_order feature） | 协议转换层直接复用，字段遍历顺序对转换逻辑无影响 |
 
 ---
 
-## What NOT to Use
+## 替代方案考量
 
-| 避免 | 原因 | 用什么替代 |
-|------|------|-----------|
-| Apple 代码签名证书工具（`xcrun altool`、`notarytool`）| v2.1 明确用 ad-hoc，这些工具需要 Apple Developer 账号和 secret 管理 | `APPLE_SIGNING_IDENTITY=-` 环境变量（无需任何工具安装） |
-| `apple-actions/import-codesign-certs` | 导入真实 P12 证书的 Action，v2.1 无证书 | 不需要 |
-| `tauri-action@v0` | 部分旧文档还引用，但 `@v1` 已是官方 README 推荐版本，`@v0` 的 `latest.json` 格式为旧格式，与 `tauri-plugin-updater 2.10.0` 新格式不完全兼容 | `tauri-apps/tauri-action@v1` |
-| `cargo-tauri-action` / 非官方 Action | 社区维护，版本滞后，缺乏对 Tauri 2 新特性的同步更新 | `tauri-apps/tauri-action@v1` |
-| `standard-version` / `semantic-release` | 为 npm 生态设计，在 Rust/Tauri 混合项目中配置复杂，超出 v2.1 scope | `sed` 脚本 + `CHANGELOG.md` 手写或 `git-cliff` |
-| `tauri-plugin-updater` < 2.10.0 | `tauri-action@v1` 生成的 `latest.json` 新格式（`{os}-{arch}-{installer}` 键）需要 >= 2.10.0 才能正确解析，低版本 updater 无法识别更新 | `tauri-plugin-updater = "2.10.0"` |
+| 推荐 | 替代 | 不选替代的原因 |
+|------|------|---------------|
+| 手写 `serde_json::Value` 转换 | 引入 `openai` / `anthropic` typed SDK | SDK 不适合桥接场景；cc-switch 775行 transform.rs 证明手写方案完整可行且可测试 |
+| `futures::StreamExt` 组合子 | `async-stream` 生成器宏 | `async-stream` 需额外依赖；`StreamExt::flat_map` + 状态封装已足够，cc-switch streaming.rs 744行验证 |
+| 全量读取非流式响应再转换 | 流式读取非流式响应 | 非流式 OpenAI 响应体通常 < 10KB，全量读取简单可靠；`reqwest::Response::bytes().await` 一行即可 |
+| 新增 `proxy/translate/` 子模块 | 直接在 `handler.rs` 内写转换逻辑 | 转换代码量（~1000行估算）放在 handler.rs 会使其过于臃肿；独立模块便于单元测试（参考 v2.0 221个 lib tests 模式） |
 
 ---
 
-## Stack Patterns by Variant
+## cc-switch 参考实现验证
 
-**如果需要 macOS Universal Binary（arm64 + x86_64 合一）：**
-- 在 `tauri-action` 的 `args` 中传 `--target universal-apple-darwin`
-- 需要 `rustup target add x86_64-apple-darwin aarch64-apple-darwin`
-- Universal Binary 体积约为单架构的 2x，但用户只需下载一个文件
-- 当前方案选择分架构构建（matrix），产物更小，updater `latest.json` 分别记录两个 target
+cc-switch 的协议转换实现经研究验证如下（**仅供参考，不受局限**）：
 
-**如果 CI 只构建 arm64（节省时间）：**
-- matrix 中去掉 `x86_64-apple-darwin`，仅保留 `aarch64-apple-darwin`
-- Intel Mac 用户仍可通过 Rosetta 运行，但非原生性能
+| 文件 | 行数 | 实现内容 | 可参考点 |
+|------|------|---------|---------|
+| `providers/transform.rs` | 775 | `anthropic_to_openai()` + `openai_to_anthropic()` 纯函数，`serde_json::Value` 操作 | 字段映射逻辑、schema 清理、工具调用转换 |
+| `providers/streaming.rs` | 744 | OpenAI Chat Completions SSE → Anthropic SSE 状态机，使用 `bytes` + `futures::StreamExt` | 状态机结构、SSE 行解析、tool call delta 聚合 |
+| `providers/models/anthropic.rs` | 107 | Anthropic 类型定义（参考，不直接用） | 数据模型边界理解 |
+| `providers/models/openai.rs` | 116 | OpenAI 类型定义（参考，不直接用） | 数据模型边界理解 |
 
-**如果将来升级到 Apple Developer 证书签名：**
-- 在 CI env 中添加 `APPLE_CERTIFICATE`（base64 P12）、`APPLE_CERTIFICATE_PASSWORD`、`APPLE_SIGNING_IDENTITY`（真实 identity string，非 `-`）
-- 另外添加 notarization 环境变量：`APPLE_API_ISSUER`、`APPLE_API_KEY`、`APPLE_API_KEY_PATH`
-- `APPLE_SIGNING_IDENTITY=-` 直接替换为真实 identity，其他 workflow 结构不变
-
----
-
-## Version Compatibility
-
-| Package | Compatible With | Notes |
-|---------|-----------------|-------|
-| `tauri-plugin-updater@2.10.0` (Rust) | `@tauri-apps/plugin-updater@2.10.0` (npm) | Rust crate 和 npm 包必须严格同版本，patch 版本也不能错位 |
-| `tauri-plugin-process@2.3.1` (Rust) | `@tauri-apps/plugin-process@2.3.1` (npm) | 同上 |
-| `tauri-plugin-updater@2.10.0` | `tauri-apps/tauri-action@v1` | `@v1` 生成的新格式 `latest.json` 要求 updater >= 2.10.0 |
-| `tauri-plugin-updater@2.10.0` | Tauri 2.10 | 同 minor 版本，无兼容性问题 |
-
----
-
-## 密钥生成（一次性操作，本地执行）
-
-```bash
-# 在 CLIManager 项目根目录执行，生成 updater 签名密钥对
-pnpm tauri signer generate -w ~/.tauri/climanager.key
-
-# 将公钥内容复制到 tauri.conf.json 的 plugins.updater.pubkey
-cat ~/.tauri/climanager.key.pub
-
-# 将私钥内容存入 GitHub Secrets（TAURI_SIGNING_PRIVATE_KEY）
-cat ~/.tauri/climanager.key
-```
-
-**重要提醒：** 私钥一旦丢失无法为已安装的用户推送更新（updater 校验会拒绝）。备份 `~/.tauri/climanager.key` 到安全位置（如密码管理器）。
+CLIManager v2.2 应**直接手写 `serde_json::Value` 转换**，不照搬 cc-switch 的结构体方式（cc-switch 的 typed structs 限制了对未知字段的兼容性）。
 
 ---
 
 ## Sources
 
-- [Tauri GitHub Actions 官方文档](https://v2.tauri.app/distribute/pipelines/github/) — workflow 结构、runner 选择、env 变量 (HIGH)
-- [tauri-apps/tauri-action GitHub](https://github.com/tauri-apps/tauri-action) — v0 vs v1 差异、inputs 说明 (HIGH)
-- [tauri-plugin-updater 官方文档](https://v2.tauri.app/plugin/updater/) — 配置格式、endpoints、pubkey、权限 (HIGH)
-- [tauri-plugin-updater@2.10.0 on npm](https://www.npmjs.com/package/@tauri-apps/plugin-updater) — 当前版本确认 (HIGH)
-- [tauri-plugin-updater 2.10.0 on docs.rs](https://docs.rs/crate/tauri-plugin-updater/latest) — Rust crate 版本确认 (HIGH)
-- [tauri-plugin-process 2.3.1 on docs.rs](https://docs.rs/crate/tauri-plugin-process/latest) — Rust crate 版本确认 (HIGH)
-- [@tauri-apps/plugin-process 2.3.1 on npm](https://www.npmjs.com/package/@tauri-apps/plugin-process) — npm 版本确认 (HIGH)
-- [macOS Code Signing 官方文档](https://v2.tauri.app/distribute/sign/macos/) — ad-hoc signing 环境变量、局限说明 (HIGH)
-- [tauri-apps/tauri issue #8763](https://github.com/tauri-apps/tauri/issues/8763) — ad-hoc signing 必要性讨论 (MEDIUM)
-- [Tauri Discussion #6347 — version sync](https://github.com/tauri-apps/tauri/discussions/6347) — Cargo.toml 和 tauri.conf.json 版本同步策略 (MEDIUM)
+- 当前项目 `src-tauri/Cargo.lock` — `bytes` 1.11.1, `futures` 0.3.32 已作为传递依赖存在（HIGH）
+- 当前项目 `src-tauri/Cargo.toml` — 现有依赖清单，确认无重复引入（HIGH）
+- cc-switch 参考 `cc-switch/src-tauri/src/proxy/providers/transform.rs` — 775行，`serde_json::Value` 方案完整可行性验证（HIGH）
+- cc-switch 参考 `cc-switch/src-tauri/src/proxy/providers/streaming.rs` — 744行，`bytes` + `futures::StreamExt` SSE 转换方案验证（HIGH）
+- cc-switch `cc-switch/src-tauri/Cargo.toml` — `bytes = "1.5"`, `futures = "0.3"` 依赖选型交叉验证（HIGH）
+- [crates.io/crates/bytes](https://crates.io/crates/bytes) — 当前稳定版 1.11.1（HIGH）
+- [crates.io/crates/futures](https://crates.io/crates/futures) — 当前稳定版 0.3.32（HIGH）
+- 当前项目 `proxy/handler.rs` — 现有 `Body::from_stream(upstream_resp.bytes_stream())` 模式，v2.2 流式转换的直接扩展点（HIGH）
 
 ---
-*Stack research for: CLIManager v2.1 Release Engineering*
+
+*Stack research for: Anthropic→OpenAI 协议转换，axum 0.8 代理层扩展（v2.2）*
 *Researched: 2026-03-14*
