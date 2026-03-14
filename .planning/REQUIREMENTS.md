@@ -40,8 +40,8 @@ Requirements for v2.2 协议转换。让 Claude Code 通过代理模式使用 Op
 
 ### 模型映射
 
-- [ ] **MODL-01**: Provider 数据模型支持存储默认目标模型名（缺省映射）
-- [ ] **MODL-02**: Provider 数据模型支持存储任意个模型名映射对（Anthropic 名 → 目标名）
+- [x] **MODL-01**: Provider 数据模型支持存储默认目标模型名（缺省映射）
+- [x] **MODL-02**: Provider 数据模型支持存储任意个模型名映射对（Anthropic 名 → 目标名）
 - [ ] **MODL-03**: 代理转换时按映射表自动替换请求中的模型名（精确匹配优先，无匹配时用默认模型）
 - [ ] **MODL-04**: Provider 编辑 UI 支持配置默认模型和映射对
 
@@ -80,8 +80,8 @@ Requirements for v2.2 协议转换。让 Claude Code 通过代理模式使用 Op
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MODL-01 | Phase 14 | Pending |
-| MODL-02 | Phase 14 | Pending |
+| MODL-01 | Phase 14 | Complete |
+| MODL-02 | Phase 14 | Complete |
 | REQT-01 | Phase 14 | Pending |
 | REQT-02 | Phase 14 | Pending |
 | REQT-03 | Phase 14 | Pending |
