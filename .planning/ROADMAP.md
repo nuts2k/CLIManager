@@ -53,7 +53,7 @@
 
 - [x] **Phase 14: 数据模型 + 转换核心** — Provider 数据模型扩展，以及请求转换、响应转换、流式 SSE 状态机三条并行开发路线，可独立单元测试 (completed 2026-03-14)
 - [x] **Phase 15: Handler 集成与协议路由** — 转换层接入 proxy_handler，实现协议路由，端到端验证 (completed 2026-03-14)
-- [ ] **Phase 16: Responses API + Provider UI** — Responses API 转换层与 Provider 编辑 UI 模型映射配置，两条并行开发路线
+- [x] **Phase 16: Responses API + Provider UI** — Responses API 转换层与 Provider 编辑 UI 模型映射配置，两条并行开发路线 (completed 2026-03-14)
 
 ## Phase Details
 
@@ -105,7 +105,7 @@ Plans:
 **Goal**: OpenAI Responses API 格式转换层可用，Provider 编辑界面支持配置默认模型和模型映射对，两条路线完成后整体 UI 工作流验证通过
 **Depends on**: Phase 15 (handler 集成完成，基础转换路径验证通过)
 **Requirements**: RAPI-01, RAPI-02, RAPI-03, RAPI-04, MODL-04
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans complete
 
 Plans:
 - [ ] 16-01-PLAN.md — Responses API 请求转换 anthropic_to_responses() 纯函数 [TDD]
@@ -145,7 +145,7 @@ Plans:
 | 13. 端到端验证 | v2.1 | 1/1 | Complete | 2026-03-14 |
 | 14. 数据模型 + 转换核心 | v2.2 | 4/4 | Complete | 2026-03-14 |
 | 15. Handler 集成与协议路由 | v2.2 | 2/2 | Complete | 2026-03-14 |
-| 16. Responses API + Provider UI | 3/4 | In Progress|  | - |
+| 16. Responses API + Provider UI | 4/4 | Complete   | 2026-03-14 | - |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*

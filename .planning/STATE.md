@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: 协议转换
 status: planning
-stopped_at: Completed 16-responses-api-provider-ui/16-02-PLAN.md
-last_updated: "2026-03-14T15:38:33.689Z"
+stopped_at: Completed 16-responses-api-provider-ui/16-04-PLAN.md
+last_updated: "2026-03-14T15:45:46.096Z"
 last_activity: 2026-03-14 — v2.2 roadmap restructured (3 phases, 27 requirements, max parallelism)
 progress:
   total_phases: 3
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 10
-  completed_plans: 9
+  completed_plans: 10
   percent: 100
 ---
 
@@ -64,6 +64,8 @@ Progress: [██████████] 100% (Phase 14 完成)
 - [Phase 16-01]: 复用 super::request::clean_schema 避免重复实现
 - [Phase 16-responses-api-provider-ui]: Responses API 无 Deferred Start：output_item.added 携带完整 call_id+name，立即发 content_block_start
 - [Phase 16-responses-api-provider-ui]: responses_to_anthropic stop_reason 推断：遍历 output 数组 has_function_call 标志位，usage 字段直接透传（命名相同）
+- [Phase 16-responses-api-provider-ui]: OpenAiResponses 步骤 C 后独立分支：解析请求体 → 模型映射 → anthropic_to_responses() → 端点重写为 /v1/responses
+- [Phase 16-responses-api-provider-ui]: handler.rs 步骤 J 三路响应：!is_success 透传 / is_streaming 流式转换 / 否则非流式 responses_to_anthropic()
 
 ### Pending Todos
 
@@ -76,6 +78,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-14T15:38:33.687Z
-Stopped at: Completed 16-responses-api-provider-ui/16-02-PLAN.md
+Last session: 2026-03-14T15:45:46.094Z
+Stopped at: Completed 16-responses-api-provider-ui/16-04-PLAN.md
 Resume file: None
