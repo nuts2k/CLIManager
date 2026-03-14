@@ -42,7 +42,7 @@
 
 **Milestone Goal:** 建立完整的构建、签名、分发和自动更新流程，让 app 能实际安装使用并持续迭代
 
-- [ ] **Phase 12: 全栈实现** — 密钥配置 + CI/CD + Updater + 发版脚本，wave 并行
+- [x] **Phase 12: 全栈实现** — 密钥配置 + CI/CD + Updater + 发版脚本，wave 并行 (completed 2026-03-14)
 - [ ] **Phase 13: 端到端验证** — 完整发版流程验证，确保闭环可用
 
 ## Phase Details
@@ -51,7 +51,7 @@
 **Goal**: 完成所有代码和配置变更：CI 流水线、签名、updater 集成、发版脚本、Gatekeeper 文档
 **Depends on**: Phase 11 (v2.0 已交付完整 app)
 **Requirements**: REL-01, SIGN-02, SIGN-03, SIGN-01, CICD-01, CICD-02, CICD-03, UPD-01, UPD-02, UPD-03, UPD-04, REL-02, REL-03
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans complete
 **Success Criteria** (what must be TRUE):
   1. Cargo.toml 是版本号唯一来源，tauri.conf.json 无独立 version 字段
   2. updater Ed25519 密钥对已生成，私钥存入 GitHub Secrets 并已备份，公钥写入 tauri.conf.json
@@ -98,7 +98,7 @@ Plans:
 | 9. 模式切换与持久化 | v2.0 | 2/2 | Complete | 2026-03-13 |
 | 10. 实时切换与 UI 集成 | v2.0 | 2/2 | Complete | 2026-03-14 |
 | 11. 代理感知修复与文档同步 | v2.0 | 1/1 | Complete | 2026-03-14 |
-| 12. 全栈实现 | 3/4 | In Progress|  | - |
+| 12. 全栈实现 | 4/4 | Complete   | 2026-03-14 | - |
 | 13. 端到端验证 | v2.1 | 0/1 | Not started | - |
 
 ---

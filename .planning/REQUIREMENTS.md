@@ -21,10 +21,10 @@ Requirements for Release Engineering milestone. Each maps to roadmap phases.
 
 ### Auto Update
 
-- [ ] **UPD-01**: 集成 tauri-plugin-updater + tauri-plugin-process（Rust + JS 两端）
-- [ ] **UPD-02**: App 启动时自动检查 GitHub Releases 的 latest.json
-- [ ] **UPD-03**: 自定义 React 更新 UI（进度条 + 稍后提醒）
-- [ ] **UPD-04**: 签名验证通过后下载安装并重启 app
+- [x] **UPD-01**: 集成 tauri-plugin-updater + tauri-plugin-process（Rust + JS 两端）
+- [x] **UPD-02**: App 启动时自动检查 GitHub Releases 的 latest.json
+- [x] **UPD-03**: 自定义 React 更新 UI（进度条 + 稍后提醒）
+- [x] **UPD-04**: 签名验证通过后下载安装并重启 app
 
 ### Release Tooling
 

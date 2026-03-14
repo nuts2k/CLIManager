@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Release Engineering
-status: executing
-stopped_at: Completed 12-04-PLAN.md
-last_updated: "2026-03-14T08:15:00.000Z"
+status: completed
+stopped_at: Completed 12-03-PLAN.md
+last_updated: "2026-03-14T08:18:16.385Z"
 last_activity: 2026-03-14 — 12-04 完成（/ship 一键发版技能 + CHANGELOG.md）
 progress:
   total_phases: 2
@@ -44,6 +44,7 @@ Last activity: 2026-03-14 — 12-04 完成（/ship 一键发版技能 + CHANGELO
 | 12-01 | 12min | 2 | 6 |
 | Phase 12 P02 | 3min | 1 tasks | 1 files |
 | Phase 12 P04 | 2min | 2 tasks | 2 files |
+| Phase 12 P03 | 20 | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -60,6 +61,7 @@ Last activity: 2026-03-14 — 12-04 完成（/ship 一键发版技能 + CHANGELO
 - [Phase 12-02]: 使用 tauri-action@v1 + 双架构矩阵，releaseBody 链接 CHANGELOG.md 而非内联日志
 - [Phase 12-04]: 版本来源唯一——仅修改 src-tauri/Cargo.toml，tauri.conf.json 无 version 字段
 - [Phase 12-04]: 零外部依赖 CHANGELOG——git log + Python 内置处理，不引入 git-cliff 等工具
+- [Phase 12]: 复用 Dialog 组件实现 UpdateDialog（模态对话框形式）；双 useUpdater 实例：AppShell 启动检查与 SettingsPage 手动检查独立；动态 import tauri 插件规避开发模式异常
 
 ### Pending Todos
 
@@ -73,6 +75,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-14T08:15:00.000Z
-Stopped at: Completed 12-04-PLAN.md
-Resume file: .planning/phases/12-full-stack-impl/12-04-SUMMARY.md
+Last session: 2026-03-14T08:18:16.382Z
+Stopped at: Completed 12-03-PLAN.md
+Resume file: None
