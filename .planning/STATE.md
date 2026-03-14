@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: 协议转换
 status: planning
-stopped_at: Completed 14-02-PLAN.md
-last_updated: "2026-03-14T13:18:35.601Z"
+stopped_at: Completed 14-03-PLAN.md
+last_updated: "2026-03-14T13:19:12.942Z"
 last_activity: 2026-03-14 — v2.2 roadmap restructured (3 phases, 27 requirements, max parallelism)
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 4
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -55,6 +55,7 @@ Progress: [░░░░░░░░░░] 0% (v2.2 milestone)
 - [Phase 14-data-model-translate-core]: TranslateError 返回 400 BAD_REQUEST，handler.rs OpenAiResponses 暂时使用 Bearer token 认证（Phase 16 细化）
 - [Phase 14-data-model-translate-core]: model 字段原样透传，Phase 15 handler 层负责模型映射
 - [Phase 14-data-model-translate-core]: clean_schema 移除所有 format + default 字段（扩展 cc-switch 只移除 format=uri 的逻辑）
+- [Phase 14-data-model-translate-core]: arguments 反序列化失败包装为 {"raw": "原字符串"} 而非空对象——保留原始数据便于调试
 
 ### Pending Todos
 
@@ -67,6 +68,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-14T13:18:35.599Z
-Stopped at: Completed 14-02-PLAN.md
+Last session: 2026-03-14T13:19:12.940Z
+Stopped at: Completed 14-03-PLAN.md
 Resume file: None

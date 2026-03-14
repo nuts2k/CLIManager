@@ -25,11 +25,11 @@ Requirements for v2.2 协议转换。让 Claude Code 通过代理模式使用 Op
 
 ### 响应转换
 
-- [ ] **RESP-01**: 非流式文本响应转换（choices → content blocks）
-- [ ] **RESP-02**: 非流式工具调用响应转换（`tool_calls` → `tool_use` content blocks，arguments 反序列化）
-- [ ] **RESP-03**: stop_reason/finish_reason 映射（stop→end_turn, length→max_tokens, tool_calls→tool_use）
-- [ ] **RESP-04**: usage 字段映射（prompt_tokens→input_tokens, completion_tokens→output_tokens）
-- [ ] **RESP-05**: 错误响应（4xx/5xx）直接透传，不经转换处理
+- [x] **RESP-01**: 非流式文本响应转换（choices → content blocks）
+- [x] **RESP-02**: 非流式工具调用响应转换（`tool_calls` → `tool_use` content blocks，arguments 反序列化）
+- [x] **RESP-03**: stop_reason/finish_reason 映射（stop→end_turn, length→max_tokens, tool_calls→tool_use）
+- [x] **RESP-04**: usage 字段映射（prompt_tokens→input_tokens, completion_tokens→output_tokens）
+- [x] **RESP-05**: 错误响应（4xx/5xx）直接透传，不经转换处理
 
 ### 流式 SSE 转换
 
@@ -90,11 +90,11 @@ Requirements for v2.2 协议转换。让 Claude Code 通过代理模式使用 Op
 | REQT-06 | Phase 14 | Complete |
 | REQT-07 | Phase 14 | Complete |
 | REQT-08 | Phase 14 | Complete |
-| RESP-01 | Phase 14 | Pending |
-| RESP-02 | Phase 14 | Pending |
-| RESP-03 | Phase 14 | Pending |
-| RESP-04 | Phase 14 | Pending |
-| RESP-05 | Phase 14 | Pending |
+| RESP-01 | Phase 14 | Complete |
+| RESP-02 | Phase 14 | Complete |
+| RESP-03 | Phase 14 | Complete |
+| RESP-04 | Phase 14 | Complete |
+| RESP-05 | Phase 14 | Complete |
 | STRM-01 | Phase 14 | Pending |
 | STRM-02 | Phase 14 | Pending |
 | STRM-03 | Phase 14 | Pending |
