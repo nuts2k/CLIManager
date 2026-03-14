@@ -54,27 +54,31 @@ Requirements for Release Engineering milestone. Each maps to roadmap phases.
 
 ## Traceability
 
-| Requirement | Phase | Status |
-|-------------|-------|--------|
-| CICD-01 | — | Pending |
-| CICD-02 | — | Pending |
-| CICD-03 | — | Pending |
-| SIGN-01 | — | Pending |
-| SIGN-02 | — | Pending |
-| SIGN-03 | — | Pending |
-| UPD-01 | — | Pending |
-| UPD-02 | — | Pending |
-| UPD-03 | — | Pending |
-| UPD-04 | — | Pending |
-| REL-01 | — | Pending |
-| REL-02 | — | Pending |
-| REL-03 | — | Pending |
+| Requirement | Phase | Plan | Status |
+|-------------|-------|------|--------|
+| REL-01 | Phase 12 | 12-01 | Pending |
+| SIGN-02 | Phase 12 | 12-01 | Pending |
+| SIGN-03 | Phase 12 | 12-01 | Pending |
+| CICD-01 | Phase 12 | 12-02 | Pending |
+| CICD-02 | Phase 12 | 12-02 | Pending |
+| CICD-03 | Phase 12 | 12-02 | Pending |
+| SIGN-01 | Phase 12 | 12-02 | Pending |
+| UPD-01 | Phase 12 | 12-03 | Pending |
+| UPD-02 | Phase 12 | 12-03 | Pending |
+| UPD-03 | Phase 12 | 12-03 | Pending |
+| UPD-04 | Phase 12 | 12-03 | Pending |
+| REL-02 | Phase 12 | 12-04 | Pending |
+| REL-03 | Phase 12 | 12-04 | Pending |
 
 **Coverage:**
 - v2.1 requirements: 13 total
-- Mapped to phases: 0
-- Unmapped: 13
+- Mapped to phases: 13
+- Unmapped: 0
+
+**Parallelism:**
+- Plan 12-01 (Wave 1) → Plans 12-02, 12-03, 12-04 (Wave 2, parallel)
+- Phase 13 验证 (Wave 3)
 
 ---
 *Requirements defined: 2026-03-14*
-*Last updated: 2026-03-14 after initial definition*
+*Last updated: 2026-03-14 — restructured to 2 phases with wave parallelism*
