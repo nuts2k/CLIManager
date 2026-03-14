@@ -171,14 +171,45 @@ pub fn update_tray_menu(app: &AppHandle) {
     }
 }
 
+/// 代理感知切换模式：区分托盘点击应走代理路径还是直连路径
+#[derive(Debug, PartialEq)]
+enum TraySwitchMode {
+    ProxyMode,
+    DirectMode,
+}
+
+/// 纯函数：根据 settings 和 cli_id 决定托盘切换模式。
+/// 供单元测试覆盖，与 handle_provider_click 的 async 上下文解耦。
+fn determine_tray_switch_mode(
+    settings: &crate::storage::local::LocalSettings,
+    cli_id: &str,
+) -> TraySwitchMode {
+    let global_enabled = settings
+        .proxy
+        .as_ref()
+        .map_or(false, |p| p.global_enabled);
+    if !global_enabled {
+        return TraySwitchMode::DirectMode;
+    }
+    let in_proxy = settings
+        .proxy_takeover
+        .as_ref()
+        .map_or(false, |t| t.cli_ids.contains(&cli_id.to_string()));
+    if in_proxy {
+        TraySwitchMode::ProxyMode
+    } else {
+        TraySwitchMode::DirectMode
+    }
+}
+
 /// Handle a provider click from the tray menu.
-/// Runs the switch logic in a blocking thread to avoid blocking the main thread.
+/// Runs the switch logic in an async task to support proxy-aware branching.
 fn handle_provider_click(app: &AppHandle, cli_id: &str, provider_id: &str) {
     let app_handle = app.clone();
     let cli_id = cli_id.to_string();
     let provider_id = provider_id.to_string();
 
-    tauri::async_runtime::spawn_blocking(move || {
+    tauri::async_runtime::spawn(async move {
         let providers_dir = match crate::storage::icloud::get_icloud_providers_dir() {
             Ok(d) => d,
             Err(e) => {
@@ -188,15 +219,43 @@ fn handle_provider_click(app: &AppHandle, cli_id: &str, provider_id: &str) {
             }
         };
         let settings_path = crate::storage::local::get_local_settings_path();
+        let settings = match crate::storage::local::read_local_settings_from(&settings_path) {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!("Tray switch failed to read settings: {e}");
+                update_tray_menu(&app_handle);
+                return;
+            }
+        };
 
-        match crate::commands::provider::_set_active_provider_in(
-            &providers_dir,
-            &settings_path,
-            cli_id.clone(),
-            Some(provider_id.clone()),
-            None,
-        ) {
-            Ok(_) => {
+        let mode = determine_tray_switch_mode(&settings, &cli_id);
+
+        let result = if mode == TraySwitchMode::ProxyMode {
+            // 代理模式：不 patch CLI 配置文件，只更新 active_providers 和代理上游
+            let proxy_service = app_handle.state::<crate::proxy::ProxyService>();
+            crate::commands::provider::_set_active_provider_in_proxy_mode(
+                &providers_dir,
+                &settings_path,
+                cli_id.clone(),
+                Some(provider_id.clone()),
+                &proxy_service,
+            )
+            .await
+            .map(|_| ())
+        } else {
+            // 直连模式：走现有路径（patch CLI 配置文件）
+            crate::commands::provider::_set_active_provider_in(
+                &providers_dir,
+                &settings_path,
+                cli_id.clone(),
+                Some(provider_id.clone()),
+                None,
+            )
+            .map(|_| ())
+        };
+
+        match result {
+            Ok(()) => {
                 log::info!("Tray: switched {cli_id} to {provider_id}");
                 update_tray_menu(&app_handle);
                 // Use a dedicated event so the frontend can refresh without assuming
@@ -264,6 +323,79 @@ pub fn apply_tray_policy(app: &AppHandle, dock_visible: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::local::{LocalSettings, ProxySettings, ProxyTakeover};
+
+    // --- determine_tray_switch_mode 代理感知测试 ---
+
+    #[test]
+    fn test_determine_tray_switch_mode_proxy_when_cli_in_takeover() {
+        // proxy_takeover.cli_ids 包含该 cli_id 且 global_enabled=true → ProxyMode
+        let mut settings = LocalSettings::default();
+        settings.proxy = Some(ProxySettings {
+            global_enabled: true,
+            cli_enabled: Default::default(),
+        });
+        settings.proxy_takeover = Some(ProxyTakeover {
+            cli_ids: vec!["claude".to_string()],
+        });
+
+        assert_eq!(
+            determine_tray_switch_mode(&settings, "claude"),
+            TraySwitchMode::ProxyMode
+        );
+    }
+
+    #[test]
+    fn test_determine_tray_switch_mode_direct_when_no_proxy_takeover() {
+        // proxy_takeover 为 None → DirectMode（即使 global_enabled=true）
+        let mut settings = LocalSettings::default();
+        settings.proxy = Some(ProxySettings {
+            global_enabled: true,
+            cli_enabled: Default::default(),
+        });
+        settings.proxy_takeover = None;
+
+        assert_eq!(
+            determine_tray_switch_mode(&settings, "claude"),
+            TraySwitchMode::DirectMode
+        );
+    }
+
+    #[test]
+    fn test_determine_tray_switch_mode_direct_when_cli_not_in_takeover() {
+        // proxy_takeover.cli_ids 不包含该 cli_id → DirectMode
+        let mut settings = LocalSettings::default();
+        settings.proxy = Some(ProxySettings {
+            global_enabled: true,
+            cli_enabled: Default::default(),
+        });
+        settings.proxy_takeover = Some(ProxyTakeover {
+            cli_ids: vec!["codex".to_string()],
+        });
+
+        assert_eq!(
+            determine_tray_switch_mode(&settings, "claude"),
+            TraySwitchMode::DirectMode
+        );
+    }
+
+    #[test]
+    fn test_determine_tray_switch_mode_direct_when_global_disabled() {
+        // global_enabled=false 时，即使 cli_ids 包含该 cli_id → DirectMode
+        let mut settings = LocalSettings::default();
+        settings.proxy = Some(ProxySettings {
+            global_enabled: false,
+            cli_enabled: Default::default(),
+        });
+        settings.proxy_takeover = Some(ProxyTakeover {
+            cli_ids: vec!["claude".to_string()],
+        });
+
+        assert_eq!(
+            determine_tray_switch_mode(&settings, "claude"),
+            TraySwitchMode::DirectMode
+        );
+    }
 
     // --- TrayTexts tests ---
 
