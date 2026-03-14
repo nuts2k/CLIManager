@@ -80,39 +80,39 @@ Requirements for v2.2 协议转换。让 Claude Code 通过代理模式使用 Op
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ROUT-01 | — | Pending |
-| ROUT-02 | — | Pending |
-| REQT-01 | — | Pending |
-| REQT-02 | — | Pending |
-| REQT-03 | — | Pending |
-| REQT-04 | — | Pending |
-| REQT-05 | — | Pending |
-| REQT-06 | — | Pending |
-| REQT-07 | — | Pending |
-| REQT-08 | — | Pending |
-| RESP-01 | — | Pending |
-| RESP-02 | — | Pending |
-| RESP-03 | — | Pending |
-| RESP-04 | — | Pending |
-| RESP-05 | — | Pending |
-| STRM-01 | — | Pending |
-| STRM-02 | — | Pending |
-| STRM-03 | — | Pending |
-| STRM-04 | — | Pending |
-| MODL-01 | — | Pending |
-| MODL-02 | — | Pending |
-| MODL-03 | — | Pending |
-| MODL-04 | — | Pending |
-| RAPI-01 | — | Pending |
-| RAPI-02 | — | Pending |
-| RAPI-03 | — | Pending |
-| RAPI-04 | — | Pending |
+| MODL-01 | Phase 14 | Pending |
+| MODL-02 | Phase 14 | Pending |
+| REQT-01 | Phase 14 | Pending |
+| REQT-02 | Phase 14 | Pending |
+| REQT-03 | Phase 14 | Pending |
+| REQT-04 | Phase 14 | Pending |
+| REQT-05 | Phase 14 | Pending |
+| REQT-06 | Phase 14 | Pending |
+| REQT-07 | Phase 14 | Pending |
+| REQT-08 | Phase 14 | Pending |
+| RESP-01 | Phase 14 | Pending |
+| RESP-02 | Phase 14 | Pending |
+| RESP-03 | Phase 14 | Pending |
+| RESP-04 | Phase 14 | Pending |
+| RESP-05 | Phase 14 | Pending |
+| STRM-01 | Phase 14 | Pending |
+| STRM-02 | Phase 14 | Pending |
+| STRM-03 | Phase 14 | Pending |
+| STRM-04 | Phase 14 | Pending |
+| ROUT-01 | Phase 15 | Pending |
+| ROUT-02 | Phase 15 | Pending |
+| MODL-03 | Phase 15 | Pending |
+| RAPI-01 | Phase 16 | Pending |
+| RAPI-02 | Phase 16 | Pending |
+| RAPI-03 | Phase 16 | Pending |
+| RAPI-04 | Phase 16 | Pending |
+| MODL-04 | Phase 16 | Pending |
 
 **Coverage:**
-- v2.2 requirements: 24 total
-- Mapped to phases: 0
-- Unmapped: 24
+- v2.2 requirements: 27 total
+- Mapped to phases: 27
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-14*
-*Last updated: 2026-03-14 after initial definition*
+*Last updated: 2026-03-14 — traceability updated after roadmap restructure (Phases 14-16, 3-phase structure)*

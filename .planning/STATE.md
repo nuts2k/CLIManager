@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: 协议转换
-status: not_started
+status: ready_to_plan
 stopped_at: null
 last_updated: "2026-03-14"
-last_activity: "2026-03-14 — Milestone v2.2 started"
+last_activity: "2026-03-14 — Roadmap restructured to 3 phases (14-16), Phase 14 ready to plan"
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,14 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-14)
 
 **Core value:** 切换 Provider 时只做 surgical patch（精确修改凭据和模型字段），绝不重写配置文件的其他内容
-**Current focus:** Defining requirements for v2.2 协议转换
+**Current focus:** Phase 14 — 数据模型 + 转换核心
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-03-14 — Milestone v2.2 started
+Phase: 14 of 16 (数据模型 + 转换核心)
+Plan: — (未开始规划)
+Status: Ready to plan
+Last activity: 2026-03-14 — v2.2 roadmap restructured (3 phases, 27 requirements, max parallelism)
+
+Progress: [░░░░░░░░░░] 0% (v2.2 milestone)
 
 ## Performance Metrics
 
@@ -42,11 +44,12 @@ Last activity: 2026-03-14 — Milestone v2.2 started
 
 ### Decisions
 
-- [v2.0]: axum 0.8 作为代理框架，复用 Tauri 内置 tokio runtime
-- [v2.0]: 每 CLI 独立固定端口（Claude Code:15800, Codex:15801）
-- [v2.0]: PROXY_MANAGED 占位 key 标识代理接管的配置
-- [v2.0]: 绑定 127.0.0.1，避免 macOS 防火墙弹窗
-- [v2.1]: Cargo.toml 唯一版本来源
+- [v2.2]: 3 phases instead of 5 — 最大化并行度：Phase 14 内 Wave 2 三路并行（request/response/stream），Phase 16 内两路并行（Responses API + Provider UI）
+- [v2.2]: 纯函数先行 — translate 子模块（request/response/stream）独立实现和单元测试，再集成到 handler
+- [v2.2]: serde_json::Value 动态映射 — 比 typed struct 兼容未知字段，无需新核心 crate
+- [v2.2]: 仅新增 bytes + futures 显式依赖 — 两者已作为传递依赖锁定在 Cargo.lock
+- [v2.2]: Deferred Start pending buffer — 工具流式分帧核心机制，id/name 就绪后才发 content_block_start
+- [v2.0]: PROXY_MANAGED 占位 key 标识代理接管配置
 
 ### Pending Todos
 
@@ -55,9 +58,10 @@ None.
 ### Blockers/Concerns
 
 - UX-01 端口冲突检测依赖脆弱的中文子串匹配（v2.0 遗留，低优先级）
+- Phase 14 Plan C (stream.rs) 实现前需精读 cc-switch streaming.rs 第 280-347 行（Deferred Start 逻辑）
 
 ## Session Continuity
 
 Last session: 2026-03-14
-Stopped at: Milestone v2.2 initialization
+Stopped at: Roadmap restructured to 3 phases, ready to plan Phase 14
 Resume file: —
