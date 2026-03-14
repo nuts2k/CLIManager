@@ -18,6 +18,9 @@ import { useSettings } from "@/hooks/useSettings";
 import { useProxyStatus } from "@/hooks/useProxyStatus";
 import { refreshTrayMenu, proxySetGlobal } from "@/lib/tauri";
 import i18n from "@/i18n";
+import { AboutSection } from "@/components/settings/AboutSection";
+import { UpdateDialog } from "@/components/updater/UpdateDialog";
+import { useUpdater } from "@/components/updater/useUpdater";
 
 interface SettingsPageProps {
   onBack: () => void;
@@ -28,6 +31,17 @@ export function SettingsPage({ onBack, onShowImport }: SettingsPageProps) {
   const { t } = useTranslation();
   const { settings, updateSettings } = useSettings();
   const { proxyStatus, refresh: refreshProxyStatus } = useProxyStatus();
+
+  // 设置页面独立的更新检查实例
+  const settingsUpdater = useUpdater();
+  const [showUpdateDialog, setShowUpdateDialog] = useState(false);
+
+  // 当关于区域检测到新版本时弹出更新对话框
+  useEffect(() => {
+    if (settingsUpdater.status === "available") {
+      setShowUpdateDialog(true);
+    }
+  }, [settingsUpdater.status]);
 
   const currentLanguage = settings?.language ?? "zh";
 
@@ -226,12 +240,16 @@ export function SettingsPage({ onBack, onShowImport }: SettingsPageProps) {
           <h3 className="text-sm font-medium text-foreground">
             {t("settings.about")}
           </h3>
-          <div className="space-y-1 text-sm text-muted-foreground">
-            <p>
-              {t("settings.version")}: 0.1.0
-            </p>
-            <p>CLIManager - CLI Provider Management Tool</p>
-          </div>
+          <AboutSection
+            onCheckUpdate={settingsUpdater.checkForUpdate}
+            updateStatus={settingsUpdater.status}
+            currentVersion={settingsUpdater.currentVersion}
+            newVersion={settingsUpdater.newVersion}
+            onUpdate={() => {
+              settingsUpdater.downloadAndInstall();
+              setShowUpdateDialog(true);
+            }}
+          />
         </section>
 
         {/* Import from CLI Config Section */}
@@ -249,6 +267,19 @@ export function SettingsPage({ onBack, onShowImport }: SettingsPageProps) {
           </>
         )}
       </div>
+      <UpdateDialog
+        open={showUpdateDialog}
+        onOpenChange={setShowUpdateDialog}
+        status={settingsUpdater.status}
+        currentVersion={settingsUpdater.currentVersion}
+        newVersion={settingsUpdater.newVersion}
+        progress={settingsUpdater.progress}
+        onUpdate={settingsUpdater.downloadAndInstall}
+        onRemindLater={() => {
+          settingsUpdater.dismissUpdate();
+          setShowUpdateDialog(false);
+        }}
+      />
     </div>
   );
 }
