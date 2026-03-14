@@ -398,8 +398,7 @@ mod tests {
             .active_providers
             .insert("claude".to_string(), Some("p1".to_string()));
 
-        let result =
-            find_proxy_upstream_candidates(&settings, &["other-provider".to_string()]);
+        let result = find_proxy_upstream_candidates(&settings, &["other-provider".to_string()]);
         assert!(result.is_empty());
     }
 

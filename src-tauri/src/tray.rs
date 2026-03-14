@@ -184,10 +184,7 @@ fn determine_tray_switch_mode(
     settings: &crate::storage::local::LocalSettings,
     cli_id: &str,
 ) -> TraySwitchMode {
-    let global_enabled = settings
-        .proxy
-        .as_ref()
-        .map_or(false, |p| p.global_enabled);
+    let global_enabled = settings.proxy.as_ref().map_or(false, |p| p.global_enabled);
     if !global_enabled {
         return TraySwitchMode::DirectMode;
     }

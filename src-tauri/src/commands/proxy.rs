@@ -1461,22 +1461,16 @@ mod tests {
 
         // 验证 2: ProxyService 有运行中的 server
         let status = proxy_service.status().await;
-        let claude_server = status
-            .servers
-            .iter()
-            .find(|s| s.cli_id == "claude");
-        assert!(
-            claude_server.is_some(),
-            "ProxyService 应有 claude server"
-        );
-        assert!(
-            claude_server.unwrap().running,
-            "claude server 应在运行中"
-        );
+        let claude_server = status.servers.iter().find(|s| s.cli_id == "claude");
+        assert!(claude_server.is_some(), "ProxyService 应有 claude server");
+        assert!(claude_server.unwrap().running, "claude server 应在运行中");
 
         // 验证 3: local.json proxy_takeover.cli_ids 包含 cli_id
         let updated = crate::storage::local::read_local_settings_from(&local_path).unwrap();
-        let takeover = updated.proxy_takeover.as_ref().expect("应有 proxy_takeover");
+        let takeover = updated
+            .proxy_takeover
+            .as_ref()
+            .expect("应有 proxy_takeover");
         assert!(
             takeover.cli_ids.contains(&"claude".to_string()),
             "proxy_takeover.cli_ids 应包含 claude"
@@ -1586,10 +1580,7 @@ mod tests {
             .proxy_takeover
             .as_ref()
             .map_or(false, |t| t.cli_ids.contains(&"claude".to_string()));
-        assert!(
-            !has_claude_takeover,
-            "proxy_takeover 不应再包含 claude"
-        );
+        assert!(!has_claude_takeover, "proxy_takeover 不应再包含 claude");
 
         // 验证 3: local.json proxy.cli_enabled[claude] = false
         let cli_enabled = updated
@@ -1663,20 +1654,13 @@ mod tests {
         // 执行 restore_proxy_state
         let result = restore_proxy_state(&providers_dir, &local_path, &proxy_service).await;
         // restore_proxy_state 内部对启动失败只记录 warn 日志并继续，始终返回 Ok
-        assert!(
-            result.is_ok(),
-            "restore_proxy_state 应成功: {:?}",
-            result
-        );
+        assert!(result.is_ok(), "restore_proxy_state 应成功: {:?}", result);
 
         // 验证行为：检查代理是否成功启动
         // 注意：在并行测试中端口 15800 可能被其他测试占用，导致 start 失败并回滚。
         // 如果启动成功，验证完整状态；如果失败（端口冲突），验证回滚正确。
         let status = proxy_service.status().await;
-        let claude_server = status
-            .servers
-            .iter()
-            .find(|s| s.cli_id == "claude");
+        let claude_server = status.servers.iter().find(|s| s.cli_id == "claude");
         let proxy_started = claude_server.map_or(false, |s| s.running);
 
         let claude_settings: serde_json::Value = serde_json::from_str(
@@ -1729,10 +1713,7 @@ mod tests {
 
         // 执行 restore_proxy_state
         let result = restore_proxy_state(&providers_dir, &local_path, &proxy_service).await;
-        assert!(
-            result.is_ok(),
-            "global_enabled=false 时应直接返回 Ok"
-        );
+        assert!(result.is_ok(), "global_enabled=false 时应直接返回 Ok");
 
         // 验证：没有代理被启动
         let status = proxy_service.status().await;
@@ -1759,9 +1740,6 @@ mod tests {
         assert!(result.is_ok(), "无 proxy 设置时应直接返回 Ok");
 
         let status = proxy_service.status().await;
-        assert!(
-            status.servers.is_empty(),
-            "无 proxy 设置时不应启动任何代理"
-        );
+        assert!(status.servers.is_empty(), "无 proxy 设置时不应启动任何代理");
     }
 }
