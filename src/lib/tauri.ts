@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { Provider, CreateProviderInput, DetectedCliConfig, ProtocolType } from "@/types/provider";
-import type { LocalSettings, TestResult } from "@/types/settings";
+import type { LocalSettings, TestResult, ProxyModeStatus } from "@/types/settings";
 
 export async function listProviders(cliId?: string): Promise<Provider[]> {
   return invoke("list_providers", { cliId });
@@ -59,4 +59,20 @@ export async function importProvider(input: {
 
 export async function refreshTrayMenu(): Promise<void> {
   return invoke("refresh_tray_menu");
+}
+
+export async function proxyEnable(cliId: string): Promise<void> {
+  return invoke("proxy_enable", { cliId });
+}
+
+export async function proxyDisable(cliId: string): Promise<void> {
+  return invoke("proxy_disable", { cliId });
+}
+
+export async function proxySetGlobal(enabled: boolean): Promise<void> {
+  return invoke("proxy_set_global", { enabled });
+}
+
+export async function proxyGetModeStatus(): Promise<ProxyModeStatus> {
+  return invoke("proxy_get_mode_status");
 }

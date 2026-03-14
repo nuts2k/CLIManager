@@ -60,7 +60,9 @@
     "timeout": "Timeout (seconds)",
     "testModel": "Test Model",
     "about": "About",
-    "version": "Version"
+    "version": "Version",
+    "proxyMode": "Proxy Mode",
+    "proxyModeDescription": "Route CLI requests through local proxy, switch providers without restarting CLI"
   },
   "protocol": {
     "anthropic": "Anthropic",
@@ -90,5 +92,17 @@
     "settingsButton": "Import from CLI Config",
     "defaultSuffix": "Default Config",
     "importing": "Importing..."
+  },
+  "proxy": {
+    "enable": "Enable Proxy",
+    "disable": "Disable Proxy",
+    "globalDisabled": "Please enable proxy in Settings first",
+    "noProvider": "Please set an active provider first",
+    "portInUse": "Port {{port}} is already in use. Please close the program using this port and try again.",
+    "enableFailed": "Failed to enable proxy",
+    "enableSuccess": "Proxy enabled",
+    "disableSuccess": "Proxy disabled",
+    "globalEnabled": "Global proxy enabled",
+    "globalDisabledMsg": "Global proxy disabled"
   }
 }

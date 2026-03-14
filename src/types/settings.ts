@@ -22,3 +22,21 @@ export interface TestResult {
   elapsed_ms: number;
   error?: string | null;
 }
+
+export interface ProxySettings {
+  global_enabled: boolean;
+  cli_enabled: Record<string, boolean>;
+}
+
+export interface CliProxyStatus {
+  cli_id: string;
+  enabled: boolean;
+  active: boolean;
+  has_provider: boolean;
+  port: number | null;
+}
+
+export interface ProxyModeStatus {
+  global_enabled: boolean;
+  cli_statuses: CliProxyStatus[];
+}

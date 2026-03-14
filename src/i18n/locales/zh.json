@@ -60,7 +60,9 @@
     "timeout": "\u8d85\u65f6\u65f6\u95f4 (\u79d2)",
     "testModel": "\u6d4b\u8bd5\u7528\u6a21\u578b",
     "about": "\u5173\u4e8e",
-    "version": "\u7248\u672c"
+    "version": "\u7248\u672c",
+    "proxyMode": "\u4ee3\u7406\u6a21\u5f0f",
+    "proxyModeDescription": "CLI \u8bf7\u6c42\u7ecf\u672c\u5730\u4ee3\u7406\u8f6c\u53d1\uff0c\u5207\u6362 Provider \u65e0\u9700\u91cd\u542f CLI"
   },
   "protocol": {
     "anthropic": "Anthropic",
@@ -90,5 +92,17 @@
     "settingsButton": "\u4ece CLI \u914d\u7f6e\u5bfc\u5165",
     "defaultSuffix": "\u9ed8\u8ba4\u914d\u7f6e",
     "importing": "\u5bfc\u5165\u4e2d..."
+  },
+  "proxy": {
+    "enable": "\u5f00\u542f\u4ee3\u7406",
+    "disable": "\u5173\u95ed\u4ee3\u7406",
+    "globalDisabled": "\u8bf7\u5148\u5728\u8bbe\u7f6e\u4e2d\u5f00\u542f\u4ee3\u7406",
+    "noProvider": "\u8bf7\u5148\u8bbe\u7f6e\u6d3b\u8dc3 Provider",
+    "portInUse": "\u7aef\u53e3 {{port}} \u5df2\u88ab\u5360\u7528\uff0c\u65e0\u6cd5\u542f\u52a8\u4ee3\u7406\u3002\u8bf7\u5173\u95ed\u5360\u7528\u8be5\u7aef\u53e3\u7684\u7a0b\u5e8f\u540e\u91cd\u8bd5\u3002",
+    "enableFailed": "\u5f00\u542f\u4ee3\u7406\u5931\u8d25",
+    "enableSuccess": "\u4ee3\u7406\u5df2\u5f00\u542f",
+    "disableSuccess": "\u4ee3\u7406\u5df2\u5173\u95ed",
+    "globalEnabled": "\u5168\u5c40\u4ee3\u7406\u5df2\u5f00\u542f",
+    "globalDisabledMsg": "\u5168\u5c40\u4ee3\u7406\u5df2\u5173\u95ed"
   }
 }
