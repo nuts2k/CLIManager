@@ -75,7 +75,6 @@ export function AboutSection({
             size="sm"
             variant="outline"
             onClick={onCheckUpdate}
-            disabled={updateStatus === "checking"}
           >
             {t("updater.checkUpdate")}
           </Button>
