@@ -130,7 +130,7 @@ Plans:
 | 11. 代理感知修复与文档同步 | v2.0 | 1/1 | Complete | 2026-03-14 |
 | 12. 全栈实现 | v2.1 | 4/4 | Complete | 2026-03-14 |
 | 13. 端到端验证 | v2.1 | 1/1 | Complete | 2026-03-14 |
-| 14. 数据模型 + 转换核心 | 4/4 | Complete   | 2026-03-14 | - |
+| 14. 数据模型 + 转换核心 | 4/4 | Complete    | 2026-03-14 | - |
 | 15. Handler 集成与协议路由 | v2.2 | 0/? | Not started | - |
 | 16. Responses API + Provider UI | v2.2 | 0/? | Not started | - |
 
