@@ -116,6 +116,35 @@ async fn process_provider_changes(app_handle: AppHandle, changed_files: Vec<Stri
     crate::tray::update_tray_menu(&app_handle);
 }
 
+/// 纯函数：给定 settings 和变更的文件 stem 列表，返回需要更新代理上游的 cli_id 列表。
+/// 仅当代理全局开启、有 proxy_takeover 且变更文件匹配活跃 Provider 时才返回非空。
+fn find_proxy_upstream_candidates(
+    settings: &crate::storage::local::LocalSettings,
+    changed_files: &[String],
+) -> Vec<String> {
+    let global_enabled = settings.proxy.as_ref().map_or(false, |p| p.global_enabled);
+    if !global_enabled {
+        return vec![];
+    }
+
+    let cli_ids = match settings.proxy_takeover {
+        Some(ref t) if !t.cli_ids.is_empty() => &t.cli_ids,
+        _ => return vec![],
+    };
+
+    let mut result = Vec::new();
+    for cli_id in cli_ids {
+        let active_provider_id = match settings.active_providers.get(cli_id) {
+            Some(Some(pid)) => pid,
+            _ => continue,
+        };
+        if changed_files.iter().any(|f| f == active_provider_id) {
+            result.push(cli_id.clone());
+        }
+    }
+    result
+}
+
 /// 代理模式联动：检查变更的文件是否对应代理模式下的活跃 Provider，
 /// 如果是则通过 spawn async 更新代理上游。
 ///
@@ -131,16 +160,10 @@ fn update_proxy_upstream_if_needed(app_handle: &AppHandle, changed_files: &[Stri
         }
     };
 
-    // 检查代理全局开关和 takeover 状态
-    let global_enabled = settings.proxy.as_ref().map_or(false, |p| p.global_enabled);
-    if !global_enabled {
+    let candidates = find_proxy_upstream_candidates(&settings, changed_files);
+    if candidates.is_empty() {
         return;
     }
-
-    let cli_ids = match settings.proxy_takeover {
-        Some(ref t) if !t.cli_ids.is_empty() => &t.cli_ids,
-        _ => return,
-    };
 
     let providers_dir = match crate::storage::icloud::get_icloud_providers_dir() {
         Ok(d) => d,
@@ -150,17 +173,11 @@ fn update_proxy_upstream_if_needed(app_handle: &AppHandle, changed_files: &[Stri
         }
     };
 
-    for cli_id in cli_ids {
-        // 获取该 CLI 的活跃 Provider ID
+    for cli_id in &candidates {
         let active_provider_id = match settings.active_providers.get(cli_id) {
             Some(Some(pid)) => pid,
             _ => continue,
         };
-
-        // 检查该 Provider ID 是否在 changed_files 中（changed_files 元素是文件 stem，即 provider id）
-        if !changed_files.iter().any(|f| f == active_provider_id) {
-            continue;
-        }
 
         // 从 iCloud 重新读取该 Provider，构造 UpstreamTarget
         let provider =
@@ -242,6 +259,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::local::{LocalSettings, ProxySettings, ProxyTakeover};
     use notify_debouncer_mini::DebouncedEvent;
     use std::path::PathBuf;
 
@@ -320,5 +338,89 @@ mod tests {
 
         let result = filter_and_dedup_events(&events, |path| *path == self_written);
         assert_eq!(result, vec!["abc", "ghi"]);
+    }
+
+    fn make_proxy_settings(global_enabled: bool) -> LocalSettings {
+        let mut settings = LocalSettings::default();
+        settings.proxy = Some(ProxySettings {
+            global_enabled,
+            cli_enabled: std::collections::HashMap::new(),
+        });
+        settings
+    }
+
+    #[test]
+    fn test_proxy_upstream_candidates_global_disabled_returns_empty() {
+        let mut settings = make_proxy_settings(false);
+        settings.proxy_takeover = Some(ProxyTakeover {
+            cli_ids: vec!["claude".to_string()],
+        });
+        settings
+            .active_providers
+            .insert("claude".to_string(), Some("p1".to_string()));
+
+        let result = find_proxy_upstream_candidates(&settings, &["p1".to_string()]);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_proxy_upstream_candidates_no_takeover_returns_empty() {
+        let mut settings = make_proxy_settings(true);
+        settings
+            .active_providers
+            .insert("claude".to_string(), Some("p1".to_string()));
+
+        let result = find_proxy_upstream_candidates(&settings, &["p1".to_string()]);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_proxy_upstream_candidates_matching_changed_file() {
+        let mut settings = make_proxy_settings(true);
+        settings.proxy_takeover = Some(ProxyTakeover {
+            cli_ids: vec!["claude".to_string()],
+        });
+        settings
+            .active_providers
+            .insert("claude".to_string(), Some("p1".to_string()));
+
+        let result = find_proxy_upstream_candidates(&settings, &["p1".to_string()]);
+        assert_eq!(result, vec!["claude"]);
+    }
+
+    #[test]
+    fn test_proxy_upstream_candidates_non_matching_changed_file() {
+        let mut settings = make_proxy_settings(true);
+        settings.proxy_takeover = Some(ProxyTakeover {
+            cli_ids: vec!["claude".to_string()],
+        });
+        settings
+            .active_providers
+            .insert("claude".to_string(), Some("p1".to_string()));
+
+        let result =
+            find_proxy_upstream_candidates(&settings, &["other-provider".to_string()]);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_proxy_upstream_candidates_multiple_clis() {
+        let mut settings = make_proxy_settings(true);
+        settings.proxy_takeover = Some(ProxyTakeover {
+            cli_ids: vec!["claude".to_string(), "codex".to_string()],
+        });
+        settings
+            .active_providers
+            .insert("claude".to_string(), Some("p1".to_string()));
+        settings
+            .active_providers
+            .insert("codex".to_string(), Some("p2".to_string()));
+
+        let result =
+            find_proxy_upstream_candidates(&settings, &["p1".to_string(), "p2".to_string()]);
+        assert_eq!(result, vec!["claude", "codex"]);
+
+        let result = find_proxy_upstream_candidates(&settings, &["p1".to_string()]);
+        assert_eq!(result, vec!["claude"]);
     }
 }

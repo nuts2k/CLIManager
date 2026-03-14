@@ -459,6 +459,56 @@ pub fn create_provider(
     Ok(provider)
 }
 
+/// 纯函数：给定 settings 和 provider_id，返回处于代理模式且该 provider
+/// 是活跃 Provider 的 cli_id 列表。用于 update_provider 代理联动和 delete_provider 阻止删除。
+fn find_proxy_cli_ids_for_provider(
+    settings: &LocalSettings,
+    provider_id: &str,
+) -> Vec<String> {
+    let global_enabled = settings.proxy.as_ref().map_or(false, |p| p.global_enabled);
+    if !global_enabled {
+        return vec![];
+    }
+
+    let cli_ids = match settings.proxy_takeover {
+        Some(ref t) if !t.cli_ids.is_empty() => &t.cli_ids,
+        _ => return vec![],
+    };
+
+    cli_ids
+        .iter()
+        .filter(|cli_id| {
+            settings
+                .active_providers
+                .get(*cli_id)
+                .map_or(false, |active| {
+                    active.as_deref() == Some(provider_id)
+                })
+        })
+        .cloned()
+        .collect()
+}
+
+/// 纯函数：检查代理模式是否阻止删除指定 provider（不依赖 global_enabled，
+/// 只要 proxy_takeover 中有 CLI 使用该 provider 即阻止）。
+fn check_proxy_blocks_delete(
+    settings: &LocalSettings,
+    provider_id: &str,
+) -> Result<(), AppError> {
+    if let Some(ref takeover) = settings.proxy_takeover {
+        for cli_id in &takeover.cli_ids {
+            let active_pid = settings.active_providers.get(cli_id);
+            if active_pid == Some(&Some(provider_id.to_string())) {
+                return Err(AppError::Validation(format!(
+                    "该 Provider 正在被 {} 代理模式使用，请先关闭代理后再删除",
+                    cli_id
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn update_provider(
     app_handle: tauri::AppHandle,
@@ -477,29 +527,21 @@ pub async fn update_provider(
 
     // 代理模式联动：如果被编辑的 Provider 是某个代理模式 CLI 的活跃 Provider，更新代理上游
     let settings = crate::storage::local::read_local_settings_from(&settings_path)?;
-    let global_enabled = settings.proxy.as_ref().map_or(false, |p| p.global_enabled);
-    if global_enabled {
-        if let Some(ref takeover) = settings.proxy_takeover {
-            for cli_id in &takeover.cli_ids {
-                let active_pid = settings.active_providers.get(cli_id);
-                if active_pid == Some(&Some(result.id.clone())) {
-                    let upstream = crate::proxy::UpstreamTarget {
-                        api_key: result.api_key.clone(),
-                        base_url: extract_origin_base_url(&result.base_url)
-                            .map_err(AppError::Validation)?,
-                        protocol_type: result.protocol_type.clone(),
-                    };
-                    if let Err(e) = proxy_service.update_upstream(cli_id, upstream).await {
-                        log::error!(
-                            "代理联动：update_provider 后更新上游失败: cli_id={}, err={}",
-                            cli_id,
-                            e
-                        );
-                    } else {
-                        log::info!("代理联动：update_provider 后已更新上游: cli_id={}", cli_id);
-                    }
-                }
-            }
+    for cli_id in find_proxy_cli_ids_for_provider(&settings, &result.id) {
+        let upstream = crate::proxy::UpstreamTarget {
+            api_key: result.api_key.clone(),
+            base_url: extract_origin_base_url(&result.base_url)
+                .map_err(AppError::Validation)?,
+            protocol_type: result.protocol_type.clone(),
+        };
+        if let Err(e) = proxy_service.update_upstream(&cli_id, upstream).await {
+            log::error!(
+                "代理联动：update_provider 后更新上游失败: cli_id={}, err={}",
+                cli_id,
+                e
+            );
+        } else {
+            log::info!("代理联动：update_provider 后已更新上游: cli_id={}", cli_id);
         }
     }
 
@@ -513,17 +555,7 @@ pub async fn delete_provider(app_handle: tauri::AppHandle, id: String) -> Result
 
     // 代理模式下不允许删除活跃 Provider
     let settings = crate::storage::local::read_local_settings_from(&settings_path)?;
-    if let Some(ref takeover) = settings.proxy_takeover {
-        for cli_id in &takeover.cli_ids {
-            let active_pid = settings.active_providers.get(cli_id);
-            if active_pid == Some(&Some(id.clone())) {
-                return Err(AppError::Validation(format!(
-                    "该 Provider 正在被 {} 代理模式使用，请先关闭代理后再删除",
-                    cli_id
-                )));
-            }
-        }
-    }
+    check_proxy_blocks_delete(&settings, &id)?;
 
     // 仅在确认即将执行删除时记录 self-write，避免删除中止后误记 watcher 状态
     let tracker = app_handle.state::<crate::watcher::SelfWriteTracker>();
@@ -1821,5 +1853,100 @@ mod tests {
             loaded.test_config.as_ref().unwrap().test_model,
             Some("claude-haiku-4-20250514".to_string())
         );
+    }
+
+    #[test]
+    fn test_find_proxy_cli_ids_for_provider_returns_matching_cli() {
+        let mut settings = LocalSettings::default();
+        settings.proxy = Some(ProxySettings {
+            global_enabled: true,
+            cli_enabled: std::collections::HashMap::new(),
+        });
+        settings.proxy_takeover = Some(ProxyTakeover {
+            cli_ids: vec!["claude".to_string()],
+        });
+        settings
+            .active_providers
+            .insert("claude".to_string(), Some("p1".to_string()));
+
+        let result = find_proxy_cli_ids_for_provider(&settings, "p1");
+        assert_eq!(result, vec!["claude"]);
+    }
+
+    #[test]
+    fn test_find_proxy_cli_ids_for_provider_global_disabled_returns_empty() {
+        let mut settings = LocalSettings::default();
+        settings.proxy = Some(ProxySettings {
+            global_enabled: false,
+            cli_enabled: std::collections::HashMap::new(),
+        });
+        settings.proxy_takeover = Some(ProxyTakeover {
+            cli_ids: vec!["claude".to_string()],
+        });
+        settings
+            .active_providers
+            .insert("claude".to_string(), Some("p1".to_string()));
+
+        let result = find_proxy_cli_ids_for_provider(&settings, "p1");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_find_proxy_cli_ids_for_provider_non_active_returns_empty() {
+        let mut settings = LocalSettings::default();
+        settings.proxy = Some(ProxySettings {
+            global_enabled: true,
+            cli_enabled: std::collections::HashMap::new(),
+        });
+        settings.proxy_takeover = Some(ProxyTakeover {
+            cli_ids: vec!["claude".to_string()],
+        });
+        settings
+            .active_providers
+            .insert("claude".to_string(), Some("other".to_string()));
+
+        let result = find_proxy_cli_ids_for_provider(&settings, "p1");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_check_proxy_blocks_delete_active_provider_in_proxy_mode() {
+        let mut settings = LocalSettings::default();
+        settings.proxy_takeover = Some(ProxyTakeover {
+            cli_ids: vec!["claude".to_string()],
+        });
+        settings
+            .active_providers
+            .insert("claude".to_string(), Some("p1".to_string()));
+
+        let result = check_proxy_blocks_delete(&settings, "p1");
+        assert!(result.is_err());
+        if let Err(AppError::Validation(msg)) = result {
+            assert!(msg.contains("claude"));
+        } else {
+            panic!("expected Validation error");
+        }
+    }
+
+    #[test]
+    fn test_check_proxy_blocks_delete_non_active_provider_ok() {
+        let mut settings = LocalSettings::default();
+        settings.proxy_takeover = Some(ProxyTakeover {
+            cli_ids: vec!["claude".to_string()],
+        });
+        settings
+            .active_providers
+            .insert("claude".to_string(), Some("p1".to_string()));
+
+        let result = check_proxy_blocks_delete(&settings, "p2");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_check_proxy_blocks_delete_no_takeover_ok() {
+        let settings = LocalSettings::default();
+
+        let result = check_proxy_blocks_delete(&settings, "p1");
+        assert!(result.is_ok());
     }
 }
