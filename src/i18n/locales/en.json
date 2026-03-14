@@ -104,5 +104,19 @@
     "disableSuccess": "Proxy disabled",
     "globalEnabled": "Global proxy enabled",
     "globalDisabledMsg": "Global proxy disabled"
+  },
+  "updater": {
+    "title": "Update Available",
+    "description": "Current: {{current}}, Latest: {{latest}}",
+    "updateNow": "Update Now",
+    "remindLater": "Remind Me Later",
+    "downloading": "Downloading update...",
+    "installing": "Installed, restarting...",
+    "error": "Update failed",
+    "upToDate": "Up to date",
+    "checking": "Checking for updates...",
+    "checkUpdate": "Check for Updates",
+    "updateAvailable": "Update to v{{version}}",
+    "viewReleases": "View Releases"
   }
 }

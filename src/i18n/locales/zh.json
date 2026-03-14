@@ -104,5 +104,19 @@
     "disableSuccess": "\u4ee3\u7406\u5df2\u5173\u95ed",
     "globalEnabled": "\u5168\u5c40\u4ee3\u7406\u5df2\u5f00\u542f",
     "globalDisabledMsg": "\u5168\u5c40\u4ee3\u7406\u5df2\u5173\u95ed"
+  },
+  "updater": {
+    "title": "\u53d1\u73b0\u65b0\u7248\u672c",
+    "description": "\u5f53\u524d\u7248\u672c {{current}}\uff0c\u6700\u65b0\u7248\u672c {{latest}}",
+    "updateNow": "\u7acb\u5373\u66f4\u65b0",
+    "remindLater": "\u7a0d\u540e\u63d0\u9192",
+    "downloading": "\u6b63\u5728\u4e0b\u8f7d\u66f4\u65b0...",
+    "installing": "\u5b89\u88c5\u5b8c\u6210\uff0c\u5373\u5c06\u91cd\u542f...",
+    "error": "\u66f4\u65b0\u5931\u8d25",
+    "upToDate": "\u5df2\u662f\u6700\u65b0\u7248\u672c",
+    "checking": "\u6b63\u5728\u68c0\u67e5\u66f4\u65b0...",
+    "checkUpdate": "\u68c0\u67e5\u66f4\u65b0",
+    "updateAvailable": "\u66f4\u65b0\u5230 v{{version}}",
+    "viewReleases": "\u67e5\u770b\u53d1\u5e03\u9875\u9762"
   }
 }
