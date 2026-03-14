@@ -61,6 +61,13 @@
 **Goal**: Provider 数据模型扩展完成，请求转换、响应转换、流式 SSE 三个转换模块全部实现并通过单元测试，可独立于 handler 验证
 **Depends on**: Phase 13 (v2.1 代理基础设施就绪)
 **Requirements**: MODL-01, MODL-02, REQT-01, REQT-02, REQT-03, REQT-04, REQT-05, REQT-06, REQT-07, REQT-08, RESP-01, RESP-02, RESP-03, RESP-04, RESP-05, STRM-01, STRM-02, STRM-03, STRM-04
+**Plans:** 4 plans
+
+Plans:
+- [ ] 14-01-PLAN.md — 数据模型扩展（ProtocolType 三变体 + upstream 映射字段 + 模块骨架）
+- [ ] 14-02-PLAN.md — 请求转换 anthropic_to_openai() 纯函数 [TDD]
+- [ ] 14-03-PLAN.md — 响应转换 openai_to_anthropic() 纯函数 [TDD]
+- [ ] 14-04-PLAN.md — 流式 SSE 状态机 create_anthropic_sse_stream() [TDD]
 
 **Parallel Execution Note:**
 - Wave 1（串行，必须先行）: Provider 数据模型扩展 — MODL-01、MODL-02 是后续转换模块的 schema 基础
@@ -75,7 +82,6 @@
   3. `openai_to_anthropic()` 纯函数将含文本和工具调用的 OpenAI 非流式响应正确转换为 Anthropic 格式，finish_reason 穷举映射，usage 字段重命名，4xx/5xx 错误响应直接透传，单元测试全绿
   4. `create_anthropic_sse_stream()` 流适配器将 OpenAI content delta 序列转换为完整 Anthropic SSE 事件序列（message_start → content_block_start → content_block_delta × N → content_block_stop → message_delta → message_stop），Deferred Start 机制正确缓冲工具调用分帧，多工具并发各自独立状态，跨 chunk 截断正确处理，单元测试全绿
   5. thinking block、cache_control、不兼容 JSON Schema 字段均被静默丢弃，不触发上游 400 错误（可通过请求转换单元测试验证）
-**Plans**: TBD
 
 ### Phase 15: Handler 集成与协议路由
 **Goal**: 转换层完整接入 proxy_handler，OpenAiCompatible Provider 请求自动走转换路径并按模型映射替换模型名，Anthropic Provider 零回归，端到端请求-响应链路验证通过
@@ -124,10 +130,10 @@
 | 11. 代理感知修复与文档同步 | v2.0 | 1/1 | Complete | 2026-03-14 |
 | 12. 全栈实现 | v2.1 | 4/4 | Complete | 2026-03-14 |
 | 13. 端到端验证 | v2.1 | 1/1 | Complete | 2026-03-14 |
-| 14. 数据模型 + 转换核心 | v2.2 | 0/? | Not started | - |
+| 14. 数据模型 + 转换核心 | v2.2 | 0/4 | Not started | - |
 | 15. Handler 集成与协议路由 | v2.2 | 0/? | Not started | - |
 | 16. Responses API + Provider UI | v2.2 | 0/? | Not started | - |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*
-*Last updated: 2026-03-14 — v2.2 restructured to 3 phases (14-16) for maximum parallelism, 27 requirements fully covered*
+*Last updated: 2026-03-14 — Phase 14 planned: 4 plans (1 wave foundation + 3 wave parallel TDD)*
