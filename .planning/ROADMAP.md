@@ -78,11 +78,11 @@ Plans:
   2. iCloud 同步的 Provider 内容变更和本地 CRUD 操作自动更新代理内存中的上游目标
   3. 启动代理时端口被占用能给出清晰错误提示而非静默失败
   4. 设置页全局开关和 Tab 内独立开关联动正确，UI 状态与后端一致
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 10-01: TBD
-- [ ] 10-02: TBD
+- [ ] 10-01-PLAN.md — 后端代理联动（watcher iCloud 同步 + update_provider/delete_provider 代理模式感知）
+- [ ] 10-02-PLAN.md — 前端 UI 集成（Switch 开关 + 状态指示 + 端口占用 toast + i18n）
 
 ## Progress
 
@@ -99,8 +99,8 @@ Plans:
 | 7. Provider Menu and Switching | v1.1 | 2/2 | Complete | 2026-03-13 |
 | 8. 代理核心 | v2.0 | 2/2 | Complete | 2026-03-13 |
 | 9. 模式切换与持久化 | 1/2 | In Progress|  | - |
-| 10. 实时切换与 UI 集成 | v2.0 | 0/? | Not started | - |
+| 10. 实时切换与 UI 集成 | v2.0 | 0/2 | Not started | - |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*
-*Last updated: 2026-03-13 (Phase 9 planned: 2 plans)*
+*Last updated: 2026-03-14 (Phase 10 planned: 2 plans)*
