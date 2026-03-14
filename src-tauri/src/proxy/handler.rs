@@ -242,6 +242,246 @@ pub async fn proxy_handler(
 mod tests {
     use super::*;
     use axum::http::header::HeaderMap;
+    use axum::body::Body;
+    use axum::Router;
+    use bytes::Bytes;
+    use futures::StreamExt;
+    use serde_json::{json, Value};
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use std::time::Duration;
+    use tokio::net::TcpListener;
+    use tokio::sync::{oneshot, Mutex as TokioMutex};
+
+    // ── handler.rs 内部辅助（用于路由分支测试） ──
+
+    fn make_upstream_responses_target(base_url: &str) -> super::super::state::UpstreamTarget {
+        super::super::state::UpstreamTarget {
+            api_key: "sk-test".to_string(),
+            base_url: base_url.to_string(),
+            protocol_type: crate::provider::ProtocolType::OpenAiResponses,
+            upstream_model: None,
+            upstream_model_map: None,
+        }
+    }
+
+    // ── Task 1 TDD RED：OpenAiResponses 路由分支行为测试 ──
+
+    /// 验证 OpenAiResponses 请求被路由到 /responses 端点（而非 /chat/completions）
+    #[tokio::test]
+    async fn test_responses_api_endpoint() {
+        use axum::routing::post;
+        use crate::proxy::{ProxyService, ProxyState};
+
+        // 记录请求路径
+        let captured_path: Arc<TokioMutex<Option<String>>> = Arc::new(TokioMutex::new(None));
+        let captured_path_clone = captured_path.clone();
+
+        // mock 上游返回简单 Responses API 格式响应
+        let mock_resp = json!({
+            "id": "resp_test",
+            "object": "response",
+            "output": [{"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "Hello"}], "status": "completed"}],
+            "usage": {"input_tokens": 5, "output_tokens": 3}
+        });
+
+        let mock_app = Router::new().route(
+            "/v1/responses",
+            post(move |req: axum::extract::Request| {
+                let captured = captured_path_clone.clone();
+                let resp = mock_resp.clone();
+                async move {
+                    *captured.lock().await = Some(req.uri().path().to_string());
+                    axum::Json(resp)
+                }
+            }),
+        );
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream_port = listener.local_addr().unwrap().port();
+        let (tx, rx) = oneshot::channel::<()>();
+        tokio::spawn(async move {
+            axum::serve(listener, mock_app)
+                .with_graceful_shutdown(async { rx.await.ok(); })
+                .await.ok();
+        });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let service = crate::proxy::ProxyService::new();
+        let base_url = format!("http://127.0.0.1:{}", upstream_port);
+        service.start("claude", 0, make_upstream_responses_target(&base_url)).await.unwrap();
+
+        let proxy_port = service.status().await.servers.into_iter().find(|s| s.cli_id == "claude").unwrap().port;
+
+        // 发送 Anthropic 格式请求
+        let anthropic_req = json!({
+            "model": "claude-3-5-sonnet-20241022",
+            "max_tokens": 100,
+            "messages": [{"role": "user", "content": "Hello"}]
+        });
+
+        let _ = reqwest::Client::builder().no_proxy().build().unwrap()
+            .post(format!("http://127.0.0.1:{}/v1/messages", proxy_port))
+            .header("x-api-key", "PROXY_MANAGED")
+            .header("content-type", "application/json")
+            .json(&anthropic_req)
+            .send()
+            .await
+            .unwrap();
+
+        // 验证请求命中 /v1/responses（而非 /v1/chat/completions）
+        let path = captured_path.lock().await;
+        assert_eq!(path.as_deref(), Some("/v1/responses"), "OpenAiResponses 请求应路由到 /v1/responses 端点");
+
+        service.stop("claude").await.unwrap();
+        let _ = tx.send(());
+    }
+
+    /// 验证 OpenAiResponses 请求体被转换为 Responses API 格式（包含 input 而非 messages）
+    #[tokio::test]
+    async fn test_responses_api_routing() {
+        use axum::routing::post;
+
+        let captured_body: Arc<TokioMutex<Option<Value>>> = Arc::new(TokioMutex::new(None));
+        let captured_body_clone = captured_body.clone();
+
+        let mock_resp = json!({
+            "id": "resp_test",
+            "object": "response",
+            "output": [{"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "Hello"}], "status": "completed"}],
+            "usage": {"input_tokens": 5, "output_tokens": 3}
+        });
+
+        let mock_app = Router::new().route(
+            "/v1/responses",
+            post(move |body: axum::extract::Json<Value>| {
+                let captured = captured_body_clone.clone();
+                let resp = mock_resp.clone();
+                async move {
+                    *captured.lock().await = Some(body.0);
+                    axum::Json(resp)
+                }
+            }),
+        );
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream_port = listener.local_addr().unwrap().port();
+        let (tx, rx) = oneshot::channel::<()>();
+        tokio::spawn(async move {
+            axum::serve(listener, mock_app)
+                .with_graceful_shutdown(async { rx.await.ok(); })
+                .await.ok();
+        });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let service = crate::proxy::ProxyService::new();
+        let base_url = format!("http://127.0.0.1:{}", upstream_port);
+        service.start("claude", 0, make_upstream_responses_target(&base_url)).await.unwrap();
+
+        let proxy_port = service.status().await.servers.into_iter().find(|s| s.cli_id == "claude").unwrap().port;
+
+        let anthropic_req = json!({
+            "model": "claude-3-5-sonnet-20241022",
+            "max_tokens": 100,
+            "messages": [{"role": "user", "content": "Hello"}]
+        });
+
+        let _ = reqwest::Client::builder().no_proxy().build().unwrap()
+            .post(format!("http://127.0.0.1:{}/v1/messages", proxy_port))
+            .header("x-api-key", "PROXY_MANAGED")
+            .header("content-type", "application/json")
+            .json(&anthropic_req)
+            .send()
+            .await
+            .unwrap();
+
+        // 验证上游收到的是 Responses API 格式（有 input 字段，无 messages 字段）
+        let body = captured_body.lock().await;
+        let received = body.as_ref().expect("mock 上游应已收到请求");
+        assert!(received.get("input").is_some(), "Responses API 请求应包含 input 字段");
+        assert!(received.get("messages").is_none(), "Responses API 请求不应包含 messages 字段");
+        assert_eq!(received.get("max_output_tokens").and_then(|v| v.as_u64()), Some(100), "max_tokens 应映射为 max_output_tokens");
+
+        service.stop("claude").await.unwrap();
+        let _ = tx.send(());
+    }
+
+    /// 验证模型映射在 Responses API 请求转换前执行
+    #[tokio::test]
+    async fn test_responses_api_model_mapping() {
+        use axum::routing::post;
+        use std::collections::HashMap;
+
+        let captured_body: Arc<TokioMutex<Option<Value>>> = Arc::new(TokioMutex::new(None));
+        let captured_body_clone = captured_body.clone();
+
+        let mock_resp = json!({
+            "id": "resp_test",
+            "object": "response",
+            "output": [{"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "Hello"}], "status": "completed"}],
+            "usage": {"input_tokens": 5, "output_tokens": 3}
+        });
+
+        let mock_app = Router::new().route(
+            "/v1/responses",
+            post(move |body: axum::extract::Json<Value>| {
+                let captured = captured_body_clone.clone();
+                let resp = mock_resp.clone();
+                async move {
+                    *captured.lock().await = Some(body.0);
+                    axum::Json(resp)
+                }
+            }),
+        );
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream_port = listener.local_addr().unwrap().port();
+        let (tx, rx) = oneshot::channel::<()>();
+        tokio::spawn(async move {
+            axum::serve(listener, mock_app)
+                .with_graceful_shutdown(async { rx.await.ok(); })
+                .await.ok();
+        });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // 带模型映射的 UpstreamTarget
+        let mut model_map = HashMap::new();
+        model_map.insert("claude-3-5-sonnet-20241022".to_string(), "o1-mini".to_string());
+        let upstream = super::super::state::UpstreamTarget {
+            api_key: "sk-test".to_string(),
+            base_url: format!("http://127.0.0.1:{}", upstream_port),
+            protocol_type: crate::provider::ProtocolType::OpenAiResponses,
+            upstream_model: None,
+            upstream_model_map: Some(model_map),
+        };
+
+        let service = crate::proxy::ProxyService::new();
+        service.start("claude", 0, upstream).await.unwrap();
+
+        let proxy_port = service.status().await.servers.into_iter().find(|s| s.cli_id == "claude").unwrap().port;
+
+        let anthropic_req = json!({
+            "model": "claude-3-5-sonnet-20241022",
+            "max_tokens": 100,
+            "messages": [{"role": "user", "content": "Hello"}]
+        });
+
+        let _ = reqwest::Client::builder().no_proxy().build().unwrap()
+            .post(format!("http://127.0.0.1:{}/v1/messages", proxy_port))
+            .header("x-api-key", "PROXY_MANAGED")
+            .header("content-type", "application/json")
+            .json(&anthropic_req)
+            .send()
+            .await
+            .unwrap();
+
+        let body = captured_body.lock().await;
+        let received = body.as_ref().expect("mock 上游应已收到请求");
+        assert_eq!(received["model"], "o1-mini", "模型名应在转换前被映射为 o1-mini");
+
+        service.stop("claude").await.unwrap();
+        let _ = tx.send(());
+    }
 
     // ── apply_upstream_model_mapping 单元测试 ──
 
