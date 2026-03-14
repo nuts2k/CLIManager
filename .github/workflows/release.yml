@@ -52,7 +52,7 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'CLIManager ${{ github.ref_name }}'
-          releaseDraft: true
+          releaseDraft: false
           releaseBody: |
             ## CLIManager ${{ github.ref_name }}
 
