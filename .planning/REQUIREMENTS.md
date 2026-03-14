@@ -9,13 +9,13 @@ Requirements for Release Engineering milestone. Each maps to roadmap phases.
 
 ### CI/CD
 
-- [ ] **CICD-01**: 三段式 `v*.*.*` tag 推送触发 GitHub Actions 构建
-- [ ] **CICD-02**: macOS 双架构构建（aarch64 + x86_64），生成 DMG 安装镜像
-- [ ] **CICD-03**: 构建产物（DMG + .app.tar.gz + .sig + latest.json）自动上传到 GitHub Release Draft
+- [x] **CICD-01**: 三段式 `v*.*.*` tag 推送触发 GitHub Actions 构建
+- [x] **CICD-02**: macOS 双架构构建（aarch64 + x86_64），生成 DMG 安装镜像
+- [x] **CICD-03**: 构建产物（DMG + .app.tar.gz + .sig + latest.json）自动上传到 GitHub Release Draft
 
 ### Signing
 
-- [ ] **SIGN-01**: CI 构建时 macOS ad-hoc 代码签名（`APPLE_SIGNING_IDENTITY="-"`）
+- [x] **SIGN-01**: CI 构建时 macOS ad-hoc 代码签名（`APPLE_SIGNING_IDENTITY="-"`）
 - [x] **SIGN-02**: 生成 updater Ed25519 签名密钥对并安全备份
 - [x] **SIGN-03**: 私钥存储到 GitHub Secrets，公钥写入 tauri.conf.json
 
@@ -30,7 +30,7 @@ Requirements for Release Engineering milestone. Each maps to roadmap phases.
 
 - [x] **REL-01**: Cargo.toml 作为唯一版本来源，tauri.conf.json 省略 version 字段
 - [ ] **REL-02**: 项目专用发版技能（非全局 `/release`），bump Cargo.toml → CHANGELOG → commit → tag → push
-- [ ] **REL-03**: GitHub Release Notes 包含 Gatekeeper 安装指引
+- [x] **REL-03**: GitHub Release Notes 包含 Gatekeeper 安装指引
 
 ## Future Requirements
 
