@@ -14,7 +14,12 @@
     "protocolType": "Protocol Type",
     "notes": "Notes",
     "modelConfig": "Model Config",
-    "advanced": "Advanced Options"
+    "advanced": "Advanced Options",
+    "upstreamModel": "Default Target Model",
+    "modelMapping": "Model Name Mapping",
+    "addMapping": "Add Mapping",
+    "sourceModel": "Source Model",
+    "targetModel": "Target Model"
   },
   "actions": {
     "create": "New Provider",
@@ -66,7 +71,8 @@
   },
   "protocol": {
     "anthropic": "Anthropic",
-    "openAiCompatible": "OpenAI Compatible"
+    "openAiChatCompletions": "OpenAI Chat Completions",
+    "openAiResponses": "OpenAI Responses"
   },
   "validation": {
     "required": "This field is required",

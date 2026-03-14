@@ -1,4 +1,7 @@
-export type ProtocolType = "anthropic" | "open_ai_compatible";
+export type ProtocolType =
+  | "anthropic"
+  | "open_ai_chat_completions"
+  | "open_ai_responses";
 
 export interface ModelConfig {
   haiku_model?: string | null;
@@ -17,6 +20,8 @@ export interface Provider {
   model: string;
   model_config?: ModelConfig | null;
   notes?: string | null;
+  upstream_model?: string | null;
+  upstream_model_map?: Record<string, string> | null;
   created_at: number;
   updated_at: number;
   schema_version: number;

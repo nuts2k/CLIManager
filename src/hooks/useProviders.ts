@@ -85,11 +85,18 @@ export function useProviders(cliId: string) {
           cliId: provider.cli_id,
         };
         const created = await createProvider(input);
-        if (provider.notes != null || provider.model_config != null) {
+        if (
+          provider.notes != null ||
+          provider.model_config != null ||
+          provider.upstream_model != null ||
+          provider.upstream_model_map != null
+        ) {
           await updateProvider({
             ...created,
             notes: provider.notes ?? null,
             model_config: provider.model_config ?? null,
+            upstream_model: provider.upstream_model ?? null,
+            upstream_model_map: provider.upstream_model_map ?? null,
           });
         }
         await refresh();
@@ -117,11 +124,18 @@ export function useProviders(cliId: string) {
           cliId: targetCliId,
         };
         const created = await createProvider(input);
-        if (provider.notes != null || provider.model_config != null) {
+        if (
+          provider.notes != null ||
+          provider.model_config != null ||
+          provider.upstream_model != null ||
+          provider.upstream_model_map != null
+        ) {
           await updateProvider({
             ...created,
             notes: provider.notes ?? null,
             model_config: provider.model_config ?? null,
+            upstream_model: provider.upstream_model ?? null,
+            upstream_model_map: provider.upstream_model_map ?? null,
           });
         }
         if (targetCliId === cliIdRef.current) {
