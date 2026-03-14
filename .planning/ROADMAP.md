@@ -51,6 +51,7 @@
 **Goal**: 完成所有代码和配置变更：CI 流水线、签名、updater 集成、发版脚本、Gatekeeper 文档
 **Depends on**: Phase 11 (v2.0 已交付完整 app)
 **Requirements**: REL-01, SIGN-02, SIGN-03, SIGN-01, CICD-01, CICD-02, CICD-03, UPD-01, UPD-02, UPD-03, UPD-04, REL-02, REL-03
+**Plans:** 4 plans
 **Success Criteria** (what must be TRUE):
   1. Cargo.toml 是版本号唯一来源，tauri.conf.json 无独立 version 字段
   2. updater Ed25519 密钥对已生成，私钥存入 GitHub Secrets 并已备份，公钥写入 tauri.conf.json
@@ -64,10 +65,10 @@
 **Parallelism**: Wave 1 → Wave 2 (3 路并行)
 
 Plans:
-- [ ] 12-01: 密钥与配置基础 [SIGN-02, SIGN-03, REL-01] — Wave 1 (必须先完成)
-- [ ] 12-02: CI/CD 流水线 [CICD-01, CICD-02, CICD-03, SIGN-01] — Wave 2 (并行)
-- [ ] 12-03: Updater 插件与自定义 UI [UPD-01, UPD-02, UPD-03, UPD-04] — Wave 2 (并行)
-- [ ] 12-04: 发版脚本与用户引导 [REL-02, REL-03] — Wave 2 (并行)
+- [ ] 12-01-PLAN.md — 密钥与配置基础 [REL-01, SIGN-02, SIGN-03] — Wave 1
+- [ ] 12-02-PLAN.md — CI/CD 流水线 [CICD-01, CICD-02, CICD-03, SIGN-01, REL-03] — Wave 2
+- [ ] 12-03-PLAN.md — Updater 插件与自定义 UI [UPD-01, UPD-02, UPD-03, UPD-04] — Wave 2
+- [ ] 12-04-PLAN.md — 发版脚本与用户引导 [REL-02, REL-03] — Wave 2
 
 ### Phase 13: 端到端验证
 **Goal**: 完整发版流程端到端验证：release script → CI build → updater check → download → install → relaunch
@@ -97,9 +98,9 @@ Plans:
 | 9. 模式切换与持久化 | v2.0 | 2/2 | Complete | 2026-03-13 |
 | 10. 实时切换与 UI 集成 | v2.0 | 2/2 | Complete | 2026-03-14 |
 | 11. 代理感知修复与文档同步 | v2.0 | 1/1 | Complete | 2026-03-14 |
-| 12. 全栈实现 | v2.1 | 0/4 | Not started | - |
+| 12. 全栈实现 | v2.1 | 0/4 | Planning complete | - |
 | 13. 端到端验证 | v2.1 | 0/1 | Not started | - |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*
-*Last updated: 2026-03-14 — v2.1 restructured for parallelism (Phases 12-13, wave-based)*
+*Last updated: 2026-03-14 — Phase 12 plans created (4 plans, 2 waves)*
