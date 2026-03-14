@@ -123,7 +123,39 @@ pub async fn proxy_handler(
 
                 (url, Bytes::from(new_bytes), is_streaming, request_model)
             }
-            ProtocolType::Anthropic | ProtocolType::OpenAiResponses => {
+            ProtocolType::OpenAiResponses => {
+                // 1. 解析请求体
+                let body_value: Value = serde_json::from_slice(&body_bytes)
+                    .map_err(|e| ProxyError::TranslateError(format!("无法解析请求体: {}", e)))?;
+
+                // 2. 提取 stream 标志（转换前读取）
+                let is_streaming = body_value
+                    .get("stream")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+
+                // 3. 提取原始模型名（用于流式 SSE 事件）
+                let request_model = body_value
+                    .get("model")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+
+                // 4. 模型名映射（在转换前执行）
+                let body_value = apply_upstream_model_mapping(body_value, &upstream);
+
+                // 5. 请求转换 + 端点重写为 /responses
+                let responses_body = translate::responses_request::anthropic_to_responses(body_value)?;
+                let url = translate::request::build_proxy_endpoint_url(
+                    &upstream.base_url,
+                    "/responses",
+                );
+                let new_bytes = serde_json::to_vec(&responses_body)
+                    .map_err(|e| ProxyError::Internal(e.to_string()))?;
+
+                (url, Bytes::from(new_bytes), is_streaming, request_model)
+            }
+            ProtocolType::Anthropic => {
                 // 透传路径：URL 拼接与现有逻辑一致
                 let url = format!(
                     "{}{}{}",
@@ -227,8 +259,32 @@ pub async fn proxy_handler(
                 Body::from(resp_bytes)
             }
         }
-        _ => {
-            // Anthropic / OpenAiResponses：透传（现有行为）
+        ProtocolType::OpenAiResponses => {
+            if !status.is_success() {
+                // 4xx/5xx 直接透传
+                Body::from_stream(upstream_resp.bytes_stream())
+            } else if is_streaming {
+                // 流式：wrap 为 Responses API -> Anthropic SSE 转换流
+                Body::from_stream(translate::responses_stream::create_responses_anthropic_sse_stream(
+                    upstream_resp.bytes_stream(),
+                    request_model,
+                ))
+            } else {
+                // 非流式：读完整响应，转换后返回
+                let resp_bytes = upstream_resp
+                    .bytes()
+                    .await
+                    .map_err(|e| ProxyError::Internal(format!("读取上游响应失败: {}", e)))?;
+                let resp_value: Value = serde_json::from_slice(&resp_bytes)
+                    .map_err(|e| ProxyError::TranslateError(format!("响应解析失败: {}", e)))?;
+                let anthropic_resp = translate::responses_response::responses_to_anthropic(resp_value)?;
+                let resp_bytes = serde_json::to_vec(&anthropic_resp)
+                    .map_err(|e| ProxyError::Internal(e.to_string()))?;
+                Body::from(resp_bytes)
+            }
+        }
+        ProtocolType::Anthropic => {
+            // 透传（现有行为）
             Body::from_stream(upstream_resp.bytes_stream())
         }
     };
