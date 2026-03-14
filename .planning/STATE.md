@@ -4,7 +4,7 @@ milestone: v2.2
 milestone_name: 协议转换
 status: planning
 stopped_at: Completed 16-responses-api-provider-ui/16-04-PLAN.md
-last_updated: "2026-03-14T15:45:46.096Z"
+last_updated: "2026-03-14T15:51:35.391Z"
 last_activity: 2026-03-14 — v2.2 roadmap restructured (3 phases, 27 requirements, max parallelism)
 progress:
   total_phases: 3

@@ -145,7 +145,7 @@ Plans:
 | 13. 端到端验证 | v2.1 | 1/1 | Complete | 2026-03-14 |
 | 14. 数据模型 + 转换核心 | v2.2 | 4/4 | Complete | 2026-03-14 |
 | 15. Handler 集成与协议路由 | v2.2 | 2/2 | Complete | 2026-03-14 |
-| 16. Responses API + Provider UI | 4/4 | Complete   | 2026-03-14 | - |
+| 16. Responses API + Provider UI | 4/4 | Complete    | 2026-03-14 | - |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*
