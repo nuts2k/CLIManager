@@ -43,7 +43,7 @@
 **Milestone Goal:** 建立完整的构建、签名、分发和自动更新流程，让 app 能实际安装使用并持续迭代
 
 - [x] **Phase 12: 全栈实现** — 密钥配置 + CI/CD + Updater + 发版脚本，wave 并行 (completed 2026-03-14)
-- [ ] **Phase 13: 端到端验证** — 完整发版流程验证，确保闭环可用
+- [x] **Phase 13: 端到端验证** — 完整发版流程验证，确保闭环可用 (completed 2026-03-14)
 
 ## Phase Details
 
@@ -74,7 +74,7 @@ Plans:
 **Goal**: 完整发版流程端到端验证：release script -> CI build -> updater check -> download -> install -> relaunch
 **Depends on**: Phase 12 (所有代码和配置变更完成)
 **Requirements**: CICD-01, CICD-02, CICD-03, SIGN-01, SIGN-02, SIGN-03, UPD-01, UPD-02, UPD-03, UPD-04, REL-01, REL-02, REL-03
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 **Success Criteria** (what must be TRUE):
   1. 发版脚本创建的 tag 成功触发 CI，双架构 DMG 出现在 GitHub Release（非 Draft）
   2. 已安装的旧版 app 启动时检测到新版本并弹出更新提示
@@ -100,7 +100,7 @@ Plans:
 | 10. 实时切换与 UI 集成 | v2.0 | 2/2 | Complete | 2026-03-14 |
 | 11. 代理感知修复与文档同步 | v2.0 | 1/1 | Complete | 2026-03-14 |
 | 12. 全栈实现 | v2.1 | 4/4 | Complete | 2026-03-14 |
-| 13. 端到端验证 | v2.1 | 0/1 | Not started | - |
+| 13. 端到端验证 | 1/1 | Complete   | 2026-03-14 | - |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*

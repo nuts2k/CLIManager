@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Release Engineering
-status: completed
-stopped_at: Phase 13 context gathered
-last_updated: "2026-03-14T08:38:44.153Z"
-last_activity: 2026-03-14 — 12-04 完成（/ship 一键发版技能 + CHANGELOG.md）
+status: in-progress
+stopped_at: "Completed 13-01-PLAN.md"
+last_updated: "2026-03-14T08:55:54Z"
+last_activity: 2026-03-14 — 13-01 完成（releaseDraft: false 配置，e2e 验证框架就绪）
 progress:
   total_phases: 2
   completed_phases: 1
-  total_plans: 4
-  completed_plans: 4
+  total_plans: 5
+  completed_plans: 5
 ---
 
 # Project State
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-14)
 
 **Core value:** 切换 Provider 时只做 surgical patch（精确修改凭据和模型字段），绝不重写配置文件的其他内容
-**Current focus:** Phase 12 — 全栈实现（wave 并行）
+**Current focus:** Phase 13 — 端到端验证（e2e verification）
 
 ## Current Position
 
-Phase: 12 of 13 (全栈实现)
-Plan: 4 of 4 in current phase
+Phase: 13 of 13 (e2e 端到端验证)
+Plan: 1 of 1 in current phase
 Status: completed
-Last activity: 2026-03-14 — 12-04 完成（/ship 一键发版技能 + CHANGELOG.md）
+Last activity: 2026-03-14 — 13-01 完成（releaseDraft: false 配置，e2e 验证框架就绪）
 
 ## Performance Metrics
 
@@ -45,6 +45,7 @@ Last activity: 2026-03-14 — 12-04 完成（/ship 一键发版技能 + CHANGELO
 | Phase 12 P02 | 3min | 1 tasks | 1 files |
 | Phase 12 P04 | 2min | 2 tasks | 2 files |
 | Phase 12 P03 | 20 | 3 tasks | 7 files |
+| Phase 13 P01 | 2min | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -62,6 +63,7 @@ Last activity: 2026-03-14 — 12-04 完成（/ship 一键发版技能 + CHANGELO
 - [Phase 12-04]: 版本来源唯一——仅修改 src-tauri/Cargo.toml，tauri.conf.json 无 version 字段
 - [Phase 12-04]: 零外部依赖 CHANGELOG——git log + Python 内置处理，不引入 git-cliff 等工具
 - [Phase 12]: 复用 Dialog 组件实现 UpdateDialog（模态对话框形式）；双 useUpdater 实例：AppShell 启动检查与 SettingsPage 手动检查独立；动态 import tauri 插件规避开发模式异常
+- [Phase 13-01]: releaseDraft: false 是 updater endpoint 可达的必要条件——Draft Release 不被 releases/latest 路径解析，latest.json 404
 
 ### Pending Todos
 
@@ -75,6 +77,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-14T08:38:44.150Z
-Stopped at: Phase 13 context gathered
-Resume file: .planning/phases/13-e2e-verification/13-CONTEXT.md
+Last session: 2026-03-14T08:55:54Z
+Stopped at: Completed 13-01-PLAN.md
+Resume file: .planning/phases/13-e2e-verification/13-01-SUMMARY.md
