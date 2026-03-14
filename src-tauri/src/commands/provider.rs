@@ -3,7 +3,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use serde::Serialize;
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 
 use crate::adapter::claude::ClaudeAdapter;
 use crate::adapter::codex::CodexAdapter;
@@ -398,9 +398,10 @@ pub fn create_provider(
 }
 
 #[tauri::command]
-pub fn update_provider(
+pub async fn update_provider(
     app_handle: tauri::AppHandle,
     provider: Provider,
+    proxy_service: State<'_, crate::proxy::ProxyService>,
 ) -> Result<Provider, AppError> {
     let provider = normalize_and_validate_provider(provider)?;
     let dir = crate::storage::icloud::get_icloud_providers_dir()?;
@@ -411,17 +412,95 @@ pub fn update_provider(
     tracker.record_write(dir.join(format!("{}.json", provider.id)));
 
     let result = _update_provider_in(&dir, &settings_path, provider, None)?;
+
+    // 代理模式联动：如果被编辑的 Provider 是某个代理模式 CLI 的活跃 Provider，更新代理上游
+    let settings = crate::storage::local::read_local_settings_from(&settings_path)?;
+    let global_enabled = settings
+        .proxy
+        .as_ref()
+        .map_or(false, |p| p.global_enabled);
+    if global_enabled {
+        if let Some(ref takeover) = settings.proxy_takeover {
+            for cli_id in &takeover.cli_ids {
+                let active_pid = settings.active_providers.get(cli_id);
+                if active_pid == Some(&Some(result.id.clone())) {
+                    let upstream = crate::proxy::UpstreamTarget {
+                        api_key: result.api_key.clone(),
+                        base_url: extract_origin_base_url(&result.base_url)
+                            .map_err(AppError::Validation)?,
+                        protocol_type: result.protocol_type.clone(),
+                    };
+                    if let Err(e) = proxy_service.update_upstream(cli_id, upstream).await {
+                        log::error!(
+                            "代理联动：update_provider 后更新上游失败: cli_id={}, err={}",
+                            cli_id,
+                            e
+                        );
+                    } else {
+                        log::info!(
+                            "代理联动：update_provider 后已更新上游: cli_id={}",
+                            cli_id
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     Ok(result)
 }
 
 #[tauri::command]
-pub fn delete_provider(app_handle: tauri::AppHandle, id: String) -> Result<(), AppError> {
+pub async fn delete_provider(
+    app_handle: tauri::AppHandle,
+    id: String,
+    proxy_service: State<'_, crate::proxy::ProxyService>,
+) -> Result<(), AppError> {
     let dir = crate::storage::icloud::get_icloud_providers_dir()?;
     let settings_path = crate::storage::local::get_local_settings_path();
 
     // Record self-write before deletion so the file watcher ignores this change
     let tracker = app_handle.state::<crate::watcher::SelfWriteTracker>();
     tracker.record_write(dir.join(format!("{}.json", id)));
+
+    // 代理模式联动：删除前检查是否有代理模式 CLI 正在使用该 Provider
+    let settings = crate::storage::local::read_local_settings_from(&settings_path)?;
+    let global_enabled = settings
+        .proxy
+        .as_ref()
+        .map_or(false, |p| p.global_enabled);
+    if global_enabled {
+        if let Some(ref takeover) = settings.proxy_takeover {
+            for cli_id in &takeover.cli_ids {
+                let active_pid = settings.active_providers.get(cli_id);
+                if active_pid == Some(&Some(id.clone())) {
+                    // 先关闭该 CLI 的代理模式（还原 CLI 配置、停止代理服务器、更新 local.json）
+                    if let Err(e) = crate::commands::proxy::_proxy_disable_in(
+                        &dir,
+                        &settings_path,
+                        cli_id,
+                        &proxy_service,
+                        None,
+                    )
+                    .await
+                    {
+                        log::error!(
+                            "代理联动：delete_provider 关闭代理失败: cli_id={}, err={}",
+                            cli_id,
+                            e
+                        );
+                    } else {
+                        log::info!(
+                            "代理联动：delete_provider 已关闭代理: cli_id={}",
+                            cli_id
+                        );
+                    }
+                    // 通知前端代理模式状态已变更
+                    app_handle.emit("proxy-mode-changed", ()).ok();
+                }
+            }
+        }
+    }
 
     _delete_provider_in(&dir, &settings_path, id, None)
 }
