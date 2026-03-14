@@ -105,17 +105,26 @@ Plans:
 **Goal**: OpenAI Responses API 格式转换层可用，Provider 编辑界面支持配置默认模型和模型映射对，两条路线完成后整体 UI 工作流验证通过
 **Depends on**: Phase 15 (handler 集成完成，基础转换路径验证通过)
 **Requirements**: RAPI-01, RAPI-02, RAPI-03, RAPI-04, MODL-04
+**Plans:** 4 plans
+
+Plans:
+- [ ] 16-01-PLAN.md — Responses API 请求转换 anthropic_to_responses() 纯函数 [TDD]
+- [ ] 16-02-PLAN.md — Responses API 响应转换 + 流式 SSE 转换 [TDD]
+- [ ] 16-03-PLAN.md — Provider 编辑 UI 三协议选择 + 模型映射配置
+- [ ] 16-04-PLAN.md — handler.rs OpenAiResponses 独立转换分支 + 集成测试
 
 **Parallel Execution Note:**
-- Wave 1（两路并行）:
-  - Plan A: Responses API 转换层 — RAPI-01..04
-  - Plan B: Provider 编辑 UI 模型映射配置 — MODL-04
+- Wave 1（三路并行）:
+  - Plan 01: Responses API 请求转换纯函数 `anthropic_to_responses()` — RAPI-02
+  - Plan 02: 非流式响应转换 `responses_to_anthropic()` + 流式 SSE 转换 `create_responses_anthropic_sse_stream()` — RAPI-03, RAPI-04
+  - Plan 03: Provider 编辑 UI 三协议选择 + 模型映射 — MODL-04, RAPI-01（UI 部分）
+- Wave 2（依赖 Plan 01 + 02）:
+  - Plan 04: handler.rs OpenAiResponses 独立转换分支 + 集成测试 — RAPI-01（路由部分）
 
 **Success Criteria** (what must be TRUE):
   1. Provider 编辑页新增默认模型输入框和模型映射对列表（可增删），保存后立即生效，代理转换使用新映射
   2. Provider 可配置目标 API 格式（Chat Completions / Responses），选择 Responses 后请求和响应均走 Responses API 转换路径
   3. Responses API 非流式和流式两条路径均能将上游响应正确转换回 Anthropic 格式，Claude Code 正常解析
-**Plans**: TBD
 
 ## Progress
 
@@ -135,9 +144,9 @@ Plans:
 | 12. 全栈实现 | v2.1 | 4/4 | Complete | 2026-03-14 |
 | 13. 端到端验证 | v2.1 | 1/1 | Complete | 2026-03-14 |
 | 14. 数据模型 + 转换核心 | v2.2 | 4/4 | Complete | 2026-03-14 |
-| 15. Handler 集成与协议路由 | 2/2 | Complete    | 2026-03-14 | - |
-| 16. Responses API + Provider UI | v2.2 | 0/? | Not started | - |
+| 15. Handler 集成与协议路由 | v2.2 | 2/2 | Complete | 2026-03-14 |
+| 16. Responses API + Provider UI | v2.2 | 0/4 | Not started | - |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*
-*Last updated: 2026-03-14 — Phase 15 planned: 2 plans (Wave 1 基础设施 + Wave 2 协议路由集成)*
+*Last updated: 2026-03-14 — Phase 16 planned: 4 plans (Wave 1 三路并行转换+UI + Wave 2 handler 集成)*
