@@ -87,6 +87,11 @@ Plans:
 **Goal**: 转换层完整接入 proxy_handler，OpenAiCompatible Provider 请求自动走转换路径并按模型映射替换模型名，Anthropic Provider 零回归，端到端请求-响应链路验证通过
 **Depends on**: Phase 14 (三个转换模块就绪，数据模型扩展就绪)
 **Requirements**: ROUT-01, ROUT-02, MODL-03
+**Plans:** 2 plans
+
+Plans:
+- [ ] 15-01-PLAN.md — UpstreamTarget 扩展 + base_url 语义变更 + 全量构造点更新
+- [ ] 15-02-PLAN.md — handler.rs 协议路由分支 + 模型映射 + 集成测试
 
 **Parallel Execution Note:** 单一交付路线，先集成 handler，再做 E2E 验证。
 
@@ -95,7 +100,6 @@ Plans:
   2. 代理转换时请求中的模型名按映射表替换：精确匹配优先，无匹配时退回 default_model，default_model 也未配置时保留原模型名
   3. 现有 Anthropic Provider 请求经代理后行为与 v2.1 完全相同（透传路径不受任何影响），全部现有测试继续通过
   4. 流式请求（SSE）经代理转换后 Claude Code 逐 token 流式显示，工具调用流式返回后 Claude Code 正常解析，无截断或乱序
-**Plans**: TBD
 
 ### Phase 16: Responses API + Provider UI
 **Goal**: OpenAI Responses API 格式转换层可用，Provider 编辑界面支持配置默认模型和模型映射对，两条路线完成后整体 UI 工作流验证通过
@@ -130,10 +134,10 @@ Plans:
 | 11. 代理感知修复与文档同步 | v2.0 | 1/1 | Complete | 2026-03-14 |
 | 12. 全栈实现 | v2.1 | 4/4 | Complete | 2026-03-14 |
 | 13. 端到端验证 | v2.1 | 1/1 | Complete | 2026-03-14 |
-| 14. 数据模型 + 转换核心 | 4/4 | Complete    | 2026-03-14 | - |
-| 15. Handler 集成与协议路由 | v2.2 | 0/? | Not started | - |
+| 14. 数据模型 + 转换核心 | v2.2 | 4/4 | Complete | 2026-03-14 |
+| 15. Handler 集成与协议路由 | v2.2 | 0/2 | Not started | - |
 | 16. Responses API + Provider UI | v2.2 | 0/? | Not started | - |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*
-*Last updated: 2026-03-14 — Phase 14 planned: 4 plans (1 wave foundation + 3 wave parallel TDD)*
+*Last updated: 2026-03-14 — Phase 15 planned: 2 plans (Wave 1 基础设施 + Wave 2 协议路由集成)*
