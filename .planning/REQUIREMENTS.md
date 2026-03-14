@@ -100,7 +100,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LIVE-02 | Phase 10 | Complete |
 | LIVE-03 | Phase 10 | Complete |
 | LIVE-04 | Phase 9 | Complete |
-| UX-01 | Phase 10 | Pending |
+| UX-01 | Phase 11 | Pending |
 | UX-02 | Phase 9 | Complete |
 | UX-03 | Phase 8 | Complete |
 
@@ -111,4 +111,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-03-13*
-*Last updated: 2026-03-13 — traceability updated with phase mappings*
+*Last updated: 2026-03-14 — UX-01 reassigned to Phase 11 (gap closure)*

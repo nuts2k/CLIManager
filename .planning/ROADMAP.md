@@ -4,7 +4,7 @@
 
 - ✅ **v1.0 MVP** — Phases 1-5 (shipped 2026-03-12)
 - ✅ **v1.1 System Tray** — Phases 6-7 (shipped 2026-03-13)
-- 📋 **v2.0 Local Proxy** — Phases 8-10 (planned)
+- 📋 **v2.0 Local Proxy** — Phases 8-11 (planned)
 
 ## Phases
 
@@ -34,6 +34,7 @@
 - [x] **Phase 8: 代理核心** - axum HTTP 代理服务器，支持请求转发、SSE 流式透传、动态上游切换 (completed 2026-03-13)
 - [ ] **Phase 9: 模式切换与持久化** - 直连 vs 代理双模式切换，CLI 配置联动 patch，崩溃恢复，设置持久化
 - [x] **Phase 10: 实时切换与 UI 集成** - Provider 变更实时更新代理内存，前端开关控件，端口冲突检测 (completed 2026-03-14)
+- [ ] **Phase 11: 代理感知修复与文档同步** - 托盘/编辑路径代理感知修复，审计差距文档同步
 
 ## Phase Details
 
@@ -84,6 +85,17 @@ Plans:
 - [ ] 10-01-PLAN.md — 后端代理联动（watcher iCloud 同步 + update_provider/delete_provider 代理模式感知）
 - [ ] 10-02-PLAN.md — 前端 UI 集成（Switch 开关 + 状态指示 + 端口占用 toast + i18n）
 
+### Phase 11: 代理感知修复与文档同步
+**Goal**: 修复托盘菜单切换和 Provider 编辑路径的代理感知缺失，同步审计发现的文档差距
+**Depends on**: Phase 10
+**Requirements**: LIVE-01 (integration fix), LIVE-03 (integration fix), UX-01 (doc sync)
+**Gap Closure:** Closes gaps from v2.0 milestone audit
+**Success Criteria** (what must be TRUE):
+  1. 托盘菜单切换 Provider 时，代理模式下跳过 adapter.patch()，仅更新 active_providers 和代理上游
+  2. 编辑活跃 Provider 时，代理模式下跳过 patch_provider_for_cli，仅保存文件并更新代理上游
+  3. REQUIREMENTS.md UX-01 复选框标记为完成，10-02-SUMMARY.md 包含 requirements-completed 字段
+**Plans**: TBD
+
 ## Progress
 
 **Execution Order:** Phase 8 -> Phase 9 -> Phase 10
@@ -100,7 +112,8 @@ Plans:
 | 8. 代理核心 | v2.0 | 2/2 | Complete | 2026-03-13 |
 | 9. 模式切换与持久化 | 1/2 | In Progress|  | - |
 | 10. 实时切换与 UI 集成 | 2/2 | Complete    | 2026-03-14 | - |
+| 11. 代理感知修复与文档同步 | v2.0 | 0/0 | Not Started | - |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*
-*Last updated: 2026-03-14 (Phase 10 planned: 2 plans)*
+*Last updated: 2026-03-14 — added gap closure Phase 11*
