@@ -59,8 +59,8 @@ pub fn run() {
             watcher::start_file_watcher(handle)?;
 
             // 崩溃恢复：检测并还原遗留 takeover 标志
-            let providers_dir = crate::storage::icloud::get_icloud_providers_dir()
-                .map_err(|e| e.to_string())?;
+            let providers_dir =
+                crate::storage::icloud::get_icloud_providers_dir().map_err(|e| e.to_string())?;
             let local_settings_path = crate::storage::local::get_local_settings_path();
             if let Err(e) =
                 commands::proxy::recover_on_startup(&providers_dir, &local_settings_path)

@@ -120,7 +120,10 @@ impl ProxyServer {
         }
 
         let stop_result = {
-            let handle = self.server_handle.as_mut().expect("server_handle 已检查存在");
+            let handle = self
+                .server_handle
+                .as_mut()
+                .expect("server_handle 已检查存在");
             tokio::time::timeout(STOP_TIMEOUT, handle).await
         };
 
@@ -200,9 +203,7 @@ mod tests {
 
     /// 辅助函数：启动 mock 上游服务器
     /// 返回 (端口, 停机信号发送端)
-    async fn start_mock_upstream(
-        handler: Router,
-    ) -> (u16, oneshot::Sender<()>) {
+    async fn start_mock_upstream(handler: Router) -> (u16, oneshot::Sender<()>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let (tx, rx) = oneshot::channel::<()>();
@@ -252,9 +253,7 @@ mod tests {
         // 创建 mock 上游服务器
         let mock_app = Router::new().route(
             "/v1/messages",
-            get(|| async {
-                Json(json!({"id": "msg_123", "content": "Hello from upstream"}))
-            }),
+            get(|| async { Json(json!({"id": "msg_123", "content": "Hello from upstream"})) }),
         );
         let (upstream_port, upstream_shutdown) = start_mock_upstream(mock_app).await;
 
@@ -292,20 +291,18 @@ mod tests {
     #[tokio::test]
     async fn test_credential_replacement_e2e() {
         // 创建 mock 上游，检查收到的 headers
-        let mock_app = Router::new().fallback(
-            |req: Request| async move {
-                // 检查是否收到了真实 API key（而非 PROXY_MANAGED）
-                let api_key = req
-                    .headers()
-                    .get("x-api-key")
-                    .map(|v| v.to_str().unwrap_or("").to_string())
-                    .unwrap_or_default();
+        let mock_app = Router::new().fallback(|req: Request| async move {
+            // 检查是否收到了真实 API key（而非 PROXY_MANAGED）
+            let api_key = req
+                .headers()
+                .get("x-api-key")
+                .map(|v| v.to_str().unwrap_or("").to_string())
+                .unwrap_or_default();
 
-                Json(json!({
-                    "received_api_key": api_key,
-                }))
-            },
-        );
+            Json(json!({
+                "received_api_key": api_key,
+            }))
+        });
         let (upstream_port, upstream_shutdown) = start_mock_upstream(mock_app).await;
 
         // 启动代理
@@ -353,9 +350,11 @@ mod tests {
                 "data: [DONE]\n\n",
             ];
 
-            let stream = futures::stream::iter(chunks.into_iter().map(|chunk| {
-                Ok::<Bytes, Infallible>(Bytes::from(chunk))
-            }));
+            let stream = futures::stream::iter(
+                chunks
+                    .into_iter()
+                    .map(|chunk| Ok::<Bytes, Infallible>(Bytes::from(chunk))),
+            );
 
             let body = axum::body::Body::from_stream(stream);
             axum::response::Response::builder()
@@ -390,7 +389,12 @@ mod tests {
 
         assert_eq!(resp.status(), 200);
         // 验证 Content-Type 被透传
-        let content_type = resp.headers().get("content-type").unwrap().to_str().unwrap();
+        let content_type = resp
+            .headers()
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .unwrap();
         assert!(content_type.contains("text/event-stream"));
 
         // 读取完整响应体验证内容

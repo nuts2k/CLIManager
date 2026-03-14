@@ -37,9 +37,7 @@ impl IntoResponse for ProxyError {
     fn into_response(self) -> Response {
         let (status, message) = match &self {
             ProxyError::UpstreamUnreachable(_) => (StatusCode::BAD_GATEWAY, self.to_string()),
-            ProxyError::NoUpstreamConfigured => {
-                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
-            }
+            ProxyError::NoUpstreamConfigured => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
             _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
         };
 
@@ -88,7 +86,10 @@ mod tests {
 
         assert_eq!(status, StatusCode::BAD_GATEWAY);
         assert_eq!(json["error"]["type"], "proxy_error");
-        assert!(json["error"]["message"].as_str().unwrap().contains("上游不可达"));
+        assert!(json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("上游不可达"));
     }
 
     #[tokio::test]

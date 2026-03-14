@@ -184,10 +184,10 @@ impl ProxyService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::body::{Body, Bytes};
     use crate::provider::ProtocolType;
-    use axum::Json;
+    use axum::body::{Body, Bytes};
     use axum::response::Response;
+    use axum::Json;
     use axum::Router;
     use futures::StreamExt;
     use serde_json::{json, Value};
@@ -363,10 +363,8 @@ mod tests {
     #[tokio::test]
     async fn test_proxy_service_update_upstream() {
         // 启动两个 mock 上游
-        let (upstream1_port, shutdown1) =
-            start_mock_upstream(json!({"source": "original"})).await;
-        let (upstream2_port, shutdown2) =
-            start_mock_upstream(json!({"source": "updated"})).await;
+        let (upstream1_port, shutdown1) = start_mock_upstream(json!({"source": "original"})).await;
+        let (upstream2_port, shutdown2) = start_mock_upstream(json!({"source": "updated"})).await;
 
         let service = ProxyService::new();
 
@@ -499,11 +497,7 @@ mod tests {
             move || {
                 let blocker = blocker.clone();
                 async move {
-                    let wait_rx = blocker
-                        .lock()
-                        .await
-                        .take()
-                        .expect("仅应消费一次阻塞信号");
+                    let wait_rx = blocker.lock().await.take().expect("仅应消费一次阻塞信号");
 
                     let stream = futures::stream::once(async {
                         Ok::<Bytes, Infallible>(Bytes::from_static(b"data: start\n\n"))

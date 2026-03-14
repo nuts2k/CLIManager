@@ -94,10 +94,8 @@ pub async fn proxy_handler(
                 req_builder = req_builder.header("x-api-key", &upstream.api_key);
             }
             ProtocolType::OpenAiCompatible => {
-                req_builder = req_builder.header(
-                    "Authorization",
-                    format!("Bearer {}", upstream.api_key),
-                );
+                req_builder =
+                    req_builder.header("Authorization", format!("Bearer {}", upstream.api_key));
             }
         }
     }
@@ -118,7 +116,10 @@ pub async fn proxy_handler(
     for (key, value) in resp_headers.iter() {
         let k = key.as_str().to_lowercase();
         // 过滤响应中的 hop-by-hop headers（不含 host，host 只在请求中过滤）
-        if matches!(k.as_str(), "transfer-encoding" | "content-length" | "connection") {
+        if matches!(
+            k.as_str(),
+            "transfer-encoding" | "content-length" | "connection"
+        ) {
             continue;
         }
         builder = builder.header(key, value);

@@ -109,6 +109,9 @@ mod tests {
         };
         assert_eq!(target.api_key, "key-123");
         assert_eq!(target.base_url, "https://example.com");
-        assert!(matches!(target.protocol_type, ProtocolType::OpenAiCompatible));
+        assert!(matches!(
+            target.protocol_type,
+            ProtocolType::OpenAiCompatible
+        ));
     }
 }

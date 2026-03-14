@@ -76,14 +76,20 @@ pub fn create_tray_menu(app: &AppHandle) -> Result<Menu<Wry>, Box<dyn std::error
     let mut builder = MenuBuilder::new(app);
 
     // "Open Main Window"
-    let show_item =
-        MenuItem::with_id(app, "show_main", texts.show_main, true, None::<&str>).map_err(menu_err)?;
+    let show_item = MenuItem::with_id(app, "show_main", texts.show_main, true, None::<&str>)
+        .map_err(menu_err)?;
     builder = builder.item(&show_item).separator();
 
     // CLI sections: Claude Code first, then Codex (user decision)
     let mut has_any_providers = false;
-    for (cli_id, header_label) in [("claude", texts.claude_header), ("codex", texts.codex_header)] {
-        let mut cli_providers: Vec<_> = all_providers.iter().filter(|p| p.cli_id == cli_id).collect();
+    for (cli_id, header_label) in [
+        ("claude", texts.claude_header),
+        ("codex", texts.codex_header),
+    ] {
+        let mut cli_providers: Vec<_> = all_providers
+            .iter()
+            .filter(|p| p.cli_id == cli_id)
+            .collect();
 
         // Hide CLI groups with no providers (user decision)
         if cli_providers.is_empty() {
@@ -142,11 +148,12 @@ pub fn create_tray_menu(app: &AppHandle) -> Result<Menu<Wry>, Box<dyn std::error
     }
 
     // "Quit"
-    let quit =
-        MenuItem::with_id(app, "quit", texts.quit, true, None::<&str>).map_err(menu_err)?;
+    let quit = MenuItem::with_id(app, "quit", texts.quit, true, None::<&str>).map_err(menu_err)?;
     builder = builder.item(&quit);
 
-    builder.build().map_err(|e| Box::new(menu_err(e)) as Box<dyn std::error::Error>)
+    builder
+        .build()
+        .map_err(|e| Box::new(menu_err(e)) as Box<dyn std::error::Error>)
 }
 
 /// Rebuild the tray menu from current storage state and replace the running menu.
