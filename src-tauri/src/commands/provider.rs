@@ -505,42 +505,20 @@ pub async fn update_provider(
 pub async fn delete_provider(
     app_handle: tauri::AppHandle,
     id: String,
-    proxy_service: State<'_, crate::proxy::ProxyService>,
 ) -> Result<(), AppError> {
     let dir = crate::storage::icloud::get_icloud_providers_dir()?;
     let settings_path = crate::storage::local::get_local_settings_path();
 
-    // 代理模式联动：删除前检查是否有代理模式 CLI 正在使用该 Provider
+    // 代理模式下不允许删除活跃 Provider
     let settings = crate::storage::local::read_local_settings_from(&settings_path)?;
-    let global_enabled = settings
-        .proxy
-        .as_ref()
-        .map_or(false, |p| p.global_enabled);
-    if global_enabled {
-        if let Some(ref takeover) = settings.proxy_takeover {
-            for cli_id in &takeover.cli_ids {
-                let active_pid = settings.active_providers.get(cli_id);
-                if active_pid == Some(&Some(id.clone())) {
-                    // 先关闭该 CLI 的代理模式（还原 CLI 配置、停止代理服务器、更新 local.json）
-                    crate::commands::proxy::_proxy_disable_in(
-                        &dir,
-                        &settings_path,
-                        cli_id,
-                        &proxy_service,
-                        None,
-                    )
-                    .await
-                    .map_err(|e| {
-                        log::error!(
-                            "代理联动：delete_provider 关闭代理失败，中止删除: cli_id={}, err={}",
-                            cli_id,
-                            e
-                        );
-                        e
-                    })?;
-                    log::info!("代理联动：delete_provider 已关闭代理: cli_id={}", cli_id);
-                    app_handle.emit("proxy-mode-changed", ()).ok();
-                }
+    if let Some(ref takeover) = settings.proxy_takeover {
+        for cli_id in &takeover.cli_ids {
+            let active_pid = settings.active_providers.get(cli_id);
+            if active_pid == Some(&Some(id.clone())) {
+                return Err(AppError::Validation(format!(
+                    "该 Provider 正在被 {} 代理模式使用，请先关闭代理后再删除",
+                    cli_id
+                )));
             }
         }
     }
