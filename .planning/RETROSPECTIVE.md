@@ -90,6 +90,54 @@
 
 ---
 
+## Milestone: v2.0 — Local Proxy
+
+**Shipped:** 2026-03-14
+**Phases:** 4 | **Plans:** 7 | **Commits:** 54
+
+### What Was Built
+- axum 0.8 HTTP 代理引擎 — 全路径转发、SSE 流式透传、凭据动态替换、健康自检、多端口管理
+- 直连/代理双模式切换 — 全局总开关 + 每 CLI 独立开关 + 状态持久化
+- 退出清理与崩溃恢复 — 正常退出同步还原 + takeover 标志异常检测 + 启动自动恢复
+- iCloud 同步与 Provider CRUD 代理联动 — watcher/update_provider/delete_provider 全部代理感知
+- 前端代理模式 UI — Switch 组件、useProxyStatus hook、绿色状态点、端口冲突 toast
+- 托盘菜单与编辑路径代理感知修复（Phase 11 gap closure）
+
+### What Worked
+- Phase 8 → 9 → 10 依赖链清晰：代理引擎 → 模式切换 → UI 集成，每层建立在上一层之上
+- 审计驱动的 gap closure：Phase 11 由 milestone audit 发现的 2 个集成差距直接驱动，精准修复
+- _in 内部函数变体 + skip_patch 参数模式：代理/直连分支无需改变公共 API 签名
+- determine_tray_switch_mode 纯函数提取：解耦测试与 AppHandle async 上下文
+- ProxyGlobalToggleLock 防止全局开关竞态条件
+
+### What Was Inefficient
+- Phase 9 ROADMAP.md 计划复选框未更新（显示 `[ ]` 但实际已完成）
+- 早期 SUMMARY.md（08-01 到 10-01）缺少 requirements-completed 前言字段 — 该字段在 10-02 才引入
+- Phase 11 Nyquist 验证未完成（draft 状态）
+- 代理模式 provider 同步时序问题导致 3 次 hotfix commits（竞态条件调试）
+
+### Patterns Established
+- `TraySwitchMode` 枚举 + 纯函数判断代理/直连路径 — 可测试的路径选择
+- `skip_patch: bool` 参数模式 — 调用层控制是否 patch CLI 配置
+- `tauri::async_runtime::spawn` 代替 `spawn_blocking` — 支持 async 代理函数调用
+- `proxy-mode-changed` 事件驱动 UI 刷新 — useProxyStatus hook 自动监听
+- `ProxySettings + ProxyTakeover` 本地持久化分离 — 开关状态与接管标志独立存储
+- `update_proxy_upstream_if_needed` — watcher 中代理上游联动的标准入口
+
+### Key Lessons
+1. 代理模式下所有修改 CLI 配置的路径都必须检查代理状态 — 遗漏一个就是 bug（tray、edit provider 两处遗漏由审计发现）
+2. 竞态条件在代理模式切换中很容易出现 — ProxyGlobalToggleLock 和操作顺序（先同步后异步）是关键
+3. takeover 标志持久化是崩溃恢复的正确方案 — 比依赖 drop/析构函数可靠
+4. 审计驱动的 gap closure 模式有效 — 独立 phase 精准修复比在已有 phase 追加更清晰
+5. 端口冲突检测依赖字符串匹配是脆弱的 — 应考虑结构化错误类型传递
+
+### Cost Observations
+- Model mix: balanced profile (sonnet-based agents, opus orchestration)
+- Total execution: ~35 min for 7 plans (avg 5min/plan)
+- Notable: 2-day milestone from research to shipped — proxy feature self-contained within existing architecture
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -98,6 +146,7 @@
 |-----------|---------|--------|------------|
 | v1.0 | 85 | 5 | Initial project — established patterns and conventions |
 | v1.1 | ~10 | 2 | Tray feature — clean extension of existing architecture |
+| v2.0 | 54 | 4 | Local proxy — new subsystem (axum) + audit-driven gap closure |
 
 ### Cumulative Quality
 
@@ -105,9 +154,12 @@
 |-----------|-----|-------|-------------------|
 | v1.0 | 7,986 | 143 | 6min |
 | v1.1 | 8,441 | 16 modified | 8min |
+| v2.0 | ~12,000 | 56 modified | 5min |
 
 ### Top Lessons (Verified Across Milestones)
 
 1. Design for iCloud from the start — per-file JSON + two-layer storage eliminates sync conflicts
 2. Surgical patching via structured data merge preserves what whole-file writes destroy
 3. All state change sources must trigger tray refresh — missing one is a bug (verified v1.1)
+4. All CLI config modification paths must check proxy state — missing one breaks proxy mode (verified v2.0)
+5. Audit-driven gap closure is effective — independent phases for precise fixes (verified v2.0)
