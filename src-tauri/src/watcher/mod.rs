@@ -61,6 +61,9 @@ fn process_events(events: Vec<DebouncedEvent>, app_handle: &AppHandle) {
         }
     };
 
+    // 代理模式联动：iCloud 同步变更活跃 Provider 时，自动更新代理上游
+    update_proxy_upstream_if_needed(app_handle, &changed_files);
+
     let payload = ProvidersChangedPayload {
         changed_files,
         repatched,
@@ -73,6 +76,104 @@ fn process_events(events: Vec<DebouncedEvent>, app_handle: &AppHandle) {
     // Rebuild tray menu to reflect provider changes from iCloud sync
     #[cfg(desktop)]
     crate::tray::update_tray_menu(app_handle);
+}
+
+/// 代理模式联动：检查变更的文件是否对应代理模式下的活跃 Provider，
+/// 如果是则通过 spawn async 更新代理上游。
+///
+/// process_events 在 notify 回调中执行，是同步上下文，不能直接 `.await`，
+/// 因此使用 `tauri::async_runtime::spawn` 提交异步操作。
+fn update_proxy_upstream_if_needed(app_handle: &AppHandle, changed_files: &[String]) {
+    let settings_path = crate::storage::local::get_local_settings_path();
+    let settings = match crate::storage::local::read_local_settings_from(&settings_path) {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("代理联动：读取 local settings 失败: {}", e);
+            return;
+        }
+    };
+
+    // 检查代理全局开关和 takeover 状态
+    let global_enabled = settings
+        .proxy
+        .as_ref()
+        .map_or(false, |p| p.global_enabled);
+    if !global_enabled {
+        return;
+    }
+
+    let cli_ids = match settings.proxy_takeover {
+        Some(ref t) if !t.cli_ids.is_empty() => &t.cli_ids,
+        _ => return,
+    };
+
+    let providers_dir = match crate::storage::icloud::get_icloud_providers_dir() {
+        Ok(d) => d,
+        Err(e) => {
+            log::error!("代理联动：获取 providers 目录失败: {}", e);
+            return;
+        }
+    };
+
+    for cli_id in cli_ids {
+        // 获取该 CLI 的活跃 Provider ID
+        let active_provider_id = match settings.active_providers.get(cli_id) {
+            Some(Some(pid)) => pid,
+            _ => continue,
+        };
+
+        // 检查该 Provider ID 是否在 changed_files 中（changed_files 元素是文件 stem，即 provider id）
+        if !changed_files.iter().any(|f| f == active_provider_id) {
+            continue;
+        }
+
+        // 从 iCloud 重新读取该 Provider，构造 UpstreamTarget
+        let provider = match crate::storage::icloud::get_provider_in(&providers_dir, active_provider_id) {
+            Ok(p) => p,
+            Err(e) => {
+                log::error!(
+                    "代理联动：读取 Provider 失败: cli_id={}, provider_id={}, err={}",
+                    cli_id,
+                    active_provider_id,
+                    e
+                );
+                continue;
+            }
+        };
+
+        let base_url = match crate::provider::extract_origin_base_url(&provider.base_url) {
+            Ok(url) => url,
+            Err(e) => {
+                log::error!(
+                    "代理联动：解析 base_url 失败: cli_id={}, err={}",
+                    cli_id,
+                    e
+                );
+                continue;
+            }
+        };
+
+        let upstream = crate::proxy::UpstreamTarget {
+            api_key: provider.api_key.clone(),
+            base_url,
+            protocol_type: provider.protocol_type.clone(),
+        };
+
+        let cli_id_owned = cli_id.clone();
+        let handle_clone = app_handle.clone();
+        tauri::async_runtime::spawn(async move {
+            let proxy_service = handle_clone.state::<crate::proxy::ProxyService>();
+            if let Err(e) = proxy_service.update_upstream(&cli_id_owned, upstream).await {
+                log::error!(
+                    "代理联动：更新上游失败: cli_id={}, err={}",
+                    cli_id_owned,
+                    e
+                );
+            } else {
+                log::info!("代理联动：iCloud 同步后已更新上游: cli_id={}", cli_id_owned);
+            }
+        });
+    }
 }
 
 /// Pure function: filter events to .json files, exclude self-writes, deduplicate by file stem.
