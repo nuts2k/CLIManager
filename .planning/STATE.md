@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: 协议转换
 status: planning
-stopped_at: Phase 16 context gathered
-last_updated: "2026-03-14T15:03:40.765Z"
+stopped_at: Completed 16-03-PLAN.md
+last_updated: "2026-03-14T15:35:16.951Z"
 last_activity: 2026-03-14 — v2.2 roadmap restructured (3 phases, 27 requirements, max parallelism)
 progress:
   total_phases: 3
   completed_phases: 2
-  total_plans: 6
-  completed_plans: 6
+  total_plans: 10
+  completed_plans: 7
   percent: 100
 ---
 
@@ -59,6 +59,7 @@ Progress: [██████████] 100% (Phase 14 完成)
 - [Phase 14-data-model-translate-core]: stream.rs 中 map_finish_reason 使用局部副本，不依赖 response.rs，保持 Wave 2 并行编译独立性
 - [Phase 15-handler]: build_upstream_target_from_provider 直接保留 provider.base_url，不再调用 extract_origin_base_url——Provider base_url 已在创建时校验，handler 层需要完整路径供 URL 拼接
 - [Phase 15-handler]: apply_upstream_model_mapping 在 anthropic_to_openai 之前执行——model 字段由 request.rs 原样透传，映射必须在 handler 层转换前完成
+- [Phase 16]: ProtocolType 三变体 + 旧 open_ai_compatible 向前兼容映射 + 模型映射 Array/Record 双向转换
 
 ### Pending Todos
 
@@ -71,6 +72,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-14T15:03:40.762Z
-Stopped at: Phase 16 context gathered
-Resume file: .planning/phases/16-responses-api-provider-ui/16-CONTEXT.md
+Last session: 2026-03-14T15:35:16.948Z
+Stopped at: Completed 16-03-PLAN.md
+Resume file: None

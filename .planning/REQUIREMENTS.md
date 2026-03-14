@@ -43,11 +43,11 @@ Requirements for v2.2 协议转换。让 Claude Code 通过代理模式使用 Op
 - [x] **MODL-01**: Provider 数据模型支持存储默认目标模型名（缺省映射）
 - [x] **MODL-02**: Provider 数据模型支持存储任意个模型名映射对（Anthropic 名 → 目标名）
 - [x] **MODL-03**: 代理转换时按映射表自动替换请求中的模型名（精确匹配优先，无匹配时用默认模型）
-- [ ] **MODL-04**: Provider 编辑 UI 支持配置默认模型和映射对
+- [x] **MODL-04**: Provider 编辑 UI 支持配置默认模型和映射对
 
 ### Responses API
 
-- [ ] **RAPI-01**: Provider 可配置目标 API 格式（Chat Completions 或 Responses）
+- [x] **RAPI-01**: Provider 可配置目标 API 格式（Chat Completions 或 Responses）
 - [ ] **RAPI-02**: 选择 Responses 格式时，请求自动转换为 Responses API 格式
 - [ ] **RAPI-03**: Responses API 非流式响应正确转换回 Anthropic 格式
 - [ ] **RAPI-04**: Responses API 流式事件正确转换为 Anthropic SSE 格式
@@ -102,11 +102,11 @@ Requirements for v2.2 协议转换。让 Claude Code 通过代理模式使用 Op
 | ROUT-01 | Phase 15 | Complete |
 | ROUT-02 | Phase 15 | Complete |
 | MODL-03 | Phase 15 | Complete |
-| RAPI-01 | Phase 16 | Pending |
+| RAPI-01 | Phase 16 | Complete |
 | RAPI-02 | Phase 16 | Pending |
 | RAPI-03 | Phase 16 | Pending |
 | RAPI-04 | Phase 16 | Pending |
-| MODL-04 | Phase 16 | Pending |
+| MODL-04 | Phase 16 | Complete |
 
 **Coverage:**
 - v2.2 requirements: 27 total
