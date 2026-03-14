@@ -3,10 +3,13 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::Response;
 use axum::Json;
+use bytes::Bytes;
 use serde_json::{json, Value};
+use std::collections::HashMap;
 
 use super::error::ProxyError;
-use super::state::ProxyState;
+use super::state::{ProxyState, UpstreamTarget};
+use super::translate;
 use crate::provider::ProtocolType;
 
 /// 健康检查端点：GET /health -> {"status": "ok"}
@@ -20,6 +23,40 @@ fn is_hop_by_hop(header_name: &str) -> bool {
         header_name.to_lowercase().as_str(),
         "host" | "content-length" | "transfer-encoding" | "connection"
     )
+}
+
+/// 应用上游模型映射——三级优先级：精确匹配 > upstream_model 默认 > 保留原名
+///
+/// - 精确匹配：upstream_model_map 中有该模型名的条目时使用映射值
+/// - 退回默认：无精确匹配但存在 upstream_model 时使用 upstream_model
+/// - 保留原名：两者均为 None 时不修改 model 字段
+fn apply_upstream_model_mapping(mut body: Value, upstream: &UpstreamTarget) -> Value {
+    let original_model = body
+        .get("model")
+        .and_then(|m| m.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let mapped_model = if let Some(model_map) = &upstream.upstream_model_map {
+        // 优先精确匹配
+        model_map
+            .get(&original_model)
+            .cloned()
+            .or_else(|| upstream.upstream_model.clone())
+            .unwrap_or(original_model)
+    } else {
+        // 无 model_map，退回 upstream_model 或保留原名
+        upstream
+            .upstream_model
+            .clone()
+            .unwrap_or(original_model)
+    };
+
+    if let Some(obj) = body.as_object_mut() {
+        obj.insert("model".to_string(), json!(mapped_model));
+    }
+
+    body
 }
 
 /// 全路径透传代理 handler
@@ -51,13 +88,52 @@ pub async fn proxy_handler(
         .await
         .map_err(|e| ProxyError::Internal(format!("读取请求体失败: {}", e)))?;
 
-    // 步骤 D：拼接上游 URL
-    let upstream_url = format!(
-        "{}{}{}",
-        upstream.base_url.trim_end_matches('/'),
-        path,
-        query
-    );
+    // 步骤 C 之后：协议路由分支
+    let (upstream_url, final_body_bytes, is_streaming, request_model) =
+        match upstream.protocol_type {
+            ProtocolType::OpenAiChatCompletions => {
+                // 1. 解析请求体
+                let body_value: Value = serde_json::from_slice(&body_bytes)
+                    .map_err(|e| ProxyError::TranslateError(format!("无法解析请求体: {}", e)))?;
+
+                // 2. 提取 stream 标志（转换前读取）
+                let is_streaming = body_value
+                    .get("stream")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+
+                // 3. 提取原始模型名（用于流式 SSE 事件）
+                let request_model = body_value
+                    .get("model")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+
+                // 4. 模型名映射（在转换前执行，MODL-03）
+                let body_value = apply_upstream_model_mapping(body_value, &upstream);
+
+                // 5. 请求转换 + 端点重写
+                let openai_body = translate::request::anthropic_to_openai(body_value)?;
+                let url = translate::request::build_proxy_endpoint_url(
+                    &upstream.base_url,
+                    "/chat/completions",
+                );
+                let new_bytes = serde_json::to_vec(&openai_body)
+                    .map_err(|e| ProxyError::Internal(e.to_string()))?;
+
+                (url, Bytes::from(new_bytes), is_streaming, request_model)
+            }
+            ProtocolType::Anthropic | ProtocolType::OpenAiResponses => {
+                // 透传路径：URL 拼接与现有逻辑一致
+                let url = format!(
+                    "{}{}{}",
+                    upstream.base_url.trim_end_matches('/'),
+                    path,
+                    query
+                );
+                (url, body_bytes, false, String::new())
+            }
+        };
 
     // 步骤 E & F：构建 reqwest 请求，透传 headers（跳过 hop-by-hop + 替换凭据）
     let mut req_builder = state.http_client.request(method, &upstream_url);
@@ -102,7 +178,7 @@ pub async fn proxy_handler(
 
     // 步骤 H：发送请求
     let upstream_resp = req_builder
-        .body(body_bytes.to_vec())
+        .body(final_body_bytes.to_vec())
         .send()
         .await
         .map_err(|e| ProxyError::UpstreamUnreachable(e.to_string()))?;
@@ -125,8 +201,38 @@ pub async fn proxy_handler(
         builder = builder.header(key, value);
     }
 
-    // 步骤 J：响应体流式透传——bytes_stream() + Body::from_stream()
-    let body = Body::from_stream(upstream_resp.bytes_stream());
+    // 步骤 J：按 protocol_type 分支处理响应体
+    let body = match upstream.protocol_type {
+        ProtocolType::OpenAiChatCompletions => {
+            if !status.is_success() {
+                // 4xx/5xx 直接透传（RESP-05）
+                Body::from_stream(upstream_resp.bytes_stream())
+            } else if is_streaming {
+                // 流式：wrap 为 SSE 转换流
+                Body::from_stream(translate::stream::create_anthropic_sse_stream(
+                    upstream_resp.bytes_stream(),
+                    request_model,
+                ))
+            } else {
+                // 非流式：读完整响应，转换后返回
+                let resp_bytes = upstream_resp
+                    .bytes()
+                    .await
+                    .map_err(|e| ProxyError::Internal(format!("读取上游响应失败: {}", e)))?;
+                let resp_value: Value = serde_json::from_slice(&resp_bytes)
+                    .map_err(|e| ProxyError::TranslateError(format!("响应解析失败: {}", e)))?;
+                let anthropic_resp = translate::response::openai_to_anthropic(resp_value)?;
+                let resp_bytes = serde_json::to_vec(&anthropic_resp)
+                    .map_err(|e| ProxyError::Internal(e.to_string()))?;
+                Body::from(resp_bytes)
+            }
+        }
+        _ => {
+            // Anthropic / OpenAiResponses：透传（现有行为）
+            Body::from_stream(upstream_resp.bytes_stream())
+        }
+    };
+
     builder
         .body(body)
         .map_err(|e| ProxyError::Internal(e.to_string()))
@@ -136,6 +242,61 @@ pub async fn proxy_handler(
 mod tests {
     use super::*;
     use axum::http::header::HeaderMap;
+
+    // ── apply_upstream_model_mapping 单元测试 ──
+
+    #[test]
+    fn test_model_exact_match_wins_over_default() {
+        // upstream_model_map 中有精确匹配条目时，使用映射值（优先级最高）
+        let mut model_map = HashMap::new();
+        model_map.insert(
+            "claude-3-5-sonnet-20241022".to_string(),
+            "gpt-4o".to_string(),
+        );
+        let upstream = UpstreamTarget {
+            api_key: "key".to_string(),
+            base_url: "http://example.com".to_string(),
+            protocol_type: ProtocolType::OpenAiChatCompletions,
+            upstream_model: Some("gpt-3.5-turbo".to_string()), // 默认值，应被精确匹配覆盖
+            upstream_model_map: Some(model_map),
+        };
+        let body = json!({"model": "claude-3-5-sonnet-20241022", "messages": []});
+        let result = apply_upstream_model_mapping(body, &upstream);
+        assert_eq!(result["model"], "gpt-4o");
+    }
+
+    #[test]
+    fn test_model_fallback_to_upstream_model() {
+        // map 中无精确匹配时，退回 upstream_model 默认模型
+        let mut model_map = HashMap::new();
+        model_map.insert("claude-3-opus".to_string(), "gpt-4-turbo".to_string());
+        let upstream = UpstreamTarget {
+            api_key: "key".to_string(),
+            base_url: "http://example.com".to_string(),
+            protocol_type: ProtocolType::OpenAiChatCompletions,
+            upstream_model: Some("gpt-4o-mini".to_string()),
+            upstream_model_map: Some(model_map),
+        };
+        // 请求的模型名不在 map 中
+        let body = json!({"model": "claude-3-5-sonnet-20241022", "messages": []});
+        let result = apply_upstream_model_mapping(body, &upstream);
+        assert_eq!(result["model"], "gpt-4o-mini");
+    }
+
+    #[test]
+    fn test_model_preserved_when_no_mapping() {
+        // upstream_model 和 upstream_model_map 均为 None 时保留原模型名
+        let upstream = UpstreamTarget {
+            api_key: "key".to_string(),
+            base_url: "http://example.com".to_string(),
+            protocol_type: ProtocolType::OpenAiChatCompletions,
+            upstream_model: None,
+            upstream_model_map: None,
+        };
+        let body = json!({"model": "claude-3-5-sonnet-20241022", "messages": []});
+        let result = apply_upstream_model_mapping(body, &upstream);
+        assert_eq!(result["model"], "claude-3-5-sonnet-20241022");
+    }
 
     #[tokio::test]
     async fn test_health_handler_returns_ok() {
