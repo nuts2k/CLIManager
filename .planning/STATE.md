@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: 协议转换
 status: planning
-stopped_at: Completed 16-03-PLAN.md
-last_updated: "2026-03-14T15:35:16.951Z"
+stopped_at: Completed 16-01-PLAN.md (anthropic_to_responses 纯函数)
+last_updated: "2026-03-14T15:36:38.190Z"
 last_activity: 2026-03-14 — v2.2 roadmap restructured (3 phases, 27 requirements, max parallelism)
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 10
-  completed_plans: 7
+  completed_plans: 8
   percent: 100
 ---
 
@@ -60,6 +60,8 @@ Progress: [██████████] 100% (Phase 14 完成)
 - [Phase 15-handler]: build_upstream_target_from_provider 直接保留 provider.base_url，不再调用 extract_origin_base_url——Provider base_url 已在创建时校验，handler 层需要完整路径供 URL 拼接
 - [Phase 15-handler]: apply_upstream_model_mapping 在 anthropic_to_openai 之前执行——model 字段由 request.rs 原样透传，映射必须在 handler 层转换前完成
 - [Phase 16]: ProtocolType 三变体 + 旧 open_ai_compatible 向前兼容映射 + 模型映射 Array/Record 双向转换
+- [Phase 16-01]: image block 转换为 {type:'input_image', image_url:'data:...'} 格式（符合 Responses API 规范）
+- [Phase 16-01]: 复用 super::request::clean_schema 避免重复实现
 
 ### Pending Todos
 
@@ -72,6 +74,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-14T15:35:16.948Z
-Stopped at: Completed 16-03-PLAN.md
+Last session: 2026-03-14T15:36:38.188Z
+Stopped at: Completed 16-01-PLAN.md (anthropic_to_responses 纯函数)
 Resume file: None
