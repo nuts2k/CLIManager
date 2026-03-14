@@ -38,7 +38,7 @@
 
 </details>
 
-### 🚧 v2.1 Release Engineering (In Progress)
+### v2.1 Release Engineering (In Progress)
 
 **Milestone Goal:** 建立完整的构建、签名、分发和自动更新流程，让 app 能实际安装使用并持续迭代
 
@@ -65,23 +65,24 @@
 **Parallelism**: Wave 1 → Wave 2 (3 路并行)
 
 Plans:
-- [ ] 12-01-PLAN.md — 密钥与配置基础 [REL-01, SIGN-02, SIGN-03] — Wave 1
-- [ ] 12-02-PLAN.md — CI/CD 流水线 [CICD-01, CICD-02, CICD-03, SIGN-01, REL-03] — Wave 2
-- [ ] 12-03-PLAN.md — Updater 插件与自定义 UI [UPD-01, UPD-02, UPD-03, UPD-04] — Wave 2
-- [ ] 12-04-PLAN.md — 发版脚本与用户引导 [REL-02, REL-03] — Wave 2
+- [x] 12-01-PLAN.md — 密钥与配置基础 [REL-01, SIGN-02, SIGN-03] — Wave 1
+- [x] 12-02-PLAN.md — CI/CD 流水线 [CICD-01, CICD-02, CICD-03, SIGN-01, REL-03] — Wave 2
+- [x] 12-03-PLAN.md — Updater 插件与自定义 UI [UPD-01, UPD-02, UPD-03, UPD-04] — Wave 2
+- [x] 12-04-PLAN.md — 发版脚本与用户引导 [REL-02, REL-03] — Wave 2
 
 ### Phase 13: 端到端验证
-**Goal**: 完整发版流程端到端验证：release script → CI build → updater check → download → install → relaunch
+**Goal**: 完整发版流程端到端验证：release script -> CI build -> updater check -> download -> install -> relaunch
 **Depends on**: Phase 12 (所有代码和配置变更完成)
-**Requirements**: (验证 Phase 12 所有需求的集成)
+**Requirements**: CICD-01, CICD-02, CICD-03, SIGN-01, SIGN-02, SIGN-03, UPD-01, UPD-02, UPD-03, UPD-04, REL-01, REL-02, REL-03
+**Plans:** 1 plan
 **Success Criteria** (what must be TRUE):
-  1. 发版脚本创建的 tag 成功触发 CI，双架构 DMG 出现在 GitHub Release Draft
-  2. Publish Release 后，已安装的旧版 app 启动时检测到新版本并弹出更新提示
+  1. 发版脚本创建的 tag 成功触发 CI，双架构 DMG 出现在 GitHub Release（非 Draft）
+  2. 已安装的旧版 app 启动时检测到新版本并弹出更新提示
   3. 用户确认更新后，下载、签名验证、安装、重启全部自动完成，新版本正常运行
-  4. aarch64 和 x86_64 两个架构均端到端验证通过
+  4. aarch64 完整端到端验证，x86_64 CI 产物检查通过
 
 Plans:
-- [ ] 13-01: 端到端发版与更新验证
+- [ ] 13-01-PLAN.md — 端到端发版与更新验证 [全部需求] — Wave 1
 
 ## Progress
 
@@ -98,9 +99,9 @@ Plans:
 | 9. 模式切换与持久化 | v2.0 | 2/2 | Complete | 2026-03-13 |
 | 10. 实时切换与 UI 集成 | v2.0 | 2/2 | Complete | 2026-03-14 |
 | 11. 代理感知修复与文档同步 | v2.0 | 1/1 | Complete | 2026-03-14 |
-| 12. 全栈实现 | 4/4 | Complete    | 2026-03-14 | - |
+| 12. 全栈实现 | v2.1 | 4/4 | Complete | 2026-03-14 |
 | 13. 端到端验证 | v2.1 | 0/1 | Not started | - |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*
-*Last updated: 2026-03-14 — Phase 12 plans created (4 plans, 2 waves)*
+*Last updated: 2026-03-14 — Phase 13 plan created (1 plan, 1 wave)*
