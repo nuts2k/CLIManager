@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import type { UpdateStatus } from "./useUpdater";
+import { RESTART_REQUIRED_ERROR, type UpdateStatus } from "./useUpdater";
 
 interface UpdateDialogProps {
   open: boolean;
@@ -17,6 +17,7 @@ interface UpdateDialogProps {
   currentVersion: string;
   newVersion: string | null;
   progress: number;
+  error: string | null;
   onUpdate: () => void;       // 开始下载安装
   onRemindLater: () => void;  // 稍后提醒
 }
@@ -28,10 +29,12 @@ export function UpdateDialog({
   currentVersion,
   newVersion,
   progress,
+  error,
   onUpdate,
   onRemindLater,
 }: UpdateDialogProps) {
   const { t } = useTranslation();
+  const isRestartRequired = error === RESTART_REQUIRED_ERROR;
 
   // 下载/安装中不允许关闭
   const isLocked = status === "downloading" || status === "ready";
@@ -108,7 +111,19 @@ export function UpdateDialog({
         {status === "error" && (
           <>
             <DialogHeader>
-              <DialogTitle>{t("updater.error")}</DialogTitle>
+              <DialogTitle>
+                {isRestartRequired
+                  ? t("updater.restartRequiredTitle")
+                  : t("updater.error")}
+              </DialogTitle>
+              {isRestartRequired && (
+                <DialogDescription>
+                  {t("updater.restartRequiredDescription")}
+                </DialogDescription>
+              )}
+              {!isRestartRequired && error && (
+                <DialogDescription>{error}</DialogDescription>
+              )}
             </DialogHeader>
             <DialogFooter showCloseButton>
               {/* showCloseButton 会渲染一个 Close 按钮 */}

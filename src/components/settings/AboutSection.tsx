@@ -1,13 +1,18 @@
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import type { UpdateStatus } from "@/components/updater/useUpdater";
+import {
+  RESTART_REQUIRED_ERROR,
+  type UpdateStatus,
+} from "@/components/updater/useUpdater";
 
 interface AboutSectionProps {
   onCheckUpdate: () => void;
   updateStatus: UpdateStatus;
   currentVersion: string;
   newVersion: string | null;
+  progress: number;
+  error: string | null;
   onUpdate?: () => void;  // 点击"更新到 vX.X.X"触发下载安装
 }
 
@@ -16,9 +21,12 @@ export function AboutSection({
   updateStatus,
   currentVersion,
   newVersion,
+  progress,
+  error,
   onUpdate,
 }: AboutSectionProps) {
   const { t } = useTranslation();
+  const isRestartRequired = error === RESTART_REQUIRED_ERROR;
 
   // 打开关于区域时自动触发检查更新
   useEffect(() => {
@@ -62,6 +70,39 @@ export function AboutSection({
           </Button>
         )}
 
+        {/* 下载中 */}
+        {updateStatus === "downloading" && (
+          <div className="w-full max-w-xs space-y-1">
+            <span className="text-sm text-muted-foreground">
+              {t("updater.downloading")}
+            </span>
+            {progress === -1 ? (
+              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                <div className="h-full w-1/3 animate-pulse rounded-full bg-primary" />
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all duration-300"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+                <p className="text-right text-xs text-muted-foreground">
+                  {progress}%
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 安装完成，等待重启 */}
+        {updateStatus === "ready" && (
+          <span className="text-sm text-muted-foreground">
+            {t("updater.installing")}
+          </span>
+        )}
+
         {/* 已是最新（idle 且非初始状态，即检查过后结果为无更新） */}
         {updateStatus === "idle" && (
           <span className="text-sm text-muted-foreground">
@@ -69,8 +110,17 @@ export function AboutSection({
           </span>
         )}
 
+        {/* 更新失败 / 自动重启失败 */}
+        {updateStatus === "error" && (
+          <span className="text-sm text-destructive">
+            {isRestartRequired
+              ? t("updater.restartRequiredDescription")
+              : error || t("updater.error")}
+          </span>
+        )}
+
         {/* 手动触发检查更新按钮 */}
-        {(updateStatus === "idle" || updateStatus === "error") && (
+        {(updateStatus === "idle" || (updateStatus === "error" && !isRestartRequired)) && (
           <Button
             size="sm"
             variant="outline"

@@ -19,7 +19,6 @@ import { useProxyStatus } from "@/hooks/useProxyStatus";
 import { refreshTrayMenu, proxySetGlobal } from "@/lib/tauri";
 import i18n from "@/i18n";
 import { AboutSection } from "@/components/settings/AboutSection";
-import { UpdateDialog } from "@/components/updater/UpdateDialog";
 import { useUpdater } from "@/components/updater/useUpdater";
 
 interface SettingsPageProps {
@@ -32,16 +31,8 @@ export function SettingsPage({ onBack, onShowImport }: SettingsPageProps) {
   const { settings, updateSettings } = useSettings();
   const { proxyStatus, refresh: refreshProxyStatus } = useProxyStatus();
 
-  // 设置页面独立的更新检查实例
+  // 设置页面独立的更新检查实例，仅用于内联显示更新状态
   const settingsUpdater = useUpdater();
-  const [showUpdateDialog, setShowUpdateDialog] = useState(false);
-
-  // 当关于区域检测到新版本时弹出更新对话框
-  useEffect(() => {
-    if (settingsUpdater.status === "available") {
-      setShowUpdateDialog(true);
-    }
-  }, [settingsUpdater.status]);
 
   const currentLanguage = settings?.language ?? "zh";
 
@@ -245,9 +236,10 @@ export function SettingsPage({ onBack, onShowImport }: SettingsPageProps) {
             updateStatus={settingsUpdater.status}
             currentVersion={settingsUpdater.currentVersion}
             newVersion={settingsUpdater.newVersion}
+            progress={settingsUpdater.progress}
+            error={settingsUpdater.error}
             onUpdate={() => {
-              settingsUpdater.downloadAndInstall();
-              setShowUpdateDialog(true);
+              void settingsUpdater.downloadAndInstall();
             }}
           />
         </section>
@@ -267,19 +259,6 @@ export function SettingsPage({ onBack, onShowImport }: SettingsPageProps) {
           </>
         )}
       </div>
-      <UpdateDialog
-        open={showUpdateDialog}
-        onOpenChange={setShowUpdateDialog}
-        status={settingsUpdater.status}
-        currentVersion={settingsUpdater.currentVersion}
-        newVersion={settingsUpdater.newVersion}
-        progress={settingsUpdater.progress}
-        onUpdate={settingsUpdater.downloadAndInstall}
-        onRemindLater={() => {
-          settingsUpdater.dismissUpdate();
-          setShowUpdateDialog(false);
-        }}
-      />
     </div>
   );
 }

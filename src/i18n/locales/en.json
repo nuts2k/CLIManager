@@ -112,6 +112,8 @@
     "remindLater": "Remind Me Later",
     "downloading": "Downloading update...",
     "installing": "Installed, restarting...",
+    "restartRequiredTitle": "Update Installed",
+    "restartRequiredDescription": "Automatic restart failed. Please restart the app manually to finish applying the update.",
     "error": "Update failed",
     "upToDate": "Up to date",
     "checking": "Checking for updates...",

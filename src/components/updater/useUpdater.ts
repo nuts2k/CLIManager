@@ -21,6 +21,8 @@ export interface UseUpdaterReturn {
   dismissUpdate: () => void;       // 稍后提醒
 }
 
+export const RESTART_REQUIRED_ERROR = "__restart_required__";
+
 export function useUpdater(): UseUpdaterReturn {
   const [status, setStatus] = useState<UpdateStatus>("idle");
   const [newVersion, setNewVersion] = useState<string | null>(null);
@@ -108,7 +110,9 @@ export function useUpdater(): UseUpdaterReturn {
         const { relaunch } = await import("@tauri-apps/plugin-process");
         await relaunch();
       } catch {
-        // 重启失败不影响安装成功状态
+        // 自动重启失败时恢复为可关闭错误态，提示用户手动重启
+        setStatus("error");
+        setError(RESTART_REQUIRED_ERROR);
       }
     } catch (err) {
       setStatus("error");

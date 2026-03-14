@@ -138,6 +138,7 @@ export function AppShell() {
         currentVersion={updater.currentVersion}
         newVersion={updater.newVersion}
         progress={updater.progress}
+        error={updater.error}
         onUpdate={updater.downloadAndInstall}
         onRemindLater={() => {
           updater.dismissUpdate();
