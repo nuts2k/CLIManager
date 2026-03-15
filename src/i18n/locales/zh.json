@@ -54,8 +54,8 @@
     "copySuccess": "\u5df2\u590d\u5236 {{name}}"
   },
   "empty": {
-    "title": "\u6682\u65e0 Provider",
-    "description": "\u70b9\u51fb\u4e0b\u65b9\u6309\u94ae\u521b\u5efa\u4f60\u7684\u7b2c\u4e00\u4e2a Provider"
+    "title": "还没有 Provider",
+    "description": "添加你的第一个 API Provider 开始使用"
   },
   "settings": {
     "title": "\u8bbe\u7f6e",

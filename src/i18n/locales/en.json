@@ -54,8 +54,8 @@
     "copySuccess": "Copied {{name}}"
   },
   "empty": {
-    "title": "No Providers",
-    "description": "Click the button below to create your first provider"
+    "title": "No Providers Yet",
+    "description": "Add your first API provider to get started"
   },
   "settings": {
     "title": "Settings",

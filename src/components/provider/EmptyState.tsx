@@ -11,7 +11,9 @@ export function EmptyState({ onCreate }: EmptyStateProps) {
 
   return (
     <div className="flex flex-col items-center justify-center gap-4 py-16">
-      <PackageOpen className="size-12 text-muted-foreground" />
+      <div className="flex size-20 items-center justify-center rounded-full bg-brand-accent/10">
+        <PackageOpen className="size-10 text-brand-accent" />
+      </div>
       <div className="text-center">
         <h3 className="text-lg font-medium">{t("empty.title")}</h3>
         <p className="mt-1 text-sm text-muted-foreground">
