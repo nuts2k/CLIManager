@@ -161,13 +161,12 @@ export function ProviderTabs({ refreshTrigger }: ProviderTabsProps) {
 
       // upstream 字段处理：Array → Record
       const upstreamModel = data.upstreamModel || null;
+      const upstreamModelEntries = data.upstreamModelMap
+        .filter((p) => p.source && p.target)
+        .map((p) => [p.source, p.target] as const);
       const upstreamModelMap =
-        data.upstreamModelMap.length > 0
-          ? Object.fromEntries(
-              data.upstreamModelMap
-                .filter((p) => p.source && p.target)
-                .map((p) => [p.source, p.target]),
-            ) || null
+        upstreamModelEntries.length > 0
+          ? Object.fromEntries(upstreamModelEntries)
           : null;
       const testModel = data.testModel || null;
 

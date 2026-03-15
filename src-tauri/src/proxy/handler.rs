@@ -131,6 +131,34 @@ fn reverse_model_in_sse_line(line: &str, original_model: &str) -> String {
     line.to_string()
 }
 
+/// 判断是否存在实际生效的上游模型映射配置。
+///
+/// - `upstream_model` 非空时视为启用
+/// - `upstream_model_map` 仅在至少存在一条映射时视为启用
+fn has_effective_upstream_model_mapping(upstream: &UpstreamTarget) -> bool {
+    upstream
+        .upstream_model
+        .as_deref()
+        .is_some_and(|model| !model.trim().is_empty())
+        || upstream
+            .upstream_model_map
+            .as_ref()
+            .is_some_and(|model_map| !model_map.is_empty())
+}
+
+/// 处理单行 SSE 字节数据。
+///
+/// 仅在该行是合法 UTF-8 时尝试解析并替换 `model` 字段；否则原样透传，
+/// 避免因为异常字节导致再次损坏内容。
+fn reverse_model_in_sse_line_bytes(line_bytes: &[u8], original_model: &str) -> Bytes {
+    let trimmed = line_bytes.strip_suffix(b"\r").unwrap_or(line_bytes);
+
+    match std::str::from_utf8(trimmed) {
+        Ok(line) => Bytes::from(reverse_model_in_sse_line(line, original_model)),
+        Err(_) => Bytes::copy_from_slice(trimmed),
+    }
+}
+
 /// 创建 Anthropic 透传 SSE 流的 model 反向映射流
 ///
 /// 将上游字节流按行分割，对每个 `data: {...}` 行调用 `reverse_model_in_sse_line`
@@ -140,43 +168,43 @@ fn reverse_model_in_sse_line(line: &str, original_model: &str) -> String {
 fn create_anthropic_reverse_model_stream(
     upstream: impl futures::stream::Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send + 'static,
     original_model: String,
-) -> impl futures::stream::Stream<Item = Result<bytes::Bytes, std::convert::Infallible>> {
+) -> impl futures::stream::Stream<Item = Result<bytes::Bytes, std::io::Error>> + Send {
     async_stream::stream! {
-        let mut buffer = String::new();
+        let mut buffer = Vec::new();
         futures::pin_mut!(upstream);
 
         while let Some(chunk) = futures::StreamExt::next(&mut upstream).await {
             match chunk {
                 Ok(bytes) => {
-                    let text = String::from_utf8_lossy(&bytes);
-                    buffer.push_str(&text);
+                    buffer.extend_from_slice(&bytes);
 
-                    // 按换行符分割，保留最后一个不完整片段
-                    let mut last_newline = 0;
-                    let mut lines_end = 0;
-                    for (i, ch) in buffer.char_indices() {
-                        if ch == '\n' {
-                            last_newline = i + 1;
-                            lines_end = last_newline;
+                    let mut processed_until = 0;
+
+                    for (idx, byte) in buffer.iter().enumerate() {
+                        if *byte != b'\n' {
+                            continue;
                         }
+
+                        let line_bytes = buffer[processed_until..idx].to_vec();
+                        let processed =
+                            reverse_model_in_sse_line_bytes(&line_bytes, &original_model);
+                        let mut output = processed.to_vec();
+                        output.push(b'\n');
+
+                        yield Ok::<bytes::Bytes, std::io::Error>(bytes::Bytes::from(output));
+                        processed_until = idx + 1;
                     }
 
-                    if lines_end > 0 {
-                        let to_process = buffer[..lines_end].to_string();
-                        buffer = buffer[lines_end..].to_string();
-
-                        for line in to_process.split('\n') {
-                            // 处理 \r\n 换行符
-                            let line = line.trim_end_matches('\r');
-                            let processed = reverse_model_in_sse_line(line, &original_model);
-                            yield Ok::<bytes::Bytes, std::convert::Infallible>(
-                                bytes::Bytes::from(format!("{}\n", processed))
-                            );
-                        }
+                    if processed_until > 0 {
+                        buffer.drain(..processed_until);
                     }
                 }
-                Err(_) => {
-                    // 上游错误：直接结束流
+                Err(err) => {
+                    // 上游错误：向客户端透传读取失败，而不是伪装成正常 EOF。
+                    yield Err(std::io::Error::other(format!(
+                        "Anthropic SSE 上游读取失败: {}",
+                        err
+                    )));
                     break;
                 }
             }
@@ -184,11 +212,8 @@ fn create_anthropic_reverse_model_stream(
 
         // 处理缓冲区中最后的不完整行
         if !buffer.is_empty() {
-            let line = buffer.trim_end_matches('\r');
-            let processed = reverse_model_in_sse_line(line, &original_model);
-            yield Ok::<bytes::Bytes, std::convert::Infallible>(
-                bytes::Bytes::from(processed)
-            );
+            let processed = reverse_model_in_sse_line_bytes(&buffer, &original_model);
+            yield Ok::<bytes::Bytes, std::io::Error>(processed);
         }
     }
 }
@@ -288,8 +313,7 @@ pub async fn proxy_handler(
         }
         ProtocolType::Anthropic if path == "/v1/messages" => {
             // Anthropic 协议 + /v1/messages：执行模型映射（若有配置）
-            let has_mapping =
-                upstream.upstream_model.is_some() || upstream.upstream_model_map.is_some();
+            let has_mapping = has_effective_upstream_model_mapping(&upstream);
             if has_mapping {
                 // 解析请求体
                 let body_value: Value = serde_json::from_slice(&body_bytes)
@@ -1626,6 +1650,92 @@ mod tests {
         let _ = tx.send(());
     }
 
+    /// 测试 5.1：Anthropic SSE 包装器应在跨 chunk UTF-8 字符下保持正文不损坏
+    #[tokio::test]
+    async fn test_create_anthropic_reverse_model_stream_preserves_split_utf8() {
+        use futures::stream;
+        use futures::StreamExt;
+
+        let raw = "data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"你\"}}\n\n";
+        let raw_bytes = raw.as_bytes();
+        let split_start = raw_bytes
+            .windows("你".len())
+            .position(|window| window == "你".as_bytes())
+            .unwrap();
+        let split_at = split_start + 1;
+
+        let chunks = vec![
+            Ok::<Bytes, reqwest::Error>(Bytes::copy_from_slice(&raw_bytes[..split_at])),
+            Ok::<Bytes, reqwest::Error>(Bytes::copy_from_slice(&raw_bytes[split_at..])),
+        ];
+
+        let output = create_anthropic_reverse_model_stream(
+            stream::iter(chunks),
+            "claude-3-5-sonnet-20241022".to_string(),
+        )
+        .collect::<Vec<_>>()
+        .await;
+
+        let mut combined = Vec::new();
+        for chunk in output {
+            combined.extend_from_slice(&chunk.unwrap());
+        }
+
+        assert_eq!(
+            String::from_utf8(combined).unwrap(),
+            raw,
+            "跨 chunk 的 UTF-8 字符应保持原样透传"
+        );
+    }
+
+    /// 测试 5.2：Anthropic SSE 包装器应把上游读取错误产出为 Err
+    #[tokio::test]
+    async fn test_create_anthropic_reverse_model_stream_propagates_upstream_error() {
+        use futures::stream;
+        use futures::StreamExt;
+
+        let upstream_error = reqwest::Client::new()
+            .get("http://[::1")
+            .build()
+            .expect_err("非法 URL 应构造出 reqwest::Error");
+
+        let chunks = vec![
+            Ok::<Bytes, reqwest::Error>(Bytes::from_static(
+                b"data: {\"type\":\"message_start\",\"message\":{\"model\":\"mapped-model-name\"}}\n\n",
+            )),
+            Err(upstream_error),
+        ];
+
+        let output = create_anthropic_reverse_model_stream(
+            stream::iter(chunks),
+            "claude-3-5-sonnet-20241022".to_string(),
+        )
+        .collect::<Vec<_>>()
+        .await;
+
+        assert!(
+            output.len() >= 2,
+            "应至少包含已透传的数据和最终错误"
+        );
+        let successful_bytes = output[..output.len() - 1]
+            .iter()
+            .map(|item| item.as_ref().expect("错误前的 chunk 应成功"))
+            .fold(Vec::new(), |mut acc, chunk| {
+                acc.extend_from_slice(chunk);
+                acc
+            });
+        assert!(
+            String::from_utf8(successful_bytes)
+                .unwrap()
+                .contains("claude-3-5-sonnet-20241022"),
+            "错误前的已透传数据应完成 model 反向映射"
+        );
+        assert!(
+            output.last().is_some_and(|item| item.is_err()),
+            "上游读取错误不应被静默吞掉"
+        );
+    }
+
     /// 测试 6：Anthropic + 非 /v1/messages 路径（如 /v1/token_count）→ 保持纯透传，不做任何映射
     #[tokio::test]
     async fn test_anthropic_non_messages_path_passthrough() {
@@ -1663,7 +1773,6 @@ mod tests {
 
     #[test]
     fn test_reverse_model_in_sse_line_replaces_model() {
-        let line = r#"data: {"type":"message_start","message":{"model":"mapped-name","content":[]}}"#;
         // 注意：该函数替换的是顶层 model 字段；message_start 嵌套结构不含顶层 model
         // 只测试含顶层 model 的事件行
         let line2 = r#"data: {"model":"mapped-name","type":"text"}"#;
@@ -1696,6 +1805,40 @@ mod tests {
         let empty_line = "";
         let result2 = reverse_model_in_sse_line(empty_line, "claude-3-5-sonnet-20241022");
         assert_eq!(result2, empty_line);
+    }
+
+    #[test]
+    fn test_has_effective_upstream_model_mapping_ignores_empty_map() {
+        let upstream = super::super::state::UpstreamTarget {
+            api_key: "sk-ant-test".to_string(),
+            base_url: "https://api.anthropic.com".to_string(),
+            protocol_type: crate::provider::ProtocolType::Anthropic,
+            upstream_model: None,
+            upstream_model_map: Some(HashMap::new()),
+        };
+
+        assert!(
+            !has_effective_upstream_model_mapping(&upstream),
+            "空映射表不应触发 AnthropicPassthrough 分支"
+        );
+    }
+
+    #[test]
+    fn test_has_effective_upstream_model_mapping_accepts_non_empty_map() {
+        let mut model_map = HashMap::new();
+        model_map.insert(
+            "claude-3-5-sonnet-20241022".to_string(),
+            "mapped-model-name".to_string(),
+        );
+        let upstream = super::super::state::UpstreamTarget {
+            api_key: "sk-ant-test".to_string(),
+            base_url: "https://api.anthropic.com".to_string(),
+            protocol_type: crate::provider::ProtocolType::Anthropic,
+            upstream_model: None,
+            upstream_model_map: Some(model_map),
+        };
+
+        assert!(has_effective_upstream_model_mapping(&upstream));
     }
 
     #[test]

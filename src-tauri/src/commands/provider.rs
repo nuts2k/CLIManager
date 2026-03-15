@@ -82,6 +82,7 @@ pub(crate) fn normalize_provider_fields(provider: &mut Provider) {
     trim_optional_string(&mut provider.notes);
     trim_optional_string(&mut provider.test_model);
     trim_optional_string(&mut provider.upstream_model);
+    normalize_optional_model_map(&mut provider.upstream_model_map);
 }
 
 pub(crate) fn validate_provider(provider: &Provider) -> Result<(), AppError> {
@@ -126,6 +127,30 @@ fn trim_optional_string(value: &mut Option<String>) {
 
     if value.as_ref().is_some_and(|inner| inner.is_empty()) {
         *value = None;
+    }
+}
+
+fn normalize_optional_model_map(value: &mut Option<HashMap<String, String>>) {
+    if let Some(model_map) = value.take() {
+        let normalized: HashMap<String, String> = model_map
+            .into_iter()
+            .filter_map(|(source, target)| {
+                let source = source.trim().to_string();
+                let target = target.trim().to_string();
+
+                if source.is_empty() || target.is_empty() {
+                    None
+                } else {
+                    Some((source, target))
+                }
+            })
+            .collect();
+
+        if normalized.is_empty() {
+            *value = None;
+        } else {
+            *value = Some(normalized);
+        }
     }
 }
 
@@ -1056,6 +1081,44 @@ mod tests {
         let normalized = normalize_and_validate_provider(provider).unwrap();
         assert_eq!(normalized.test_model.as_deref(), Some("claude-sonnet-4-6"));
         assert_eq!(normalized.upstream_model.as_deref(), Some("gpt-5.2"));
+    }
+
+    #[test]
+    fn test_normalize_and_validate_provider_drops_empty_upstream_model_map() {
+        let mut upstream_model_map = HashMap::new();
+        upstream_model_map.insert("  ".to_string(), "gpt-5.2".to_string());
+        upstream_model_map.insert("claude-sonnet-4-6".to_string(), "   ".to_string());
+
+        let provider = Provider {
+            upstream_model_map: Some(upstream_model_map),
+            ..make_provider("p1", "Test Provider", "claude")
+        };
+
+        let normalized = normalize_and_validate_provider(provider).unwrap();
+        assert!(normalized.upstream_model_map.is_none());
+    }
+
+    #[test]
+    fn test_normalize_and_validate_provider_trims_upstream_model_map_entries() {
+        let mut upstream_model_map = HashMap::new();
+        upstream_model_map.insert(
+            "  claude-sonnet-4-6  ".to_string(),
+            "  gpt-5.2  ".to_string(),
+        );
+
+        let provider = Provider {
+            upstream_model_map: Some(upstream_model_map),
+            ..make_provider("p1", "Test Provider", "claude")
+        };
+
+        let normalized = normalize_and_validate_provider(provider).unwrap();
+        assert_eq!(
+            normalized
+                .upstream_model_map
+                .as_ref()
+                .and_then(|map| map.get("claude-sonnet-4-6")),
+            Some(&"gpt-5.2".to_string())
+        );
     }
 
     #[test]
