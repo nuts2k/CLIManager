@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44" width="44" height="44">
+  <!-- macOS template 图标：透明背景 + 纯黑色图案 -->
+  <!-- 与应用图标结构一致：中心枢纽 + 5个外围节点 + 连接线 -->
+  <!-- 画布 44x44，对应 @2x Retina，实际菜单栏显示为 22pt -->
+
+  <!-- 节点坐标（按比例缩放自应用图标 1024→44）：
+    中心: (22, 22)
+    节点1: (22, 7.5)   上方
+    节点2: (34, 14.5)  右上
+    节点3: (32.5, 29.5) 右下
+    节点4: (11.5, 31)   左下
+    节点5: (10, 14)     左上
+  -->
+
+  <!-- 连接线：宽度 2px，确保 22px 下清晰 -->
+  <line x1="22" y1="22" x2="22" y2="7.5"   stroke="#000000" stroke-width="2" stroke-linecap="round"/>
+  <line x1="22" y1="22" x2="34" y2="14.5"  stroke="#000000" stroke-width="2" stroke-linecap="round"/>
+  <line x1="22" y1="22" x2="32.5" y2="29.5" stroke="#000000" stroke-width="2" stroke-linecap="round"/>
+  <line x1="22" y1="22" x2="11.5" y2="31"  stroke="#000000" stroke-width="2" stroke-linecap="round"/>
+  <line x1="22" y1="22" x2="10" y2="14"    stroke="#000000" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- 外围节点（小实心圆，r=2.5~3px） -->
+  <circle cx="22"   cy="7.5"  r="2.5" fill="#000000"/>
+  <circle cx="34"   cy="14.5" r="3"   fill="#000000"/>
+  <circle cx="32.5" cy="29.5" r="2.5" fill="#000000"/>
+  <circle cx="11.5" cy="31"   r="3"   fill="#000000"/>
+  <circle cx="10"   cy="14"   r="2.5" fill="#000000"/>
+
+  <!-- 中心枢纽：轮廓环形（外圆 r=5，内圆镂空 r=2.5，使用 stroke 实现环形） -->
+  <circle cx="22" cy="22" r="3.5" fill="#000000"/>
+  <circle cx="22" cy="22" r="6"   fill="none" stroke="#000000" stroke-width="2"/>
+</svg>
