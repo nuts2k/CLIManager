@@ -9,10 +9,10 @@ Requirements for v2.3 前端调整及美化。Each maps to roadmap phases.
 
 ### 首页布局
 
-- [ ] **HOME-01**: Provider 卡片的编辑、测试、删除等操作从三点菜单外露为可见图标按钮
-- [ ] **HOME-02**: Provider 卡片 hover 时有微升起效果（shadow + border 变化过渡）
-- [ ] **HOME-03**: 无 Provider 时的空状态页面更精致（视觉和文案优化）
-- [ ] **HOME-04**: 代理模式开关和状态指示（绿色圆点）视觉更突出明确
+- [x] **HOME-01**: Provider 卡片的编辑、测试、删除等操作从三点菜单外露为可见图标按钮
+- [x] **HOME-02**: Provider 卡片 hover 时有微升起效果（shadow + border 变化过渡）
+- [x] **HOME-03**: 无 Provider 时的空状态页面更精致（视觉和文案优化）
+- [x] **HOME-04**: 代理模式开关和状态指示（绿色圆点）视觉更突出明确
 
 ### Provider 编辑
 
@@ -53,10 +53,10 @@ Requirements for v2.3 前端调整及美化。Each maps to roadmap phases.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| HOME-01 | Phase 18 | Pending |
-| HOME-02 | Phase 18 | Pending |
-| HOME-03 | Phase 18 | Pending |
-| HOME-04 | Phase 18 | Pending |
+| HOME-01 | Phase 18 | Complete |
+| HOME-02 | Phase 18 | Complete |
+| HOME-03 | Phase 18 | Complete |
+| HOME-04 | Phase 18 | Complete |
 | EDIT-01 | Phase 19 | Pending |
 | EDIT-02 | Phase 19 | Pending |
 | EDIT-03 | Phase 19 | Pending |

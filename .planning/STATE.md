@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: 前端调整及美化
 status: planning
-stopped_at: Phase 18 context gathered
-last_updated: "2026-03-15T07:43:50.095Z"
+stopped_at: Completed 18-02-PLAN.md
+last_updated: "2026-03-15T07:54:54.105Z"
 last_activity: 2026-03-15 — v2.3 roadmap created (Phases 17-22)
 progress:
   total_phases: 6
-  completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  completed_phases: 2
+  total_plans: 4
+  completed_plans: 4
   percent: 0
 ---
 
@@ -56,6 +56,10 @@ v2.3 设计决策（roadmap 阶段）：
 - [Phase 17-design-foundation]: 语义色命名原则：status-success/warning/active 而非具体色相名，未来换色只需修改 :root 定义
 - [Phase 17-design-foundation]: Card 组件从 rounded-xl 统一为 rounded-lg，使卡片圆角与对话框规范一致
 - [Phase 17-design-foundation]: 间距阶梯 CSS 变量（--space-xs 至 --space-2xl）作文档锚点，业务组件仍直接用 Tailwind 工具类
+- [Phase 18-homepage-layout]: ProviderCard 四个操作从三点菜单外露为始终可见图标按钮，使用 ArrowRightLeft/Pencil/Copy/Play/Trash2 图标，「复制到」因子菜单保留在 MoreVertical 菜单
+- [Phase 18-homepage-layout]: 状态圆点提取到 Switch 条件分支外，确保 disabled 和正常两种状态下均可见
+- [Phase 18-homepage-layout]: Tab 绿点加 animate-pulse 传达服务活跃动态感，开关旁圆点仅做静态指示不加脉冲
+- [Phase 18-homepage-layout]: TooltipProvider 在按钮组外层包裹一次（delayDuration=300ms），卡片 hover 升起效果：shadow-sm→shadow-md + translateY(-2px)
 
 ### Pending Todos
 
@@ -67,6 +71,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-15T07:43:50.092Z
-Stopped at: Phase 18 context gathered
-Resume file: .planning/phases/18-homepage-layout/18-CONTEXT.md
+Last session: 2026-03-15T07:54:54.102Z
+Stopped at: Completed 18-02-PLAN.md
+Resume file: None
