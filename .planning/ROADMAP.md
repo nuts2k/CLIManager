@@ -83,7 +83,7 @@
 **Depends on**: Phase 22 (v2.3 完成)
 **Requirements**: MMAP-01, MMAP-02, MMAP-03, MMAP-04
 **Parallelism**: 2 plans（后端 + 前端）无依赖，可并行执行
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 Plans:
 - [ ] 23-01-PLAN.md — 后端 handler.rs Anthropic 分支模型映射（请求/响应/流式）
 - [ ] 23-02-PLAN.md — 前端 Provider 编辑 UI 显示 Anthropic 模型映射配置
@@ -122,7 +122,7 @@ Plans:
 | 20. 设置页 Tab 化 | v2.3 | 1/1 | Complete | 2026-03-15 |
 | 21. 微动效与 Header 提升 | v2.3 | 1/1 | Complete | 2026-03-15 |
 | 22. 应用图标 | v2.3 | 2/2 | Complete | 2026-03-15 |
-| 23. Anthropic 模型映射 | v2.4 | 0/2 | Not started | - |
+| 23. Anthropic 模型映射 | 1/2 | In Progress|  | - |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*

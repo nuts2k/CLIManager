@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Anthropic 模型映射
-status: ready_to_plan
-stopped_at: null
-last_updated: "2026-03-15"
+status: planning
+stopped_at: Completed 23-anthropic-model-mapping-02-PLAN.md
+last_updated: "2026-03-15T14:59:29.595Z"
 last_activity: 2026-03-15 — v2.4 roadmap created, Phase 23 ready to plan
 progress:
   total_phases: 1
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 2
+  completed_plans: 1
   percent: 0
 ---
 
@@ -54,6 +54,8 @@ Progress: [░░░░░░░░░░] 0%
 - 模型映射三级优先级逻辑已在 OpenAI 分支实现，v2.4 复用该逻辑到 Anthropic 分支
 - 响应反向映射：客户端发送的是 Claude 模型名，代理替换后上游返回的是目标模型名，需映射回来
 - Phase 23 合并后端+前端为单 Phase，2 个并行 Plan 最大化并行度
+- [Phase 23-anthropic-model-mapping]: showModelMapping 改为 true，所有协议统一显示映射区域，Anthropic 字段为可选
+- [Phase 23-anthropic-model-mapping]: isOpenAiProtocol 校验：upstreamModel 必填仅限 OpenAI 系列协议，Anthropic 可留空保存
 
 ### Pending Todos
 
@@ -65,6 +67,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-15
-Stopped at: v2.4 roadmap created — Phase 23 ready to plan
+Last session: 2026-03-15T14:59:29.592Z
+Stopped at: Completed 23-anthropic-model-mapping-02-PLAN.md
 Resume file: None
