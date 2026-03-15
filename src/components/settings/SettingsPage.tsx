@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useSettings } from "@/hooks/useSettings";
 import { useProxyStatus } from "@/hooks/useProxyStatus";
 import { refreshTrayMenu, proxySetGlobal } from "@/lib/tauri";
@@ -151,86 +152,109 @@ export function SettingsPage({ onBack, onShowImport }: SettingsPageProps) {
         <h2 className="text-base font-semibold">{t("settings.title")}</h2>
       </div>
 
-      <div className="flex-1 overflow-auto p-6 space-y-6">
-        {/* Language Section */}
-        <section className="space-y-3">
-          <h3 className="text-sm font-medium text-foreground">
-            {t("settings.language")}
-          </h3>
-          <div className="max-w-xs">
-            <Select value={currentLanguage} onValueChange={handleLanguageChange}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="zh">
-                  {t("settings.languageZh")}
-                </SelectItem>
-                <SelectItem value="en">
-                  {t("settings.languageEn")}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </section>
+      {/* Tabs 容器 */}
+      <Tabs defaultValue="general" className="flex-1 flex flex-col overflow-hidden">
+        <div className="px-6 pt-4">
+          <TabsList variant="line">
+            <TabsTrigger value="general">{t("settings.tabGeneral")}</TabsTrigger>
+            <TabsTrigger value="advanced">{t("settings.tabAdvanced")}</TabsTrigger>
+            <TabsTrigger value="about">{t("settings.tabAbout")}</TabsTrigger>
+          </TabsList>
+        </div>
 
-        <Separator />
+        {/* 通用 Tab */}
+        <TabsContent value="general" className="flex-1 overflow-auto p-6 space-y-6">
+          {/* Language Section */}
+          <section className="space-y-3">
+            <h3 className="text-sm font-medium text-foreground">
+              {t("settings.language")}
+            </h3>
+            <div className="max-w-xs">
+              <Select value={currentLanguage} onValueChange={handleLanguageChange}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="zh">
+                    {t("settings.languageZh")}
+                  </SelectItem>
+                  <SelectItem value="en">
+                    {t("settings.languageEn")}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </section>
+        </TabsContent>
 
-        {/* 代理模式 Section */}
-        <section className="space-y-3">
-          <h3 className="text-sm font-medium text-foreground">
-            {t("settings.proxyMode")}
-          </h3>
-          <div className="flex items-center justify-between max-w-xs">
-            <p className="text-sm text-muted-foreground pr-4">
-              {t("settings.proxyModeDescription")}
-            </p>
-            <Switch
-              checked={proxyEnabled}
-              disabled={isProxyTogglePending}
-              onCheckedChange={handleProxyToggle}
-            />
-          </div>
-        </section>
-
-        <Separator />
-
-        {/* Test Config Section */}
-        <section className="space-y-3">
-          <h3 className="text-sm font-medium text-foreground">
-            {t("settings.testConfig")}
-          </h3>
-          <div className="grid max-w-xs gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="timeout">{t("settings.timeout")}</Label>
-              <Input
-                id="timeout"
-                type="number"
-                min={1}
-                value={timeout}
-                onChange={(e) => handleTimeoutChange(e.target.value)}
+        {/* 高级 Tab */}
+        <TabsContent value="advanced" className="flex-1 overflow-auto p-6 space-y-6">
+          {/* 代理模式 Section */}
+          <section className="space-y-3">
+            <h3 className="text-sm font-medium text-foreground">
+              {t("settings.proxyMode")}
+            </h3>
+            <div className="flex items-center justify-between max-w-xs">
+              <p className="text-sm text-muted-foreground pr-4">
+                {t("settings.proxyModeDescription")}
+              </p>
+              <Switch
+                checked={proxyEnabled}
+                disabled={isProxyTogglePending}
+                onCheckedChange={handleProxyToggle}
               />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="testModel">{t("settings.testModel")}</Label>
-              <Input
-                id="testModel"
-                type="text"
-                placeholder="optional"
-                value={testModel}
-                onChange={(e) => handleTestModelChange(e.target.value)}
-              />
+          </section>
+
+          <Separator />
+
+          {/* Test Config Section */}
+          <section className="space-y-3">
+            <h3 className="text-sm font-medium text-foreground">
+              {t("settings.testConfig")}
+            </h3>
+            <div className="grid max-w-xs gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="timeout">{t("settings.timeout")}</Label>
+                <Input
+                  id="timeout"
+                  type="number"
+                  min={1}
+                  value={timeout}
+                  onChange={(e) => handleTimeoutChange(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="testModel">{t("settings.testModel")}</Label>
+                <Input
+                  id="testModel"
+                  type="text"
+                  placeholder="optional"
+                  value={testModel}
+                  onChange={(e) => handleTestModelChange(e.target.value)}
+                />
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
 
-        <Separator />
+          {/* Import from CLI Config Section */}
+          {onShowImport && (
+            <>
+              <Separator />
+              <section className="space-y-3">
+                <h3 className="text-sm font-medium text-foreground">
+                  {t("import.settingsButton")}
+                </h3>
+                <Button variant="outline" onClick={onShowImport}>
+                  {t("import.settingsButton")}
+                </Button>
+              </section>
+            </>
+          )}
+        </TabsContent>
 
-        {/* About Section */}
-        <section className="space-y-3">
-          <h3 className="text-sm font-medium text-foreground">
-            {t("settings.about")}
-          </h3>
+        {/* 关于 Tab */}
+        <TabsContent value="about" className="flex-1 overflow-auto p-6 space-y-6">
           <AboutSection
             onCheckUpdate={settingsUpdater.checkForUpdate}
             updateStatus={settingsUpdater.status}
@@ -242,23 +266,8 @@ export function SettingsPage({ onBack, onShowImport }: SettingsPageProps) {
               void settingsUpdater.downloadAndInstall();
             }}
           />
-        </section>
-
-        {/* Import from CLI Config Section */}
-        {onShowImport && (
-          <>
-            <Separator />
-            <section className="space-y-3">
-              <h3 className="text-sm font-medium text-foreground">
-                {t("import.settingsButton")}
-              </h3>
-              <Button variant="outline" onClick={onShowImport}>
-                {t("import.settingsButton")}
-              </Button>
-            </section>
-          </>
-        )}
-      </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
