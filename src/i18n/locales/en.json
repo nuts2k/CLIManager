@@ -68,7 +68,10 @@
     "about": "About",
     "version": "Version",
     "proxyMode": "Proxy Mode",
-    "proxyModeDescription": "Route CLI requests through local proxy, switch providers without restarting CLI"
+    "proxyModeDescription": "Route CLI requests through local proxy, switch providers without restarting CLI",
+    "tabGeneral": "General",
+    "tabAdvanced": "Advanced",
+    "tabAbout": "About"
   },
   "protocol": {
     "anthropic": "Anthropic",

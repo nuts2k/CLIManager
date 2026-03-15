@@ -68,7 +68,10 @@
     "about": "\u5173\u4e8e",
     "version": "\u7248\u672c",
     "proxyMode": "\u4ee3\u7406\u6a21\u5f0f",
-    "proxyModeDescription": "CLI \u8bf7\u6c42\u7ecf\u672c\u5730\u4ee3\u7406\u8f6c\u53d1\uff0c\u5207\u6362 Provider \u65e0\u9700\u91cd\u542f CLI"
+    "proxyModeDescription": "CLI \u8bf7\u6c42\u7ecf\u672c\u5730\u4ee3\u7406\u8f6c\u53d1\uff0c\u5207\u6362 Provider \u65e0\u9700\u91cd\u542f CLI",
+    "tabGeneral": "\u901a\u7528",
+    "tabAdvanced": "\u9ad8\u7ea7",
+    "tabAbout": "\u5173\u4e8e"
   },
   "protocol": {
     "anthropic": "Anthropic",

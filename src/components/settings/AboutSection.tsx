@@ -46,12 +46,18 @@ export function AboutSection({
   };
 
   return (
-    <div className="space-y-3">
-      <div className="space-y-1 text-sm text-muted-foreground">
-        <p>
+    <div className="space-y-4">
+      {/* Logo + 应用名 + 版本号 */}
+      <div className="flex flex-col items-center space-y-2">
+        <img
+          src="/icon.png"
+          alt="CLIManager"
+          className="w-16 h-16 rounded-lg"
+        />
+        <p className="text-base font-semibold">CLIManager</p>
+        <p className="text-sm text-muted-foreground">
           {t("settings.version")}: {currentVersion}
         </p>
-        <p>CLIManager - CLI Provider Management Tool</p>
       </div>
 
       {/* 更新状态区域 */}
