@@ -122,7 +122,7 @@ Plans:
 | 20. 设置页 Tab 化 | v2.3 | 1/1 | Complete | 2026-03-15 |
 | 21. 微动效与 Header 提升 | v2.3 | 1/1 | Complete | 2026-03-15 |
 | 22. 应用图标 | v2.3 | 2/2 | Complete | 2026-03-15 |
-| 23. Anthropic 模型映射 | 2/2 | Complete   | 2026-03-15 | - |
+| 23. Anthropic 模型映射 | 2/2 | Complete    | 2026-03-15 | - |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*

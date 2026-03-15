@@ -4,7 +4,7 @@ milestone: v2.4
 milestone_name: Anthropic 模型映射
 status: planning
 stopped_at: Completed 23-anthropic-model-mapping 23-01-PLAN.md
-last_updated: "2026-03-15T15:06:41.701Z"
+last_updated: "2026-03-15T15:11:17.985Z"
 last_activity: 2026-03-15 — v2.4 roadmap created, Phase 23 ready to plan
 progress:
   total_phases: 1
