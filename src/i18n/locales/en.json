@@ -80,6 +80,17 @@
     "protocol": "Protocol",
     "model": "Model Config"
   },
+  "placeholder": {
+    "name": "e.g. Claude Pro",
+    "apiKey": "sk-...",
+    "baseUrl": "https://api.anthropic.com",
+    "model": "e.g. claude-sonnet-4-6",
+    "notes": "Optional notes",
+    "haikuModel": "Haiku model name",
+    "sonnetModel": "Sonnet model name",
+    "opusModel": "Opus model name",
+    "reasoningEffort": "low / medium / high"
+  },
   "validation": {
     "required": "This field is required",
     "nameRequired": "Name is required",

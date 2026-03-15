@@ -80,6 +80,17 @@
     "protocol": "协议设置",
     "model": "模型配置"
   },
+  "placeholder": {
+    "name": "如：Claude Pro",
+    "apiKey": "sk-...",
+    "baseUrl": "https://api.anthropic.com",
+    "model": "如：claude-sonnet-4-6",
+    "notes": "可选备注信息",
+    "haikuModel": "Haiku 模型名",
+    "sonnetModel": "Sonnet 模型名",
+    "opusModel": "Opus 模型名",
+    "reasoningEffort": "推理力度（low/medium/high）"
+  },
   "validation": {
     "required": "\u6b64\u5b57\u6bb5\u4e3a\u5fc5\u586b",
     "nameRequired": "\u8bf7\u8f93\u5165\u540d\u79f0",
