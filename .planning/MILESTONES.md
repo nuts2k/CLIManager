@@ -1,5 +1,25 @@
 # Milestones
 
+## v2.4 Anthropic 模型映射 (Shipped: 2026-03-15)
+
+**Phases completed:** 1 phase, 2 plans
+**Delivered:** Anthropic 协议透传路径完整支持模型映射，代理层自动替换请求中的 model 字段并反向映射响应/流式 SSE 结果，Provider 编辑 UI 统一显示模型映射配置
+
+**Key accomplishments:**
+- Anthropic /v1/messages 透传分支新增三级模型映射（精确匹配 > 默认模型 > 保留原名），复用现有 apply_upstream_model_mapping
+- 非流式响应 model 字段反向映射（reverse_model_in_response），客户端始终看到原始 Claude 模型名
+- 流式 SSE 逐行反向映射（reverse_model_in_sse_line），同时处理顶层 model 和 message.model 嵌套字段（message_start 事件格式）
+- 无映射配置时走 Passthrough 零开销保持原有透传行为
+- ProviderDialog 对所有协议统一显示映射区域（showModelMapping = true），Anthropic 字段均可选
+
+**Stats:**
+- 2 source files changed: handler.rs (+631 行), ProviderDialog.tsx (+20/-11 行)
+- Timeline: 1 day (2026-03-15)
+- 11 个 Anthropic 专属集成测试新增，367 个全量测试 0 失败
+- Audit: 4/4 requirements, 4/4 E2E flows
+
+---
+
 ## v2.3 前端调整及美化 (Shipped: 2026-03-15)
 
 **Phases completed:** 6 phases, 9 plans

@@ -230,6 +230,47 @@
 
 ---
 
+## Milestone: v2.4 — Anthropic 模型映射
+
+**Shipped:** 2026-03-15
+**Phases:** 1 | **Plans:** 2 | **Commits:** ~8
+
+### What Was Built
+- Anthropic /v1/messages 透传分支新增三级模型映射，复用现有 apply_upstream_model_mapping（精确匹配 > 默认模型 > 保留原名）
+- 非流式响应 model 字段反向映射（reverse_model_in_response），客户端始终看到原始 Claude 模型名
+- 流式 SSE 逐行反向映射（reverse_model_in_sse_line），同时处理顶层 model 和 message.model 嵌套字段（message_start 事件格式）
+- 无映射配置时走 Passthrough 零开销，AnthropicPassthrough 变体仅在有映射时激活
+- ProviderDialog 对所有协议统一显示映射区域，Anthropic 协议字段均可选
+
+### What Worked
+- 2 plans 并行设计（后端 + 前端无依赖）最大化执行效率，单日完成
+- AnthropicPassthrough 响应模式变体携带 request_model 的设计干净：请求层记录、响应层替换，职责分离清晰
+- showModelMapping = true 常量化（而非枚举协议类型）符合开放封闭原则，后续新增协议无需修改
+- TDD 驱动：RED 测试先行立即发现 message.model 嵌套字段问题，GREEN 阶段修复代价小
+
+### What Was Inefficient
+- SUMMARY.md one_liner 字段为空（gsd-tools summary-extract 无法提取）— 执行器 frontmatter 填充不一致问题延续
+- ROADMAP.md plan 复选框（Plans: - [ ]）在完成后仍为未勾选状态 — 第五个里程碑出现同一问题
+- Nyquist VALIDATION.md 未创建 — Phase 23 缺失验证文件
+
+### Patterns Established
+- `AnthropicPassthrough { request_model }` 响应模式变体：携带请求上下文到响应处理分支的标准模式
+- `reverse_model_in_sse_line` 双字段处理：同时检查顶层 model 和 message.model，适用于 Anthropic SSE 事件格式多样性
+- `isOpenAiProtocol` 门控校验：UI 统一显示，校验因协议类型差异化 — 比 showModelMapping 条件更细粒度
+
+### Key Lessons
+1. 反向映射需要在请求阶段记录原始 model 名 — AnthropicPassthrough 变体是比全局变量更干净的携带方案
+2. SSE 事件格式因事件类型而异（message_start vs content_block_delta）— 处理 SSE 反向映射需分析所有可能有 model 字段的事件类型
+3. 无映射配置时走 Passthrough 而非 AnthropicPassthrough 是正确做法 — 避免对请求体不必要的 JSON 解析/序列化
+4. TDD 在发现隐含格式假设方面有效 — SSE message.model 嵌套字段问题在 GREEN 阶段第一次测试就暴露并修复
+
+### Cost Observations
+- Model mix: balanced profile (sonnet-based agents, opus orchestration)
+- Total execution: ~15 min for 2 plans (avg 7.5min/plan)
+- Notable: 1-phase 单日里程碑 — 精确需求范围 + 复用现有基础设施使执行极高效
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -242,6 +283,7 @@
 | v2.1 | ~15 | 2 | Release engineering — CI/CD + auto updater |
 | v2.2 | 44 | 3 | Protocol translation — pure function TDD + max parallelism |
 | v2.3 | ~27 | 6 | Frontend polish — design tokens first + UI/UX refinement |
+| v2.4 | ~8 | 1 | Anthropic model mapping — reuse existing infra + parallel plans |
 
 ### Cumulative Quality
 
@@ -253,6 +295,7 @@
 | v2.1 | ~12,000 | — | 8min |
 | v2.2 | ~18,000 | 29 modified | 6min |
 | v2.3 | ~19,000 | 82 modified | — |
+| v2.4 | ~19,600 | 2 modified | 7.5min |
 
 ### Top Lessons (Verified Across Milestones)
 
@@ -264,4 +307,5 @@
 6. 纯函数 + TDD 是协议转换层最佳实践 — 86 个测试让 hotfix 修改有信心 (verified v2.2)
 7. serde alias 向前兼容是 enum 变体重命名的正确做法 — 零迁移成本 (verified v2.2)
 8. 设计 token 先行是前端美化类里程碑的正确起手 — 后续全部复用变量 (verified v2.3)
-9. ROADMAP plan 复选框更新是持续性问题 — 执行器应自动化 (observed v1.0-v2.3)
+9. ROADMAP plan 复选框更新是持续性问题 — 执行器应自动化 (observed v1.0-v2.4)
+10. 反向映射需在请求阶段记录原始值 — 响应模式变体携带上下文比全局状态更干净 (verified v2.4)
