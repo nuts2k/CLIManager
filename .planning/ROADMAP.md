@@ -107,7 +107,9 @@ Plans:
   2. 表单字段分为"基础信息"、"协议设置"、"模型配置"三个视觉分区，分区之间有明确分隔
   3. 必填字段验证失败时，错误提示文字清晰显示在对应字段下方，不依赖通用 toast
   4. 字段标签或说明文字对非技术用户友好，关键字段有 placeholder 或说明提示
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 19-01-PLAN.md — 对话框加宽+滚动、三分区平铺、placeholder 国际化、验证红色边框
 
 ### Phase 20: 设置页 Tab 化
 **Goal**: 设置页内容按功能分组到三个 Tab，不再是一个滚动长页
@@ -162,11 +164,11 @@ Plans:
 | 16. Responses API + Provider UI | v2.2 | 4/4 | Complete | 2026-03-14 |
 | 17. 设计基础 | v2.3 | 2/2 | Complete | 2026-03-15 |
 | 18. 首页布局优化 | 2/2 | Complete    | 2026-03-15 | - |
-| 19. Provider 编辑改进 | v2.3 | 0/TBD | Not started | - |
+| 19. Provider 编辑改进 | v2.3 | 0/1 | Not started | - |
 | 20. 设置页 Tab 化 | v2.3 | 0/TBD | Not started | - |
 | 21. 微动效与 Header 提升 | v2.3 | 0/TBD | Not started | - |
 | 22. 应用图标 | v2.3 | 0/TBD | Not started | - |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*
-*Last updated: 2026-03-15 — Phase 18 planned (2 plans)*
+*Last updated: 2026-03-15 — Phase 19 planned (1 plan)*
