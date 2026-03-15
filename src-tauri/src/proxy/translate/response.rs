@@ -82,8 +82,8 @@ pub fn openai_to_anthropic(body: Value) -> Result<Value, ProxyError> {
                 .unwrap_or("{}");
 
             // arguments 反序列化失败时包装为 {"raw": "原字符串"}
-            let input: Value = serde_json::from_str(args_str)
-                .unwrap_or_else(|_| json!({"raw": args_str}));
+            let input: Value =
+                serde_json::from_str(args_str).unwrap_or_else(|_| json!({"raw": args_str}));
 
             content.push(json!({
                 "type": "tool_use",
@@ -450,7 +450,10 @@ mod tests {
             "choices": [{"index": 0, "message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}],
             "usage": {"prompt_tokens": 1, "completion_tokens": 1}
         });
-        assert_eq!(openai_to_anthropic(input).unwrap()["stop_reason"], "end_turn");
+        assert_eq!(
+            openai_to_anthropic(input).unwrap()["stop_reason"],
+            "end_turn"
+        );
     }
 
     #[test]
@@ -461,7 +464,10 @@ mod tests {
             "choices": [{"index": 0, "message": {"role": "assistant", "content": "..."}, "finish_reason": "length"}],
             "usage": {"prompt_tokens": 1, "completion_tokens": 100}
         });
-        assert_eq!(openai_to_anthropic(input).unwrap()["stop_reason"], "max_tokens");
+        assert_eq!(
+            openai_to_anthropic(input).unwrap()["stop_reason"],
+            "max_tokens"
+        );
     }
 
     #[test]
@@ -472,7 +478,10 @@ mod tests {
             "choices": [{"index": 0, "message": {"role": "assistant", "content": "blocked"}, "finish_reason": "content_filter"}],
             "usage": {"prompt_tokens": 1, "completion_tokens": 1}
         });
-        assert_eq!(openai_to_anthropic(input).unwrap()["stop_reason"], "end_turn");
+        assert_eq!(
+            openai_to_anthropic(input).unwrap()["stop_reason"],
+            "end_turn"
+        );
     }
 
     #[test]
@@ -483,7 +492,10 @@ mod tests {
             "choices": [{"index": 0, "message": {"role": "assistant", "content": "ok"}, "finish_reason": "some_future_value"}],
             "usage": {"prompt_tokens": 1, "completion_tokens": 1}
         });
-        assert_eq!(openai_to_anthropic(input).unwrap()["stop_reason"], "end_turn");
+        assert_eq!(
+            openai_to_anthropic(input).unwrap()["stop_reason"],
+            "end_turn"
+        );
     }
 
     /// RESP-04：usage 字段重命名 + cache token 映射

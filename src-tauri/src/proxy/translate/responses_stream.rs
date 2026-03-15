@@ -372,8 +372,7 @@ mod tests {
         upstream: impl futures::Stream<Item = Result<Bytes, reqwest::Error>> + Send + 'static,
         model: &str,
     ) -> Vec<Value> {
-        let out_stream =
-            create_responses_anthropic_sse_stream(upstream, model.to_string());
+        let out_stream = create_responses_anthropic_sse_stream(upstream, model.to_string());
         let chunks: Vec<_> = out_stream.collect().await;
         let merged: String = chunks
             .into_iter()
@@ -382,7 +381,9 @@ mod tests {
         merged
             .split("\n\n")
             .filter_map(|block: &str| {
-                let data = block.lines().find_map(|line: &str| line.strip_prefix("data: "))?;
+                let data = block
+                    .lines()
+                    .find_map(|line: &str| line.strip_prefix("data: "))?;
                 serde_json::from_str::<Value>(data).ok()
             })
             .collect()
@@ -390,7 +391,9 @@ mod tests {
 
     /// 构造 Responses API SSE 事件块（event: type\ndata: json\n\n）
     fn make_event(event_type: &str, json: &str) -> Result<Bytes, reqwest::Error> {
-        Ok(Bytes::from(format!("event: {event_type}\ndata: {json}\n\n")))
+        Ok(Bytes::from(format!(
+            "event: {event_type}\ndata: {json}\n\n"
+        )))
     }
 
     // ── 测试 9：文本流式事件完整序列 ──
@@ -398,14 +401,38 @@ mod tests {
     #[tokio::test]
     async fn test_text_stream_sequence() {
         let chunks = vec![
-            make_event("response.created", r#"{"type":"response.created","response":{"id":"resp_001","model":"gpt-4o","status":"in_progress"}}"#),
-            make_event("response.output_item.added", r#"{"type":"response.output_item.added","output_index":0,"item":{"id":"item_001","type":"message","role":"assistant","status":"in_progress","content":[]}}"#),
-            make_event("response.content_part.added", r#"{"type":"response.content_part.added","item_id":"item_001","output_index":0,"content_index":0,"part":{"type":"output_text","text":""}}"#),
-            make_event("response.output_text.delta", r#"{"type":"response.output_text.delta","item_id":"item_001","output_index":0,"content_index":0,"delta":"Hel"}"#),
-            make_event("response.output_text.delta", r#"{"type":"response.output_text.delta","item_id":"item_001","output_index":0,"content_index":0,"delta":"lo"}"#),
-            make_event("response.output_text.done", r#"{"type":"response.output_text.done","item_id":"item_001","output_index":0,"content_index":0,"text":"Hello"}"#),
-            make_event("response.output_item.done", r#"{"type":"response.output_item.done","output_index":0,"item":{"id":"item_001","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"Hello"}]}}"#),
-            make_event("response.completed", r#"{"type":"response.completed","response":{"id":"resp_001","model":"gpt-4o","status":"completed","usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15}}}"#),
+            make_event(
+                "response.created",
+                r#"{"type":"response.created","response":{"id":"resp_001","model":"gpt-4o","status":"in_progress"}}"#,
+            ),
+            make_event(
+                "response.output_item.added",
+                r#"{"type":"response.output_item.added","output_index":0,"item":{"id":"item_001","type":"message","role":"assistant","status":"in_progress","content":[]}}"#,
+            ),
+            make_event(
+                "response.content_part.added",
+                r#"{"type":"response.content_part.added","item_id":"item_001","output_index":0,"content_index":0,"part":{"type":"output_text","text":""}}"#,
+            ),
+            make_event(
+                "response.output_text.delta",
+                r#"{"type":"response.output_text.delta","item_id":"item_001","output_index":0,"content_index":0,"delta":"Hel"}"#,
+            ),
+            make_event(
+                "response.output_text.delta",
+                r#"{"type":"response.output_text.delta","item_id":"item_001","output_index":0,"content_index":0,"delta":"lo"}"#,
+            ),
+            make_event(
+                "response.output_text.done",
+                r#"{"type":"response.output_text.done","item_id":"item_001","output_index":0,"content_index":0,"text":"Hello"}"#,
+            ),
+            make_event(
+                "response.output_item.done",
+                r#"{"type":"response.output_item.done","output_index":0,"item":{"id":"item_001","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"Hello"}]}}"#,
+            ),
+            make_event(
+                "response.completed",
+                r#"{"type":"response.completed","response":{"id":"resp_001","model":"gpt-4o","status":"completed","usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15}}}"#,
+            ),
         ];
 
         let events = collect_events(stream::iter(chunks), "claude-3-5-sonnet").await;
@@ -415,7 +442,11 @@ mod tests {
             .collect();
 
         // 必须包含 message_start
-        assert!(types.contains(&"message_start"), "应有 message_start，实际: {:?}", types);
+        assert!(
+            types.contains(&"message_start"),
+            "应有 message_start，实际: {:?}",
+            types
+        );
         assert_eq!(
             types.iter().filter(|&&t| t == "message_start").count(),
             1,
@@ -445,7 +476,10 @@ mod tests {
         assert!(text_deltas.contains(&"lo"), "应含 'lo'");
 
         // content_block_stop
-        assert!(types.contains(&"content_block_stop"), "应有 content_block_stop");
+        assert!(
+            types.contains(&"content_block_stop"),
+            "应有 content_block_stop"
+        );
 
         // message_delta stop_reason=end_turn
         let msg_delta = events
@@ -453,26 +487,36 @@ mod tests {
             .find(|e| e.get("type").and_then(|v| v.as_str()) == Some("message_delta"))
             .expect("应有 message_delta");
         assert_eq!(
-            msg_delta.pointer("/delta/stop_reason").and_then(|v| v.as_str()),
+            msg_delta
+                .pointer("/delta/stop_reason")
+                .and_then(|v| v.as_str()),
             Some("end_turn"),
             "文本响应应映射为 end_turn"
         );
 
         // usage 透传
         assert_eq!(
-            msg_delta.pointer("/usage/input_tokens").and_then(|v| v.as_u64()),
+            msg_delta
+                .pointer("/usage/input_tokens")
+                .and_then(|v| v.as_u64()),
             Some(10),
             "input_tokens 应透传"
         );
         assert_eq!(
-            msg_delta.pointer("/usage/output_tokens").and_then(|v| v.as_u64()),
+            msg_delta
+                .pointer("/usage/output_tokens")
+                .and_then(|v| v.as_u64()),
             Some(5),
             "output_tokens 应透传"
         );
 
         // message_stop 在最末
         assert!(types.contains(&"message_stop"), "应有 message_stop");
-        assert_eq!(*types.last().unwrap(), "message_stop", "message_stop 应是最后事件");
+        assert_eq!(
+            *types.last().unwrap(),
+            "message_stop",
+            "message_stop 应是最后事件"
+        );
     }
 
     // ── 测试 10：函数调用流式事件 ──
@@ -480,13 +524,34 @@ mod tests {
     #[tokio::test]
     async fn test_function_call_stream() {
         let chunks = vec![
-            make_event("response.created", r#"{"type":"response.created","response":{"id":"resp_fn01","model":"gpt-4o","status":"in_progress"}}"#),
-            make_event("response.output_item.added", r#"{"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_001","call_id":"call_abc","name":"get_weather","arguments":"","status":"in_progress"}}"#),
-            make_event("response.function_call_arguments.delta", r#"{"type":"response.function_call_arguments.delta","item_id":"fc_001","output_index":0,"delta":"{\"loc"}"#),
-            make_event("response.function_call_arguments.delta", r#"{"type":"response.function_call_arguments.delta","item_id":"fc_001","output_index":0,"delta":"ation\":\"Tokyo\"}"}"#),
-            make_event("response.function_call_arguments.done", r#"{"type":"response.function_call_arguments.done","item_id":"fc_001","output_index":0,"arguments":"{\"location\":\"Tokyo\"}"}"#),
-            make_event("response.output_item.done", r#"{"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_001","call_id":"call_abc","name":"get_weather","arguments":"{\"location\":\"Tokyo\"}","status":"completed"}}"#),
-            make_event("response.completed", r#"{"type":"response.completed","response":{"id":"resp_fn01","model":"gpt-4o","status":"completed","usage":{"input_tokens":20,"output_tokens":10}}}"#),
+            make_event(
+                "response.created",
+                r#"{"type":"response.created","response":{"id":"resp_fn01","model":"gpt-4o","status":"in_progress"}}"#,
+            ),
+            make_event(
+                "response.output_item.added",
+                r#"{"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_001","call_id":"call_abc","name":"get_weather","arguments":"","status":"in_progress"}}"#,
+            ),
+            make_event(
+                "response.function_call_arguments.delta",
+                r#"{"type":"response.function_call_arguments.delta","item_id":"fc_001","output_index":0,"delta":"{\"loc"}"#,
+            ),
+            make_event(
+                "response.function_call_arguments.delta",
+                r#"{"type":"response.function_call_arguments.delta","item_id":"fc_001","output_index":0,"delta":"ation\":\"Tokyo\"}"}"#,
+            ),
+            make_event(
+                "response.function_call_arguments.done",
+                r#"{"type":"response.function_call_arguments.done","item_id":"fc_001","output_index":0,"arguments":"{\"location\":\"Tokyo\"}"}"#,
+            ),
+            make_event(
+                "response.output_item.done",
+                r#"{"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_001","call_id":"call_abc","name":"get_weather","arguments":"{\"location\":\"Tokyo\"}","status":"completed"}}"#,
+            ),
+            make_event(
+                "response.completed",
+                r#"{"type":"response.completed","response":{"id":"resp_fn01","model":"gpt-4o","status":"completed","usage":{"input_tokens":20,"output_tokens":10}}}"#,
+            ),
         ];
 
         let events = collect_events(stream::iter(chunks), "claude-3-5-sonnet").await;
@@ -525,7 +590,10 @@ mod tests {
         assert!(!json_deltas.is_empty(), "应有 input_json_delta 事件");
 
         // content_block_stop
-        assert!(types.contains(&"content_block_stop"), "应有 content_block_stop");
+        assert!(
+            types.contains(&"content_block_stop"),
+            "应有 content_block_stop"
+        );
 
         // message_delta stop_reason=tool_use
         let msg_delta = events
@@ -533,7 +601,9 @@ mod tests {
             .find(|e| e.get("type").and_then(|v| v.as_str()) == Some("message_delta"))
             .expect("应有 message_delta");
         assert_eq!(
-            msg_delta.pointer("/delta/stop_reason").and_then(|v| v.as_str()),
+            msg_delta
+                .pointer("/delta/stop_reason")
+                .and_then(|v| v.as_str()),
             Some("tool_use"),
             "函数调用应映射为 tool_use"
         );
@@ -548,19 +618,52 @@ mod tests {
     #[tokio::test]
     async fn test_mixed_stream() {
         let chunks = vec![
-            make_event("response.created", r#"{"type":"response.created","response":{"id":"resp_mix","model":"gpt-4o","status":"in_progress"}}"#),
+            make_event(
+                "response.created",
+                r#"{"type":"response.created","response":{"id":"resp_mix","model":"gpt-4o","status":"in_progress"}}"#,
+            ),
             // 第一个 output item：文本
-            make_event("response.output_item.added", r#"{"type":"response.output_item.added","output_index":0,"item":{"id":"item_text","type":"message","role":"assistant","status":"in_progress","content":[]}}"#),
-            make_event("response.content_part.added", r#"{"type":"response.content_part.added","item_id":"item_text","output_index":0,"content_index":0,"part":{"type":"output_text","text":""}}"#),
-            make_event("response.output_text.delta", r#"{"type":"response.output_text.delta","item_id":"item_text","output_index":0,"content_index":0,"delta":"Let me check."}"#),
-            make_event("response.output_text.done", r#"{"type":"response.output_text.done","item_id":"item_text","output_index":0,"content_index":0,"text":"Let me check."}"#),
-            make_event("response.output_item.done", r#"{"type":"response.output_item.done","output_index":0,"item":{"id":"item_text","type":"message","role":"assistant","status":"completed"}}"#),
+            make_event(
+                "response.output_item.added",
+                r#"{"type":"response.output_item.added","output_index":0,"item":{"id":"item_text","type":"message","role":"assistant","status":"in_progress","content":[]}}"#,
+            ),
+            make_event(
+                "response.content_part.added",
+                r#"{"type":"response.content_part.added","item_id":"item_text","output_index":0,"content_index":0,"part":{"type":"output_text","text":""}}"#,
+            ),
+            make_event(
+                "response.output_text.delta",
+                r#"{"type":"response.output_text.delta","item_id":"item_text","output_index":0,"content_index":0,"delta":"Let me check."}"#,
+            ),
+            make_event(
+                "response.output_text.done",
+                r#"{"type":"response.output_text.done","item_id":"item_text","output_index":0,"content_index":0,"text":"Let me check."}"#,
+            ),
+            make_event(
+                "response.output_item.done",
+                r#"{"type":"response.output_item.done","output_index":0,"item":{"id":"item_text","type":"message","role":"assistant","status":"completed"}}"#,
+            ),
             // 第二个 output item：函数调用
-            make_event("response.output_item.added", r#"{"type":"response.output_item.added","output_index":1,"item":{"type":"function_call","id":"fc_001","call_id":"call_mix","name":"get_weather","arguments":"","status":"in_progress"}}"#),
-            make_event("response.function_call_arguments.delta", r#"{"type":"response.function_call_arguments.delta","item_id":"fc_001","output_index":1,"delta":"{\"city\":\"Tokyo\"}"}"#),
-            make_event("response.function_call_arguments.done", r#"{"type":"response.function_call_arguments.done","item_id":"fc_001","output_index":1,"arguments":"{\"city\":\"Tokyo\"}"}"#),
-            make_event("response.output_item.done", r#"{"type":"response.output_item.done","output_index":1,"item":{"type":"function_call","call_id":"call_mix","name":"get_weather","status":"completed"}}"#),
-            make_event("response.completed", r#"{"type":"response.completed","response":{"id":"resp_mix","model":"gpt-4o","status":"completed","usage":{"input_tokens":20,"output_tokens":15}}}"#),
+            make_event(
+                "response.output_item.added",
+                r#"{"type":"response.output_item.added","output_index":1,"item":{"type":"function_call","id":"fc_001","call_id":"call_mix","name":"get_weather","arguments":"","status":"in_progress"}}"#,
+            ),
+            make_event(
+                "response.function_call_arguments.delta",
+                r#"{"type":"response.function_call_arguments.delta","item_id":"fc_001","output_index":1,"delta":"{\"city\":\"Tokyo\"}"}"#,
+            ),
+            make_event(
+                "response.function_call_arguments.done",
+                r#"{"type":"response.function_call_arguments.done","item_id":"fc_001","output_index":1,"arguments":"{\"city\":\"Tokyo\"}"}"#,
+            ),
+            make_event(
+                "response.output_item.done",
+                r#"{"type":"response.output_item.done","output_index":1,"item":{"type":"function_call","call_id":"call_mix","name":"get_weather","status":"completed"}}"#,
+            ),
+            make_event(
+                "response.completed",
+                r#"{"type":"response.completed","response":{"id":"resp_mix","model":"gpt-4o","status":"completed","usage":{"input_tokens":20,"output_tokens":15}}}"#,
+            ),
         ];
 
         let events = collect_events(stream::iter(chunks), "claude-3-5-sonnet").await;
@@ -570,8 +673,14 @@ mod tests {
             .collect();
 
         // 应有 2 个 content_block_start
-        let start_count = types.iter().filter(|&&t| t == "content_block_start").count();
-        assert_eq!(start_count, 2, "应有 2 个 content_block_start（text + tool_use）");
+        let start_count = types
+            .iter()
+            .filter(|&&t| t == "content_block_start")
+            .count();
+        assert_eq!(
+            start_count, 2,
+            "应有 2 个 content_block_start（text + tool_use）"
+        );
 
         // 第一个是 text block (index:0)
         let text_cbs = events.iter().find(|e| {
@@ -595,7 +704,9 @@ mod tests {
             .find(|e| e.get("type").and_then(|v| v.as_str()) == Some("message_delta"))
             .expect("应有 message_delta");
         assert_eq!(
-            msg_delta.pointer("/delta/stop_reason").and_then(|v| v.as_str()),
+            msg_delta
+                .pointer("/delta/stop_reason")
+                .and_then(|v| v.as_str()),
             Some("tool_use"),
             "混合流含函数调用应映射为 tool_use"
         );
@@ -612,14 +723,32 @@ mod tests {
     #[tokio::test]
     async fn test_stream_no_deferred_start() {
         let chunks = vec![
-            make_event("response.created", r#"{"type":"response.created","response":{"id":"resp_imm","model":"gpt-4o","status":"in_progress"}}"#),
+            make_event(
+                "response.created",
+                r#"{"type":"response.created","response":{"id":"resp_imm","model":"gpt-4o","status":"in_progress"}}"#,
+            ),
             // output_item.added 同时携带 call_id 和 name
-            make_event("response.output_item.added", r#"{"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_imm","call_id":"call_immediate","name":"immediate_tool","arguments":"","status":"in_progress"}}"#),
+            make_event(
+                "response.output_item.added",
+                r#"{"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_imm","call_id":"call_immediate","name":"immediate_tool","arguments":"","status":"in_progress"}}"#,
+            ),
             // 随后才是 arguments delta
-            make_event("response.function_call_arguments.delta", r#"{"type":"response.function_call_arguments.delta","item_id":"fc_imm","output_index":0,"delta":"{\"key\":\"val\"}"}"#),
-            make_event("response.function_call_arguments.done", r#"{"type":"response.function_call_arguments.done","item_id":"fc_imm","output_index":0,"arguments":"{\"key\":\"val\"}"}"#),
-            make_event("response.output_item.done", r#"{"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","call_id":"call_immediate","name":"immediate_tool","status":"completed"}}"#),
-            make_event("response.completed", r#"{"type":"response.completed","response":{"id":"resp_imm","model":"gpt-4o","status":"completed","usage":{"input_tokens":5,"output_tokens":3}}}"#),
+            make_event(
+                "response.function_call_arguments.delta",
+                r#"{"type":"response.function_call_arguments.delta","item_id":"fc_imm","output_index":0,"delta":"{\"key\":\"val\"}"}"#,
+            ),
+            make_event(
+                "response.function_call_arguments.done",
+                r#"{"type":"response.function_call_arguments.done","item_id":"fc_imm","output_index":0,"arguments":"{\"key\":\"val\"}"}"#,
+            ),
+            make_event(
+                "response.output_item.done",
+                r#"{"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","call_id":"call_immediate","name":"immediate_tool","status":"completed"}}"#,
+            ),
+            make_event(
+                "response.completed",
+                r#"{"type":"response.completed","response":{"id":"resp_imm","model":"gpt-4o","status":"completed","usage":{"input_tokens":5,"output_tokens":3}}}"#,
+            ),
         ];
 
         let events = collect_events(stream::iter(chunks), "claude-3-5-sonnet").await;

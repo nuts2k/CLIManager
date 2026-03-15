@@ -11,6 +11,7 @@
     "apiKey": "API Key",
     "baseUrl": "Base URL",
     "model": "Model",
+    "testModel": "Test Model",
     "protocolType": "Protocol Type",
     "notes": "Notes",
     "modelConfig": "Model Config",
@@ -78,7 +79,8 @@
     "required": "This field is required",
     "nameRequired": "Name is required",
     "apiKeyRequired": "API Key is required",
-    "baseUrlRequired": "Base URL is required"
+    "baseUrlRequired": "Base URL is required",
+    "upstreamModelRequired": "Default target model is required"
   },
   "sync": {
     "providersUpdated": "Synced: {{count}} provider(s) updated",

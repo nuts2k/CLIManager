@@ -45,6 +45,7 @@ export interface ProviderFormData {
   apiKey: string;
   baseUrl: string;
   model: string;
+  testModel: string;
   protocolType: ProtocolType;
   notes: string;
   haikuModel: string;
@@ -60,6 +61,14 @@ const formSchema = z.object({
   apiKey: z.string().min(1),
   baseUrl: z.string().min(1),
 });
+
+function getSuggestedTestModel(protocolType: ProtocolType): string {
+  return protocolType === "anthropic" ? "claude-sonnet-4-6" : "gpt-5.2";
+}
+
+function getSuggestedUpstreamModel(protocolType: ProtocolType): string {
+  return protocolType === "anthropic" ? "" : "gpt-5.2";
+}
 
 export function ProviderDialog({
   open,
@@ -80,6 +89,7 @@ export function ProviderDialog({
     apiKey: "",
     baseUrl: "",
     model: "",
+    testModel: getSuggestedTestModel("anthropic"),
     protocolType: "anthropic",
     notes: "",
     haikuModel: "",
@@ -114,13 +124,16 @@ export function ProviderDialog({
           apiKey: provider.api_key,
           baseUrl: provider.base_url,
           model: provider.model,
+          testModel:
+            provider.test_model ?? getSuggestedTestModel(protocolType),
           protocolType,
           notes: provider.notes ?? "",
           haikuModel: provider.model_config?.haiku_model ?? "",
           sonnetModel: provider.model_config?.sonnet_model ?? "",
           opusModel: provider.model_config?.opus_model ?? "",
           reasoningEffort: provider.model_config?.reasoning_effort ?? "",
-          upstreamModel: provider.upstream_model ?? "",
+          upstreamModel:
+            provider.upstream_model ?? getSuggestedUpstreamModel(protocolType),
           upstreamModelMap,
         });
       } else {
@@ -129,6 +142,7 @@ export function ProviderDialog({
           apiKey: "",
           baseUrl: "",
           model: "",
+          testModel: getSuggestedTestModel("anthropic"),
           protocolType: "anthropic",
           notes: "",
           haikuModel: "",
@@ -141,6 +155,39 @@ export function ProviderDialog({
       }
     }
   }, [open, mode, provider]);
+
+  const updateProtocolType = (nextProtocolType: ProtocolType) => {
+    setForm((prev) => {
+      const prevSuggestedTestModel = getSuggestedTestModel(prev.protocolType);
+      const nextSuggestedTestModel = getSuggestedTestModel(nextProtocolType);
+      const prevSuggestedUpstreamModel = getSuggestedUpstreamModel(
+        prev.protocolType,
+      );
+      const nextSuggestedUpstreamModel = getSuggestedUpstreamModel(
+        nextProtocolType,
+      );
+
+      const shouldResetTestModel =
+        prev.testModel.trim() === "" || prev.testModel === prevSuggestedTestModel;
+      const shouldResetUpstreamModel =
+        prev.upstreamModel.trim() === "" ||
+        prev.upstreamModel === prevSuggestedUpstreamModel;
+
+      return {
+        ...prev,
+        protocolType: nextProtocolType,
+        testModel: shouldResetTestModel
+          ? nextSuggestedTestModel
+          : prev.testModel,
+        upstreamModel:
+          nextProtocolType === "anthropic"
+            ? ""
+            : shouldResetUpstreamModel
+              ? nextSuggestedUpstreamModel
+              : prev.upstreamModel,
+      };
+    });
+  };
 
   const updateField = (field: keyof ProviderFormData, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -202,6 +249,15 @@ export function ProviderDialog({
           fieldErrors.baseUrl = t("validation.baseUrlRequired");
       }
       setErrors(fieldErrors);
+      return;
+    }
+
+    if (showModelMapping && form.upstreamModel.trim().length === 0) {
+      setErrors((prev) => ({
+        ...prev,
+        upstreamModel: t("validation.upstreamModelRequired"),
+      }));
+      setAdvancedOpen(true);
       return;
     }
 
@@ -312,14 +368,24 @@ export function ProviderDialog({
                 />
               </div>
 
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="provider-test-model">
+                  {t("provider.testModel")}
+                </Label>
+                <Input
+                  id="provider-test-model"
+                  placeholder={getSuggestedTestModel(form.protocolType)}
+                  value={form.testModel}
+                  onChange={(e) => updateField("testModel", e.target.value)}
+                />
+              </div>
+
               {/* Protocol Type */}
               <div className="flex flex-col gap-1.5">
                 <Label>{t("provider.protocolType")}</Label>
                 <Select
                   value={form.protocolType}
-                  onValueChange={(v) =>
-                    updateField("protocolType", v as ProtocolType)
-                  }
+                  onValueChange={(v) => updateProtocolType(v as ProtocolType)}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue />
@@ -348,12 +414,18 @@ export function ProviderDialog({
                     </Label>
                     <Input
                       id="provider-upstream-model"
-                      placeholder="gpt-4o"
+                      placeholder={getSuggestedUpstreamModel(form.protocolType)}
                       value={form.upstreamModel}
                       onChange={(e) =>
                         updateField("upstreamModel", e.target.value)
                       }
+                      aria-invalid={!!errors.upstreamModel}
                     />
+                    {errors.upstreamModel && (
+                      <p className="text-xs text-destructive">
+                        {errors.upstreamModel}
+                      </p>
+                    )}
                   </div>
 
                   {/* 模型名映射 */}

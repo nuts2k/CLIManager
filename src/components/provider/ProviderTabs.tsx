@@ -169,26 +169,22 @@ export function ProviderTabs({ refreshTrigger }: ProviderTabsProps) {
                 .map((p) => [p.source, p.target]),
             ) || null
           : null;
+      const testModel = data.testModel || null;
 
       if (dialogMode === "create") {
-        const created = await createProvider({
+        await createProvider({
           name: data.name,
           protocolType: data.protocolType,
           apiKey: data.apiKey,
           baseUrl: data.baseUrl,
           model: data.model,
           cliId: currentCliId,
+          modelConfig,
+          notes: data.notes || null,
+          testModel,
+          upstreamModel,
+          upstreamModelMap,
         });
-        // 创建后立即 update 以设置 model_config、notes、upstream 字段
-        if (modelConfig || data.notes || upstreamModel || upstreamModelMap) {
-          await updateProvider({
-            ...created,
-            model_config: modelConfig,
-            notes: data.notes || null,
-            upstream_model: upstreamModel,
-            upstream_model_map: upstreamModelMap,
-          });
-        }
         toast.success(t("status.createSuccess", { name: data.name }));
       } else if (dialogMode === "edit" && editingProvider) {
         await updateProvider({
@@ -199,6 +195,7 @@ export function ProviderTabs({ refreshTrigger }: ProviderTabsProps) {
           model: data.model,
           protocol_type: data.protocolType,
           notes: data.notes || null,
+          test_model: testModel,
           model_config: modelConfig,
           upstream_model: upstreamModel,
           upstream_model_map: upstreamModelMap,

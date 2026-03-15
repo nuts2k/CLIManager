@@ -136,8 +136,7 @@ fn convert_messages_to_input(messages: &[Value]) -> Vec<Value> {
                                 .get("media_type")
                                 .and_then(|m| m.as_str())
                                 .unwrap_or("image/png");
-                            let data =
-                                source.get("data").and_then(|d| d.as_str()).unwrap_or("");
+                            let data = source.get("data").and_then(|d| d.as_str()).unwrap_or("");
                             image_parts.push(json!({
                                 "type": "input_image",
                                 "image_url": format!("data:{};base64,{}", media_type, data)
@@ -269,7 +268,10 @@ mod tests {
         let result = anthropic_to_responses(body).unwrap();
         assert_eq!(result["model"], "claude-3-5-sonnet");
         assert_eq!(result["max_output_tokens"], 1024);
-        assert!(result.get("max_tokens").is_none(), "max_tokens 字段应不存在");
+        assert!(
+            result.get("max_tokens").is_none(),
+            "max_tokens 字段应不存在"
+        );
         assert_eq!(result["instructions"], "You are helpful");
         assert_eq!(result["input"][0]["role"], "user");
         assert_eq!(result["input"][0]["content"], "Hello");
@@ -301,7 +303,10 @@ mod tests {
         });
         let result = anthropic_to_responses(body).unwrap();
         assert_eq!(result["max_output_tokens"], 4096);
-        assert!(result.get("max_tokens").is_none(), "max_tokens 字段不应存在");
+        assert!(
+            result.get("max_tokens").is_none(),
+            "max_tokens 字段不应存在"
+        );
     }
 
     /// test 4: 工具定义无 function 包装层
@@ -327,7 +332,10 @@ mod tests {
         assert_eq!(tool["type"], "function");
         assert_eq!(tool["name"], "get_weather");
         assert_eq!(tool["parameters"]["type"], "object");
-        assert_eq!(tool["parameters"]["properties"]["location"]["type"], "string");
+        assert_eq!(
+            tool["parameters"]["properties"]["location"]["type"],
+            "string"
+        );
     }
 
     /// test 5: tool_result → function_call_output 独立 input 项

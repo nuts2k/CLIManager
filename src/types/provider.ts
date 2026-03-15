@@ -20,6 +20,7 @@ export interface Provider {
   model: string;
   model_config?: ModelConfig | null;
   notes?: string | null;
+  test_model?: string | null;
   upstream_model?: string | null;
   upstream_model_map?: Record<string, string> | null;
   created_at: number;
@@ -34,6 +35,11 @@ export interface CreateProviderInput {
   baseUrl: string;
   model: string;
   cliId: string;
+  modelConfig?: ModelConfig | null;
+  notes?: string | null;
+  testModel?: string | null;
+  upstreamModel?: string | null;
+  upstreamModelMap?: Record<string, string> | null;
 }
 
 export interface DetectedCliConfig {

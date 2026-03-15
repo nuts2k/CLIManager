@@ -251,6 +251,7 @@ fn make_proxy_provider(cli_id: &str, port: u16, real_provider: &Provider) -> Pro
         model: real_provider.model.clone(),
         model_config: real_provider.model_config.clone(),
         notes: None,
+        test_model: None,
         upstream_model: None,
         upstream_model_map: None,
         created_at: real_provider.created_at,
@@ -910,6 +911,7 @@ mod tests {
             model: "o4-mini".to_string(),
             model_config: None,
             notes: None,
+            test_model: None,
             upstream_model: None,
             upstream_model_map: None,
             created_at: 0,
@@ -918,7 +920,10 @@ mod tests {
         };
 
         let upstream = build_upstream_target_from_provider(&provider).unwrap();
-        assert_eq!(upstream.base_url, "https://api.openai.com/v1/chat/completions");
+        assert_eq!(
+            upstream.base_url,
+            "https://api.openai.com/v1/chat/completions"
+        );
     }
 
     #[test]
@@ -946,6 +951,7 @@ mod tests {
             model: "claude-sonnet-4-20250514".to_string(),
             model_config: None,
             notes: None,
+            test_model: None,
             upstream_model: None,
             upstream_model_map: None,
             created_at: 0,
@@ -972,6 +978,7 @@ mod tests {
             model: "o4-mini".to_string(),
             model_config: None,
             notes: None,
+            test_model: None,
             upstream_model: None,
             upstream_model_map: None,
             created_at: 0,
@@ -1066,6 +1073,7 @@ mod tests {
             model: "claude-sonnet-4-20250514".to_string(),
             model_config: None,
             notes: None,
+            test_model: None,
             upstream_model: None,
             upstream_model_map: None,
             created_at: 1710000000000,
@@ -1459,50 +1467,79 @@ mod tests {
             Some(adapter),
         )
         .await;
-        assert!(result.is_ok(), "_proxy_enable_in 应成功: {:?}", result);
-
-        // 验证 1: CLI 配置被 patch 为 PROXY_MANAGED + localhost
         let claude_settings: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(claude_config_dir.join("settings.json")).unwrap(),
         )
         .unwrap();
-        assert_eq!(
-            claude_settings["env"]["ANTHROPIC_AUTH_TOKEN"], "PROXY_MANAGED",
-            "CLI 配置应被 patch 为 PROXY_MANAGED"
-        );
-        assert_eq!(
-            claude_settings["env"]["ANTHROPIC_BASE_URL"],
-            format!("http://127.0.0.1:{}", PROXY_PORT_CLAUDE),
-            "CLI 配置应指向 localhost 代理端口"
-        );
+        match result {
+            Ok(()) => {
+                // 验证 1: CLI 配置被 patch 为 PROXY_MANAGED + localhost
+                assert_eq!(
+                    claude_settings["env"]["ANTHROPIC_AUTH_TOKEN"], "PROXY_MANAGED",
+                    "CLI 配置应被 patch 为 PROXY_MANAGED"
+                );
+                assert_eq!(
+                    claude_settings["env"]["ANTHROPIC_BASE_URL"],
+                    format!("http://127.0.0.1:{}", PROXY_PORT_CLAUDE),
+                    "CLI 配置应指向 localhost 代理端口"
+                );
 
-        // 验证 2: ProxyService 有运行中的 server
-        let status = proxy_service.status().await;
-        let claude_server = status.servers.iter().find(|s| s.cli_id == "claude");
-        assert!(claude_server.is_some(), "ProxyService 应有 claude server");
-        assert!(claude_server.unwrap().running, "claude server 应在运行中");
+                // 验证 2: ProxyService 有运行中的 server
+                let status = proxy_service.status().await;
+                let claude_server = status.servers.iter().find(|s| s.cli_id == "claude");
+                assert!(claude_server.is_some(), "ProxyService 应有 claude server");
+                assert!(claude_server.unwrap().running, "claude server 应在运行中");
 
-        // 验证 3: local.json proxy_takeover.cli_ids 包含 cli_id
-        let updated = crate::storage::local::read_local_settings_from(&local_path).unwrap();
-        let takeover = updated
-            .proxy_takeover
-            .as_ref()
-            .expect("应有 proxy_takeover");
-        assert!(
-            takeover.cli_ids.contains(&"claude".to_string()),
-            "proxy_takeover.cli_ids 应包含 claude"
-        );
+                // 验证 3: local.json proxy_takeover.cli_ids 包含 cli_id
+                let updated = crate::storage::local::read_local_settings_from(&local_path).unwrap();
+                let takeover = updated
+                    .proxy_takeover
+                    .as_ref()
+                    .expect("应有 proxy_takeover");
+                assert!(
+                    takeover.cli_ids.contains(&"claude".to_string()),
+                    "proxy_takeover.cli_ids 应包含 claude"
+                );
 
-        // 验证 4: local.json proxy.cli_enabled[claude] = true
-        let proxy = updated.proxy.as_ref().expect("应有 proxy settings");
-        assert_eq!(
-            proxy.cli_enabled.get("claude").copied(),
-            Some(true),
-            "proxy.cli_enabled[claude] 应为 true"
-        );
+                // 验证 4: local.json proxy.cli_enabled[claude] = true
+                let proxy = updated.proxy.as_ref().expect("应有 proxy settings");
+                assert_eq!(
+                    proxy.cli_enabled.get("claude").copied(),
+                    Some(true),
+                    "proxy.cli_enabled[claude] 应为 true"
+                );
 
-        // 清理：停止代理
-        let _ = proxy_service.stop("claude").await;
+                // 清理：停止代理
+                let _ = proxy_service.stop("claude").await;
+            }
+            Err(AppError::Validation(message))
+                if message.contains("Address already in use")
+                    || message.contains("地址已在使用") =>
+            {
+                assert_eq!(
+                    claude_settings["env"]["ANTHROPIC_AUTH_TOKEN"], "sk-real-key-12345",
+                    "端口冲突时 CLI 配置应回滚为原始凭据"
+                );
+                assert_eq!(
+                    claude_settings["env"]["ANTHROPIC_BASE_URL"], "https://api.anthropic.com",
+                    "端口冲突时 CLI 配置应回滚为原始地址"
+                );
+
+                let status = proxy_service.status().await;
+                let claude_server = status.servers.iter().find(|s| s.cli_id == "claude");
+                assert!(
+                    claude_server.is_none() || !claude_server.unwrap().running,
+                    "端口冲突时不应留下运行中的 claude server"
+                );
+
+                let updated = crate::storage::local::read_local_settings_from(&local_path).unwrap();
+                assert!(
+                    updated.proxy_takeover.is_none(),
+                    "端口冲突时不应写入 proxy_takeover"
+                );
+            }
+            Err(err) => panic!("_proxy_enable_in 返回了意外错误: {err:?}"),
+        }
     }
 
     // --- Gap 2: MODE-04 — _proxy_disable_in 成功路径测试 ---

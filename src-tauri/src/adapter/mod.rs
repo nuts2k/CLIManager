@@ -316,6 +316,7 @@ mod tests {
             model: "o4-mini".to_string(),
             model_config: None,
             notes: None,
+            test_model: None,
             upstream_model: None,
             upstream_model_map: None,
             created_at: 1710000000000,

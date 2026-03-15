@@ -76,8 +76,7 @@ pub fn anthropic_to_openai(body: Value) -> Result<Value, ProxyError> {
                 t.get("type").and_then(|v| v.as_str()) != Some("BatchTool")
             })
             .map(|t| {
-                let parameters =
-                    clean_schema(t.get("input_schema").cloned().unwrap_or(json!({})));
+                let parameters = clean_schema(t.get("input_schema").cloned().unwrap_or(json!({})));
                 let mut tool = json!({
                     "type": "function",
                     "function": {
@@ -311,26 +310,22 @@ mod tests {
     #[test]
     fn test_build_url_with_v1_in_base() {
         // base_url 已含 /v1 → 不重复
-        let result =
-            build_proxy_endpoint_url("https://openrouter.ai/api/v1", "/chat/completions");
+        let result = build_proxy_endpoint_url("https://openrouter.ai/api/v1", "/chat/completions");
         assert_eq!(result, "https://openrouter.ai/api/v1/chat/completions");
     }
 
     #[test]
     fn test_build_url_with_trailing_slash() {
         // 尾部斜杠应被去除
-        let result =
-            build_proxy_endpoint_url("https://openrouter.ai/api/v1/", "/chat/completions");
+        let result = build_proxy_endpoint_url("https://openrouter.ai/api/v1/", "/chat/completions");
         assert_eq!(result, "https://openrouter.ai/api/v1/chat/completions");
     }
 
     #[test]
     fn test_build_url_replaces_path_after_v1() {
         // /v1 之后的旧路径被 endpoint_suffix 替换
-        let result = build_proxy_endpoint_url(
-            "https://example.com/v1/responses",
-            "/chat/completions",
-        );
+        let result =
+            build_proxy_endpoint_url("https://example.com/v1/responses", "/chat/completions");
         assert_eq!(result, "https://example.com/v1/chat/completions");
     }
 
@@ -557,7 +552,10 @@ mod tests {
         let result = anthropic_to_openai(body).unwrap();
         assert_eq!(result["tools"][0]["type"], "function");
         assert_eq!(result["tools"][0]["function"]["name"], "search");
-        assert_eq!(result["tools"][0]["function"]["parameters"]["type"], "object");
+        assert_eq!(
+            result["tools"][0]["function"]["parameters"]["type"],
+            "object"
+        );
     }
 
     #[test]

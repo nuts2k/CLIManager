@@ -5,7 +5,7 @@ use tauri::Manager;
 
 use crate::commands::provider::normalize_and_validate_provider;
 use crate::error::AppError;
-use crate::provider::{ProtocolType, Provider};
+use crate::provider::{suggested_test_model, suggested_upstream_model, ProtocolType, Provider};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct DetectedCliConfig {
@@ -187,6 +187,8 @@ pub fn import_provider_to(
         String::new(), // model is empty for imports (only API key + base URL)
         cli_id,
     );
+    provider.test_model = Some(suggested_test_model(&provider.protocol_type).to_string());
+    provider.upstream_model = suggested_upstream_model(&provider.protocol_type).map(str::to_string);
     provider = normalize_and_validate_provider(provider)?;
 
     crate::storage::icloud::save_provider_to(dir, &provider)?;
@@ -212,6 +214,8 @@ pub fn import_provider(
         String::new(),
         cli_id,
     );
+    provider.test_model = Some(suggested_test_model(&provider.protocol_type).to_string());
+    provider.upstream_model = suggested_upstream_model(&provider.protocol_type).map(str::to_string);
     provider = normalize_and_validate_provider(provider)?;
 
     // Record self-write BEFORE the file operation so the watcher ignores this change
@@ -557,6 +561,25 @@ base_url = "https://azure.openai.com/v1"
         let saved: crate::provider::Provider = serde_json::from_str(&content).unwrap();
         assert_eq!(saved.name, "Full Import");
         assert_eq!(saved.api_key, "sk-ant-full-key");
+        assert_eq!(saved.test_model.as_deref(), Some("claude-sonnet-4-6"));
+        assert_eq!(saved.upstream_model, None);
+    }
+
+    #[test]
+    fn test_import_openai_provider_sets_default_test_and_upstream_model() {
+        let tmp = TempDir::new().unwrap();
+        let provider = import_provider_to(
+            tmp.path(),
+            "OpenAI Import".to_string(),
+            ProtocolType::OpenAiChatCompletions,
+            "sk-openai-key".to_string(),
+            "https://api.openai.com".to_string(),
+            "codex".to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(provider.test_model.as_deref(), Some("gpt-5.2"));
+        assert_eq!(provider.upstream_model.as_deref(), Some("gpt-5.2"));
     }
 
     #[test]

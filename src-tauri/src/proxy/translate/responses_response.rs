@@ -49,10 +49,7 @@ pub fn responses_to_anthropic(body: Value) -> Result<Value, ProxyError> {
                 has_function_call = true;
 
                 // 使用 call_id（不是 id）映射到 tool_use.id
-                let call_id = item
-                    .get("call_id")
-                    .and_then(|c| c.as_str())
-                    .unwrap_or("");
+                let call_id = item.get("call_id").and_then(|c| c.as_str()).unwrap_or("");
                 let name = item.get("name").and_then(|n| n.as_str()).unwrap_or("");
                 let args_str = item
                     .get("arguments")
@@ -60,8 +57,8 @@ pub fn responses_to_anthropic(body: Value) -> Result<Value, ProxyError> {
                     .unwrap_or("{}");
 
                 // arguments 反序列化失败时包装为 {"raw": "原字符串"}
-                let input: Value = serde_json::from_str(args_str)
-                    .unwrap_or_else(|_| json!({"raw": args_str}));
+                let input: Value =
+                    serde_json::from_str(args_str).unwrap_or_else(|_| json!({"raw": args_str}));
 
                 content.push(json!({
                     "type": "tool_use",

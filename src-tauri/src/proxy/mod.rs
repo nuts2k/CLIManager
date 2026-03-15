@@ -564,8 +564,14 @@ mod tests {
             .unwrap();
 
         // 验证响应为 Anthropic 格式
-        assert_eq!(resp["content"][0]["type"], "text", "响应应包含 text content block");
-        assert_eq!(resp["content"][0]["text"], "Hello from OpenAI!", "文本内容应匹配");
+        assert_eq!(
+            resp["content"][0]["type"], "text",
+            "响应应包含 text content block"
+        );
+        assert_eq!(
+            resp["content"][0]["text"], "Hello from OpenAI!",
+            "文本内容应匹配"
+        );
         assert_eq!(resp["stop_reason"], "end_turn", "stop_reason 应为 end_turn");
         assert_eq!(resp["usage"]["input_tokens"], 10, "input_tokens 应匹配");
 
@@ -592,9 +598,10 @@ mod tests {
             post(move || {
                 let body = sse_body;
                 async move {
-                    let stream = futures::stream::once(async move {
-                        Ok::<Bytes, Infallible>(Bytes::from(body))
-                    });
+                    let stream =
+                        futures::stream::once(
+                            async move { Ok::<Bytes, Infallible>(Bytes::from(body)) },
+                        );
                     axum::response::Response::builder()
                         .status(200)
                         .header("content-type", "text/event-stream")
@@ -642,10 +649,22 @@ mod tests {
             .unwrap();
 
         // 验证响应包含 Anthropic SSE 事件关键标记
-        assert!(resp_text.contains("event: message_start"), "应包含 message_start 事件");
-        assert!(resp_text.contains("event: content_block_start"), "应包含 content_block_start 事件");
-        assert!(resp_text.contains("event: content_block_delta"), "应包含 content_block_delta 事件");
-        assert!(resp_text.contains("event: message_stop"), "应包含 message_stop 事件");
+        assert!(
+            resp_text.contains("event: message_start"),
+            "应包含 message_start 事件"
+        );
+        assert!(
+            resp_text.contains("event: content_block_start"),
+            "应包含 content_block_start 事件"
+        );
+        assert!(
+            resp_text.contains("event: content_block_delta"),
+            "应包含 content_block_delta 事件"
+        );
+        assert!(
+            resp_text.contains("event: message_stop"),
+            "应包含 message_stop 事件"
+        );
         assert!(resp_text.contains("Hi"), "应包含第一段文本 Hi");
         assert!(resp_text.contains(" there"), "应包含第二段文本 there");
 
@@ -907,7 +926,10 @@ mod tests {
         let req_body = captured_body.lock().await;
         let req = req_body.as_ref().expect("mock 上游应已收到请求");
         assert!(req.get("input").is_some(), "上游请求体应包含 input 字段");
-        assert!(req.get("messages").is_none(), "上游请求体不应包含 messages 字段");
+        assert!(
+            req.get("messages").is_none(),
+            "上游请求体不应包含 messages 字段"
+        );
         assert_eq!(
             req.get("max_output_tokens").and_then(|v| v.as_u64()),
             Some(100),
@@ -951,9 +973,10 @@ mod tests {
             post(move || {
                 let body = sse_body;
                 async move {
-                    let stream = futures::stream::once(async move {
-                        Ok::<Bytes, Infallible>(Bytes::from(body))
-                    });
+                    let stream =
+                        futures::stream::once(
+                            async move { Ok::<Bytes, Infallible>(Bytes::from(body)) },
+                        );
                     axum::response::Response::builder()
                         .status(200)
                         .header("content-type", "text/event-stream")
@@ -1003,7 +1026,8 @@ mod tests {
         // 验证响应是 Anthropic SSE 格式
         assert!(
             resp_text.contains("event: message_start"),
-            "应包含 message_start 事件，实际内容: {}", resp_text
+            "应包含 message_start 事件，实际内容: {}",
+            resp_text
         );
         assert!(
             resp_text.contains("event: content_block_start"),

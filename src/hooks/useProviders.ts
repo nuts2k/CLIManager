@@ -7,7 +7,6 @@ import {
   deleteProvider,
   setActiveProvider,
   testProvider,
-  updateProvider,
   refreshTrayMenu,
 } from "@/lib/tauri";
 import type { Provider, CreateProviderInput } from "@/types/provider";
@@ -83,22 +82,13 @@ export function useProviders(cliId: string) {
           baseUrl: provider.base_url,
           model: provider.model,
           cliId: provider.cli_id,
+          notes: provider.notes ?? null,
+          modelConfig: provider.model_config ?? null,
+          testModel: provider.test_model ?? null,
+          upstreamModel: provider.upstream_model ?? null,
+          upstreamModelMap: provider.upstream_model_map ?? null,
         };
-        const created = await createProvider(input);
-        if (
-          provider.notes != null ||
-          provider.model_config != null ||
-          provider.upstream_model != null ||
-          provider.upstream_model_map != null
-        ) {
-          await updateProvider({
-            ...created,
-            notes: provider.notes ?? null,
-            model_config: provider.model_config ?? null,
-            upstream_model: provider.upstream_model ?? null,
-            upstream_model_map: provider.upstream_model_map ?? null,
-          });
-        }
+        await createProvider(input);
         await refresh();
         refreshTrayMenu().catch(() => {});
         toast.success(t("status.copySuccess", { name: provider.name }));
@@ -122,22 +112,13 @@ export function useProviders(cliId: string) {
           baseUrl: provider.base_url,
           model: provider.model,
           cliId: targetCliId,
+          notes: provider.notes ?? null,
+          modelConfig: provider.model_config ?? null,
+          testModel: provider.test_model ?? null,
+          upstreamModel: provider.upstream_model ?? null,
+          upstreamModelMap: provider.upstream_model_map ?? null,
         };
-        const created = await createProvider(input);
-        if (
-          provider.notes != null ||
-          provider.model_config != null ||
-          provider.upstream_model != null ||
-          provider.upstream_model_map != null
-        ) {
-          await updateProvider({
-            ...created,
-            notes: provider.notes ?? null,
-            model_config: provider.model_config ?? null,
-            upstream_model: provider.upstream_model ?? null,
-            upstream_model_map: provider.upstream_model_map ?? null,
-          });
-        }
+        await createProvider(input);
         if (targetCliId === cliIdRef.current) {
           await refresh();
         }

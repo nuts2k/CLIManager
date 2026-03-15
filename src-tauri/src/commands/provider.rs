@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::time::Instant;
 
@@ -9,7 +9,7 @@ use crate::adapter::claude::ClaudeAdapter;
 use crate::adapter::codex::CodexAdapter;
 use crate::adapter::CliAdapter;
 use crate::error::AppError;
-use crate::provider::{normalize_origin_base_url, ProtocolType, Provider};
+use crate::provider::{normalize_origin_base_url, ModelConfig, ProtocolType, Provider};
 use crate::storage::local::{read_local_settings, write_local_settings, LocalSettings};
 
 #[derive(Debug, Clone, Serialize)]
@@ -78,6 +78,10 @@ pub(crate) fn normalize_provider_fields(provider: &mut Provider) {
     provider.base_url = provider.base_url.trim().to_string();
     provider.model = provider.model.trim().to_string();
     provider.cli_id = provider.cli_id.trim().to_string();
+
+    trim_optional_string(&mut provider.notes);
+    trim_optional_string(&mut provider.test_model);
+    trim_optional_string(&mut provider.upstream_model);
 }
 
 pub(crate) fn validate_provider(provider: &Provider) -> Result<(), AppError> {
@@ -101,7 +105,27 @@ pub(crate) fn validate_provider(provider: &Provider) -> Result<(), AppError> {
 
     normalize_origin_base_url(&provider.base_url).map_err(AppError::Validation)?;
 
+    if matches!(
+        provider.protocol_type,
+        ProtocolType::OpenAiChatCompletions | ProtocolType::OpenAiResponses
+    ) && provider.upstream_model.is_none()
+    {
+        return Err(AppError::Validation(
+            "OpenAI providers require upstream_model".to_string(),
+        ));
+    }
+
     Ok(())
+}
+
+fn trim_optional_string(value: &mut Option<String>) {
+    if let Some(inner) = value.as_mut() {
+        *inner = inner.trim().to_string();
+    }
+
+    if value.as_ref().is_some_and(|inner| inner.is_empty()) {
+        *value = None;
+    }
 }
 
 pub(crate) fn normalize_and_validate_provider(
@@ -469,15 +493,20 @@ pub fn create_provider(
     base_url: String,
     model: String,
     cli_id: String,
+    model_config: Option<ModelConfig>,
+    notes: Option<String>,
+    test_model: Option<String>,
+    upstream_model: Option<String>,
+    upstream_model_map: Option<HashMap<String, String>>,
 ) -> Result<Provider, AppError> {
-    let provider = normalize_and_validate_provider(Provider::new(
-        name,
-        protocol_type,
-        api_key,
-        base_url,
-        model,
-        cli_id,
-    ))?;
+    let mut provider = Provider::new(name, protocol_type, api_key, base_url, model, cli_id);
+    provider.model_config = model_config;
+    provider.notes = notes;
+    provider.test_model = test_model;
+    provider.upstream_model = upstream_model;
+    provider.upstream_model_map = upstream_model_map;
+
+    let provider = normalize_and_validate_provider(provider)?;
 
     // Record self-write BEFORE the file operation so the watcher ignores this change
     let dir = crate::storage::icloud::get_icloud_providers_dir()?;
@@ -511,6 +540,30 @@ fn find_proxy_cli_ids_for_provider(settings: &LocalSettings, provider_id: &str) 
         })
         .cloned()
         .collect()
+}
+
+fn resolve_test_model(provider: &Provider, settings: &LocalSettings) -> Result<String, AppError> {
+    provider
+        .test_model
+        .as_deref()
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            settings
+                .test_config
+                .as_ref()
+                .and_then(|config| config.test_model.as_deref())
+                .map(str::trim)
+                .filter(|model| !model.is_empty())
+                .map(str::to_string)
+        })
+        .ok_or_else(|| {
+            AppError::Validation(
+                "Provider test_model is not configured and no global test model fallback is set"
+                    .to_string(),
+            )
+        })
 }
 
 /// 纯函数：检查代理模式是否阻止删除指定 provider（不依赖 global_enabled，
@@ -810,20 +863,12 @@ pub async fn test_provider(provider_id: String) -> Result<TestResult, AppError> 
         .build()
         .map_err(|e| AppError::Http(e.to_string()))?;
 
-    // Anthropic 用 provider.model（CLI 配置模型名）
-    // OpenAI 类型用 upstream_model（代理转换目标模型名）
-    let test_model_override = settings
-        .test_config
-        .as_ref()
-        .and_then(|c| c.test_model.as_ref())
-        .filter(|m| !m.is_empty())
-        .cloned();
+    let model = resolve_test_model(&provider, &settings)?;
 
     let start = Instant::now();
 
     let result = match provider.protocol_type {
         ProtocolType::Anthropic => {
-            let model = test_model_override.unwrap_or_else(|| provider.model.clone());
             let url = format!("{}/v1/messages", provider.base_url.trim_end_matches('/'));
             client
                 .post(&url)
@@ -839,9 +884,6 @@ pub async fn test_provider(provider_id: String) -> Result<TestResult, AppError> 
                 .await
         }
         ProtocolType::OpenAiChatCompletions => {
-            let model = test_model_override.clone()
-                .or_else(|| provider.upstream_model.clone())
-                .unwrap_or_default();
             let url = format!(
                 "{}/v1/chat/completions",
                 provider.base_url.trim_end_matches('/')
@@ -860,13 +902,7 @@ pub async fn test_provider(provider_id: String) -> Result<TestResult, AppError> 
                 .await
         }
         ProtocolType::OpenAiResponses => {
-            let model = test_model_override
-                .or_else(|| provider.upstream_model.clone())
-                .unwrap_or_default();
-            let url = format!(
-                "{}/v1/responses",
-                provider.base_url.trim_end_matches('/')
-            );
+            let url = format!("{}/v1/responses", provider.base_url.trim_end_matches('/'));
             let request_body = serde_json::json!({
                 "model": model,
                 "input": [{"role": "user", "content": "hi"}],
@@ -902,13 +938,11 @@ pub async fn test_provider(provider_id: String) -> Result<TestResult, AppError> 
                 })
             }
         }
-        Err(e) => {
-            Ok(TestResult {
-                success: false,
-                elapsed_ms,
-                error: Some(e.to_string()),
-            })
-        }
+        Err(e) => Ok(TestResult {
+            success: false,
+            elapsed_ms,
+            error: Some(e.to_string()),
+        }),
     }
 }
 
@@ -958,6 +992,7 @@ mod tests {
             model: "claude-sonnet-4-20250514".to_string(),
             model_config: None,
             notes: None,
+            test_model: None,
             upstream_model: None,
             upstream_model_map: None,
             created_at: 1710000000000,
@@ -1006,6 +1041,19 @@ mod tests {
     }
 
     #[test]
+    fn test_normalize_and_validate_provider_trims_optional_test_fields() {
+        let provider = Provider {
+            test_model: Some("  claude-sonnet-4-6  ".to_string()),
+            upstream_model: Some("  gpt-5.2  ".to_string()),
+            ..make_provider("p1", "Test Provider", "claude")
+        };
+
+        let normalized = normalize_and_validate_provider(provider).unwrap();
+        assert_eq!(normalized.test_model.as_deref(), Some("claude-sonnet-4-6"));
+        assert_eq!(normalized.upstream_model.as_deref(), Some("gpt-5.2"));
+    }
+
+    #[test]
     fn test_normalize_and_validate_provider_rejects_base_url_without_scheme() {
         let provider = Provider {
             base_url: "localhost:8080".to_string(),
@@ -1044,6 +1092,21 @@ mod tests {
 
         let normalized = normalize_and_validate_provider(provider).unwrap();
         assert_eq!(normalized.base_url, "https://api.anthropic.com");
+    }
+
+    #[test]
+    fn test_normalize_and_validate_provider_requires_upstream_model_for_openai() {
+        let provider = Provider {
+            protocol_type: ProtocolType::OpenAiChatCompletions,
+            upstream_model: None,
+            ..make_provider("p1", "Test Provider", "claude")
+        };
+
+        let err = normalize_and_validate_provider(provider).unwrap_err();
+        assert!(matches!(
+            err,
+            AppError::Validation(ref message) if message == "OpenAI providers require upstream_model"
+        ));
     }
 
     #[test]
@@ -1150,6 +1213,7 @@ mod tests {
         provider.protocol_type = ProtocolType::OpenAiChatCompletions;
         provider.api_key = "sk-codex-key".to_string();
         provider.base_url = "https://proxy.example.com".to_string();
+        provider.upstream_model = Some("gpt-5.2".to_string());
         save_provider_to(&providers_dir, &provider).unwrap();
 
         let adapter_config_dir = tmp.path().join("codex-config");
@@ -1963,6 +2027,53 @@ mod tests {
             loaded.test_config.as_ref().unwrap().test_model,
             Some("claude-haiku-4-20250514".to_string())
         );
+    }
+
+    #[test]
+    fn test_resolve_test_model_prefers_provider_field() {
+        let provider = Provider {
+            test_model: Some("provider-test-model".to_string()),
+            ..make_provider("p1", "Test Provider", "claude")
+        };
+        let settings = LocalSettings {
+            test_config: Some(crate::storage::local::TestConfig {
+                timeout_secs: 10,
+                test_model: Some("global-test-model".to_string()),
+            }),
+            ..LocalSettings::default()
+        };
+
+        let resolved = resolve_test_model(&provider, &settings).unwrap();
+        assert_eq!(resolved, "provider-test-model");
+    }
+
+    #[test]
+    fn test_resolve_test_model_falls_back_to_global_setting() {
+        let provider = make_provider("p1", "Test Provider", "claude");
+        let settings = LocalSettings {
+            test_config: Some(crate::storage::local::TestConfig {
+                timeout_secs: 10,
+                test_model: Some("global-test-model".to_string()),
+            }),
+            ..LocalSettings::default()
+        };
+
+        let resolved = resolve_test_model(&provider, &settings).unwrap();
+        assert_eq!(resolved, "global-test-model");
+    }
+
+    #[test]
+    fn test_resolve_test_model_errors_when_no_provider_or_global_model() {
+        let provider = make_provider("p1", "Test Provider", "claude");
+        let settings = LocalSettings::default();
+
+        let err = resolve_test_model(&provider, &settings).unwrap_err();
+        assert!(matches!(
+            err,
+            AppError::Validation(ref message)
+                if message
+                    == "Provider test_model is not configured and no global test model fallback is set"
+        ));
     }
 
     #[test]

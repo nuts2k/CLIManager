@@ -112,6 +112,8 @@ pub struct Provider {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub test_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub upstream_model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub upstream_model_map: Option<HashMap<String, String>>,
@@ -127,6 +129,20 @@ fn default_cli_id() -> String {
 
 fn default_schema_version() -> u32 {
     1
+}
+
+pub fn suggested_test_model(protocol_type: &ProtocolType) -> &'static str {
+    match protocol_type {
+        ProtocolType::Anthropic => "claude-sonnet-4-6",
+        ProtocolType::OpenAiChatCompletions | ProtocolType::OpenAiResponses => "gpt-5.2",
+    }
+}
+
+pub fn suggested_upstream_model(protocol_type: &ProtocolType) -> Option<&'static str> {
+    match protocol_type {
+        ProtocolType::Anthropic => None,
+        ProtocolType::OpenAiChatCompletions | ProtocolType::OpenAiResponses => Some("gpt-5.2"),
+    }
 }
 
 impl Provider {
@@ -149,6 +165,7 @@ impl Provider {
             model,
             model_config: None,
             notes: None,
+            test_model: None,
             upstream_model: None,
             upstream_model_map: None,
             created_at: now,
@@ -178,6 +195,7 @@ mod tests {
                 reasoning_effort: None,
             }),
             notes: Some("Test provider".to_string()),
+            test_model: None,
             upstream_model: None,
             upstream_model_map: None,
             created_at: 1710000000000,
@@ -264,8 +282,24 @@ mod tests {
     }
 
     #[test]
+    fn test_provider_test_model_present() {
+        let mut provider = sample_provider();
+        provider.test_model = Some("claude-sonnet-4-6".to_string());
+        let json = serde_json::to_string(&provider).unwrap();
+        assert!(json.contains("test_model"));
+        assert!(json.contains("claude-sonnet-4-6"));
+    }
+
+    #[test]
+    fn test_provider_test_model_none_skipped() {
+        let provider = sample_provider();
+        let json = serde_json::to_string(&provider).unwrap();
+        assert!(!json.contains("test_model"));
+    }
+
+    #[test]
     fn test_provider_old_json_without_upstream_fields_deserializes() {
-        // 旧 JSON（无 upstream_model/upstream_model_map）反序列化不崩溃，两字段为 None
+        // 旧 JSON（无 test_model/upstream_model/upstream_model_map）反序列化不崩溃
         let json = r#"{
             "id": "test-id",
             "name": "Test",
@@ -277,6 +311,7 @@ mod tests {
             "updated_at": 1710000000000
         }"#;
         let provider: Provider = serde_json::from_str(json).unwrap();
+        assert_eq!(provider.test_model, None);
         assert_eq!(provider.upstream_model, None);
         assert_eq!(provider.upstream_model_map, None);
     }
@@ -286,6 +321,7 @@ mod tests {
         let mut provider = sample_provider();
         let mut map = HashMap::new();
         map.insert("claude-3-5-sonnet".to_string(), "gpt-4o".to_string());
+        provider.test_model = Some("gpt-5.2".to_string());
         provider.upstream_model = Some("gpt-4o-mini".to_string());
         provider.upstream_model_map = Some(map);
         let json = serde_json::to_string_pretty(&provider).unwrap();
@@ -375,6 +411,27 @@ mod tests {
             "codex".to_string(),
         );
         assert_eq!(provider.cli_id, "codex");
+    }
+
+    #[test]
+    fn test_suggested_test_model_matches_protocol() {
+        assert_eq!(
+            suggested_test_model(&ProtocolType::Anthropic),
+            "claude-sonnet-4-6"
+        );
+        assert_eq!(
+            suggested_test_model(&ProtocolType::OpenAiResponses),
+            "gpt-5.2"
+        );
+    }
+
+    #[test]
+    fn test_suggested_upstream_model_only_for_openai() {
+        assert_eq!(suggested_upstream_model(&ProtocolType::Anthropic), None);
+        assert_eq!(
+            suggested_upstream_model(&ProtocolType::OpenAiChatCompletions),
+            Some("gpt-5.2")
+        );
     }
 
     #[test]
