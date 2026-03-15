@@ -138,6 +138,52 @@
 
 ---
 
+## Milestone: v2.2 — 协议转换
+
+**Shipped:** 2026-03-15
+**Phases:** 3 | **Plans:** 10 | **Commits:** 44
+
+### What Was Built
+- Anthropic -> OpenAI Chat Completions 双向协议转换（请求/响应/流式 SSE），纯函数 TDD
+- 流式 SSE Deferred Start 工具调用缓冲 + 多工具并发追踪 + 跨 chunk 截断处理
+- handler.rs 三分支协议路由 + 模型映射三级优先级（精确匹配 > 默认模型 > 保留原名）
+- Responses API 完整转换层（请求/非流式响应/SSE 流式）
+- Provider 编辑 UI 三协议选择 + 默认模型 + 模型映射对可视化配置
+- ProtocolType 三变体 serde alias 向前兼容
+
+### What Worked
+- 纯函数先行策略：translate/ 子模块独立实现和测试，与 handler 解耦，Wave 2 三路并行零冲突
+- serde_json::Value 动态映射：无需 typed struct，灵活处理 Anthropic/OpenAI 两种截然不同的 JSON 格式
+- TDD 驱动：86 个转换测试（63 Chat Completions + 23 Responses API）作为回归保护
+- 3 phases 最大并行度设计：Phase 14 内部 Wave 2 三路并行，Phase 16 内部三路并行
+- cc-switch 参考代码有效缩短调研时间（streaming.rs Deferred Start 逻辑直接参考）
+
+### What Was Inefficient
+- ROADMAP.md 的 plan 复选框未在执行时更新（显示 `[ ]` 但实际已完成）— 连续三个里程碑的同一问题
+- STATE.md 的 Current Position 未随执行更新（仍显示 Phase 14 ready to plan）
+- 多个 SUMMARY 中 stream.rs 编译阻塞修复重复出现（Plans 02、03、04 各自独立添加占位 stub）— Wave 2 并行的必然代价
+
+### Patterns Established
+- `translate/` 六子模块结构：request/response/stream（Chat Completions）+ responses_request/responses_response/responses_stream（Responses API）
+- handler.rs 步骤 C → match protocol_type → 步骤 J 三分支响应处理模式
+- apply_upstream_model_mapping 纯函数在转换前执行（handler 层关注点分离）
+- Deferred Start pending buffer：Chat Completions 工具流式分帧的标准处理模式
+- 无 Deferred Start 的 Responses API 流式：output_item.added 携带完整信息，立即发 content_block_start
+
+### Key Lessons
+1. 纯函数转换 + TDD 是协议转换层的最佳实践 — 86 个测试让后续 hotfix（4 个 fix commits）修改有信心
+2. serde_json::Value 比 typed struct 更适合协议转换 — 两种 API 格式差异过大，typed struct 会引入过多中间类型
+3. 并行 Wave 计划中的跨模块依赖应提前考虑 — stream.rs 占位 stub 问题在三个 Plan 中重复出现
+4. cc-switch 参考代码最大价值在流式 SSE 处理 — Deferred Start 逻辑直接可借鉴
+5. ProtocolType serde alias 向前兼容是正确做法 — 新增变体时零迁移成本
+
+### Cost Observations
+- Model mix: balanced profile (sonnet-based agents, opus orchestration)
+- Total execution: ~57 min for 10 plans (avg 6min/plan)
+- Notable: 2-day milestone — 协议转换复杂度高但纯函数分治有效降低集成风险
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -147,6 +193,8 @@
 | v1.0 | 85 | 5 | Initial project — established patterns and conventions |
 | v1.1 | ~10 | 2 | Tray feature — clean extension of existing architecture |
 | v2.0 | 54 | 4 | Local proxy — new subsystem (axum) + audit-driven gap closure |
+| v2.1 | ~15 | 2 | Release engineering — CI/CD + auto updater |
+| v2.2 | 44 | 3 | Protocol translation — pure function TDD + max parallelism |
 
 ### Cumulative Quality
 
@@ -155,6 +203,8 @@
 | v1.0 | 7,986 | 143 | 6min |
 | v1.1 | 8,441 | 16 modified | 8min |
 | v2.0 | ~12,000 | 56 modified | 5min |
+| v2.1 | ~12,000 | — | 8min |
+| v2.2 | ~18,000 | 29 modified | 6min |
 
 ### Top Lessons (Verified Across Milestones)
 
@@ -163,3 +213,5 @@
 3. All state change sources must trigger tray refresh — missing one is a bug (verified v1.1)
 4. All CLI config modification paths must check proxy state — missing one breaks proxy mode (verified v2.0)
 5. Audit-driven gap closure is effective — independent phases for precise fixes (verified v2.0)
+6. 纯函数 + TDD 是协议转换层最佳实践 — 86 个测试让 hotfix 修改有信心 (verified v2.2)
+7. serde alias 向前兼容是 enum 变体重命名的正确做法 — 零迁移成本 (verified v2.2)

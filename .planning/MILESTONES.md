@@ -1,5 +1,28 @@
 # Milestones
 
+## v2.2 协议转换 (Shipped: 2026-03-15)
+
+**Phases completed:** 3 phases, 10 plans
+**Delivered:** Claude Code 通过本地代理使用 OpenAI 兼容 Provider，代理层自动完成 Anthropic Messages API <-> OpenAI API 双向协议转换
+
+**Key accomplishments:**
+- Anthropic -> OpenAI Chat Completions 双向协议转换（请求/响应/流式 SSE），纯函数 TDD，63 个单元测试
+- 流式 SSE Deferred Start 工具调用缓冲 + 多工具并发追踪 + 跨 chunk 截断处理
+- handler.rs 三分支协议路由（OpenAiChatCompletions / OpenAiResponses / Anthropic）+ 模型映射三级优先级
+- Responses API 完整转换层（请求/非流式响应/SSE 流式），23 个测试
+- Provider 编辑 UI 三协议选择 + 默认模型 + 模型映射对可视化配置
+- ProtocolType 三变体 serde alias 向前兼容，旧配置文件无需迁移
+
+**Stats:**
+- 44 commits, 29 files changed, +6,682/-168 lines
+- Timeline: 2 days (2026-03-14 -> 2026-03-15)
+- Codebase: ~18,000 LOC (Rust + TypeScript/React)
+- Key module: 4,141 LOC translate engine (6 子模块)
+- Git range: feat(14-01) to fix(provider)
+- 329 tests, all green (1 pre-existing env port conflict)
+
+---
+
 ## v2.1 Release Engineering (Shipped: 2026-03-14)
 
 **Phases completed:** 2 phases, 5 plans, 1 tasks
