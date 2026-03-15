@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.2
-milestone_name: 协议转换
-status: complete
-stopped_at: Milestone v2.2 archived
-last_updated: "2026-03-15T06:30:00.000Z"
-last_activity: 2026-03-15 — v2.2 协议转换 milestone archived
+milestone: v2.3
+milestone_name: 前端调整及美化
+status: defining
+stopped_at: null
+last_updated: "2026-03-15T12:00:00.000Z"
+last_activity: 2026-03-15 — Milestone v2.3 started
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 10
-  completed_plans: 10
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-15)
 
 **Core value:** 切换 Provider 时只做 surgical patch（精确修改凭据和模型字段），绝不重写配置文件的其他内容
-**Current focus:** Planning next milestone
+**Current focus:** Defining requirements for v2.3
 
 ## Current Position
 
-Phase: — (milestone complete)
+Phase: Not started (defining requirements)
 Plan: —
-Status: Milestone v2.2 shipped, awaiting next milestone
-Last activity: 2026-03-15 — v2.2 协议转换 milestone archived
+Status: Defining requirements
+Last activity: 2026-03-15 — Milestone v2.3 started
 
-Progress: [██████████] 100% (v2.2 complete)
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
