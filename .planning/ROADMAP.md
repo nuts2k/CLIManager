@@ -81,8 +81,8 @@
   4. 圆角规范统一（如 rounded-md/rounded-lg），所有卡片和对话框视觉一致
 **Plans**: 2 plans
 Plans:
-- [ ] 17-01-PLAN.md — CSS 变量配色体系：品牌色 + 语义色定义，替换硬编码颜色
-- [ ] 17-02-PLAN.md — 间距阶梯与圆角规范统一，审计全部组件 + 视觉验证
+- [x] 17-01-PLAN.md — CSS 变量配色体系：品牌色 + 语义色定义，替换硬编码颜色
+- [x] 17-02-PLAN.md — 间距阶梯与圆角规范统一，审计全部组件 + 视觉验证
 
 ### Phase 18: 首页布局优化
 **Goal**: 首页 Provider 卡片操作直观可发现，空状态精致，代理状态指示清晰
@@ -93,7 +93,10 @@ Plans:
   2. 鼠标悬停 Provider 卡片时，卡片有可见的阴影加深和边框颜色变化过渡动效
   3. 无 Provider 时页面展示精致的空状态图示和引导文案，非空白或文字列表
   4. 代理模式开关旁的状态圆点在启用时为绿色且明显，停用时清晰区分
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 18-01-PLAN.md — 卡片操作按钮外露 + hover 升起效果
+- [ ] 18-02-PLAN.md — 空状态精致化 + 代理状态指示优化
 
 ### Phase 19: Provider 编辑改进
 **Goal**: Provider 编辑对话框宽敞易用，字段分组清晰，验证反馈明确
@@ -157,8 +160,8 @@ Plans:
 | 14. 数据模型 + 转换核心 | v2.2 | 4/4 | Complete | 2026-03-14 |
 | 15. Handler 集成与协议路由 | v2.2 | 2/2 | Complete | 2026-03-14 |
 | 16. Responses API + Provider UI | v2.2 | 4/4 | Complete | 2026-03-14 |
-| 17. 设计基础 | 2/2 | Complete    | 2026-03-15 | - |
-| 18. 首页布局优化 | v2.3 | 0/TBD | Not started | - |
+| 17. 设计基础 | v2.3 | 2/2 | Complete | 2026-03-15 |
+| 18. 首页布局优化 | v2.3 | 0/2 | Not started | - |
 | 19. Provider 编辑改进 | v2.3 | 0/TBD | Not started | - |
 | 20. 设置页 Tab 化 | v2.3 | 0/TBD | Not started | - |
 | 21. 微动效与 Header 提升 | v2.3 | 0/TBD | Not started | - |
@@ -166,4 +169,4 @@ Plans:
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*
-*Last updated: 2026-03-15 — Phase 17 planned (2 plans)*
+*Last updated: 2026-03-15 — Phase 18 planned (2 plans)*
