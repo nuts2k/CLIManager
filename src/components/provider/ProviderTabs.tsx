@@ -230,7 +230,7 @@ export function ProviderTabs({ refreshTrigger }: ProviderTabsProps) {
                   {t(tab.labelKey)}
                   {proxyStatus?.cli_statuses.find((s) => s.cli_id === tab.id)
                     ?.active && (
-                    <span className="size-2 rounded-full bg-status-success" />
+                    <span className="size-2.5 rounded-full bg-status-success animate-pulse" />
                   )}
                 </span>
               </TabsTrigger>
@@ -266,6 +266,9 @@ export function ProviderTabs({ refreshTrigger }: ProviderTabsProps) {
               onCheckedChange={handleCliProxyToggle}
             />
           )}
+          <span
+            className={`size-2 rounded-full ${cliProxyActive ? "bg-status-success" : "bg-muted-foreground/40"}`}
+          />
         </div>
 
         {CLI_TABS.map((tab) => (
