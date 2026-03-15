@@ -1,5 +1,26 @@
 # Milestones
 
+## v2.3 前端调整及美化 (Shipped: 2026-03-15)
+
+**Phases completed:** 6 phases, 9 plans
+**Delivered:** 全面提升前端交互体验、视觉质感和设计一致性，建立 CSS 变量设计体系，重构核心交互页面，更换全套品牌图标
+
+**Key accomplishments:**
+- CSS 变量配色体系 — 品牌橙色 oklch token，全局语义化颜色命名，消除所有硬编码色值，间距/圆角规范统一
+- Provider 卡片操作外露 — 编辑/测试/删除图标按钮始终可见，hover 升起效果，空状态精致化设计
+- Provider 编辑对话框重构 — 640px 加宽可滚动，三分区平铺表单（基础信息/协议设置/模型配置），aria-invalid 红色边框验证
+- 设置页 Tab 化 — 通用/高级/关于三 Tab 分组布局，line 下划线风格，关于页品牌 Logo
+- 微动效与 Header 品牌视觉 — 页面切换淡入淡出 150ms ease-out，Header 品牌标识提升（--header-bg 层次分隔）
+- 全新应用图标 — SVG 生成全套 icns/ico/png 尺寸，黑白轮廓 template 托盘图标（Pillow 手工绘制）
+
+**Stats:**
+- ~27 commits, 82 files changed, +4,647/-464 lines
+- Timeline: 1 day (2026-03-15)
+- Git range: feat(17-01) to docs(v2.3)
+- Audit: 14/14 requirements, 14/14 integration, 5/5 E2E flows
+
+---
+
 ## v2.2 协议转换 (Shipped: 2026-03-15)
 
 **Phases completed:** 3 phases, 10 plans

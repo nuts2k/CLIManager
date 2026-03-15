@@ -184,6 +184,52 @@
 
 ---
 
+## Milestone: v2.3 — 前端调整及美化
+
+**Shipped:** 2026-03-15
+**Phases:** 6 | **Plans:** 9 | **Commits:** ~27
+
+### What Was Built
+- CSS 变量配色体系 — 品牌橙色 oklch token + 语义化颜色命名 + 间距阶梯 + 圆角规范统一
+- Provider 卡片操作外露 — 编辑/测试/删除图标按钮始终可见 + hover 升起效果 + 空状态精致化
+- Provider 编辑对话框重构 — 640px 加宽可滚动 + 三分区平铺表单 + aria-invalid 红色边框验证
+- 设置页 Tab 布局 — 通用/高级/关于三 Tab + line 下划线风格 + 关于页品牌 Logo
+- 微动效与 Header 品牌视觉 — 页面切换淡入淡出 150ms + Header 品牌标识 --header-bg 层次分隔
+- 全新应用图标 — SVG 生成全套 icns/ico/png + 黑白轮廓 template 托盘图标
+
+### What Worked
+- Phase 17 设计 token 先行策略正确：后续 5 个 Phase 全部复用 CSS 变量，无重复定义
+- 直接利用 shadcn/ui 内置的 aria-invalid 样式：不需要额外的条件 className 逻辑
+- 三分区平铺替代 Collapsible：消除了验证错误被折叠隐藏的 UX 问题
+- AppShell 双视图 opacity 过渡：比条件渲染更平滑，状态不丢失
+- Python Pillow 手工绘制托盘图标：绕过 qlmanage 渲染透明 SVG 为白底的问题
+
+### What Was Inefficient
+- SUMMARY.md 的 one_liner 和 requirements_completed 字段在 3 个 phase 中为空 — 执行器未始终填充 SUMMARY frontmatter
+- ROADMAP.md 的 plan 复选框仍未在执行时更新（连续四个里程碑的同一问题）
+- STATE.md 的 Current Position 未随执行更新（仍显示 Phase 17 ready to plan）
+
+### Patterns Established
+- oklch 色彩空间 CSS 变量 + @theme inline 注册：Tailwind v4 与 shadcn 变量体系统一入口
+- 语义化颜色命名：status-success/warning/active 替代具体色相名，换色只改 :root
+- TooltipProvider 包裹一次模式：按钮组外层包裹避免重复嵌套
+- variant="line" Tab 下划线风格：居左对齐，视觉轻量
+- --header-bg 色值介于 background 与 card 之间：微深即可，不需强对比度
+
+### Key Lessons
+1. 设计 token 先行是前端美化类里程碑的正确起手 — 后续所有 Phase 直接复用变量，零重复工作
+2. Input 组件内置 aria-invalid 样式应优先利用 — 减少自定义验证 UI 逻辑
+3. Collapsible 表单对验证反馈有害 — 隐藏字段验证失败用户看不到
+4. qlmanage 不适合渲染需要透明背景的 SVG — 需要 Pillow 等工具手工绘制
+5. ROADMAP plan 复选框更新问题持续四个里程碑 — 应考虑执行器自动化
+
+### Cost Observations
+- Model mix: balanced profile (sonnet-based agents, opus orchestration)
+- Total execution: ~1 day for 9 plans
+- Notable: 6 phases 单日完成 — 纯前端 CSS/UI 工作执行速度快
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -195,6 +241,7 @@
 | v2.0 | 54 | 4 | Local proxy — new subsystem (axum) + audit-driven gap closure |
 | v2.1 | ~15 | 2 | Release engineering — CI/CD + auto updater |
 | v2.2 | 44 | 3 | Protocol translation — pure function TDD + max parallelism |
+| v2.3 | ~27 | 6 | Frontend polish — design tokens first + UI/UX refinement |
 
 ### Cumulative Quality
 
@@ -205,6 +252,7 @@
 | v2.0 | ~12,000 | 56 modified | 5min |
 | v2.1 | ~12,000 | — | 8min |
 | v2.2 | ~18,000 | 29 modified | 6min |
+| v2.3 | ~19,000 | 82 modified | — |
 
 ### Top Lessons (Verified Across Milestones)
 
@@ -215,3 +263,5 @@
 5. Audit-driven gap closure is effective — independent phases for precise fixes (verified v2.0)
 6. 纯函数 + TDD 是协议转换层最佳实践 — 86 个测试让 hotfix 修改有信心 (verified v2.2)
 7. serde alias 向前兼容是 enum 变体重命名的正确做法 — 零迁移成本 (verified v2.2)
+8. 设计 token 先行是前端美化类里程碑的正确起手 — 后续全部复用变量 (verified v2.3)
+9. ROADMAP plan 复选框更新是持续性问题 — 执行器应自动化 (observed v1.0-v2.3)
