@@ -174,7 +174,7 @@ Plans:
 | 19. Provider 编辑改进 | 1/1 | Complete    | 2026-03-15 | - |
 | 20. 设置页 Tab 化 | 1/1 | Complete    | 2026-03-15 | - |
 | 21. 微动效与 Header 提升 | 1/1 | Complete    | 2026-03-15 | - |
-| 22. 应用图标 | 2/2 | Complete   | 2026-03-15 | - |
+| 22. 应用图标 | 2/2 | Complete    | 2026-03-15 | - |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*

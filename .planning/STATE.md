@@ -4,7 +4,7 @@ milestone: v2.3
 milestone_name: 前端调整及美化
 status: planning
 stopped_at: Completed 22-02-PLAN.md (托盘图标生成)
-last_updated: "2026-03-15T09:52:40.146Z"
+last_updated: "2026-03-15T09:56:28.437Z"
 last_activity: 2026-03-15 — v2.3 roadmap created (Phases 17-22)
 progress:
   total_phases: 6
