@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- 深色背景 -->
+  <rect width="1024" height="1024" fill="#111827"/>
+
+  <!-- 连接线：中心 → 各外围节点（先画线，节点叠在上面） -->
+  <!-- 节点坐标：
+    中心: (512, 512)
+    节点1: (512, 175)   上方, 距离337
+    节点2: (790, 340)   右上, 距离336
+    节点3: (750, 690)   右下, 距离292
+    节点4: (270, 720)   左下, 距离318
+    节点5: (230, 330)   左上, 距离330
+  -->
+  <line x1="512" y1="512" x2="512" y2="175" stroke="#F97316" stroke-width="10" stroke-linecap="round"/>
+  <line x1="512" y1="512" x2="790" y2="340" stroke="#F97316" stroke-width="10" stroke-linecap="round"/>
+  <line x1="512" y1="512" x2="750" y2="690" stroke="#F97316" stroke-width="10" stroke-linecap="round"/>
+  <line x1="512" y1="512" x2="270" y2="720" stroke="#F97316" stroke-width="10" stroke-linecap="round"/>
+  <line x1="512" y1="512" x2="230" y2="330" stroke="#F97316" stroke-width="10" stroke-linecap="round"/>
+
+  <!-- 外围节点（半径约 40-52px，有大小变化增加有机感） -->
+  <!-- 节点1：正上方偏，r=44 -->
+  <circle cx="512" cy="175" r="44" fill="#F97316"/>
+  <!-- 节点2：右上，r=48 -->
+  <circle cx="790" cy="340" r="48" fill="#F97316"/>
+  <!-- 节点3：右下，r=42 -->
+  <circle cx="750" cy="690" r="42" fill="#F97316"/>
+  <!-- 节点4：左下，r=50 -->
+  <circle cx="270" cy="720" r="50" fill="#F97316"/>
+  <!-- 节点5：左上，r=40 -->
+  <circle cx="230" cy="330" r="40" fill="#F97316"/>
+
+  <!-- 中心枢纽节点：r=88 (约画布宽 17%) -->
+  <circle cx="512" cy="512" r="88" fill="#F97316"/>
+  <!-- 中心内圈：深色镂空，突出枢纽感 -->
+  <circle cx="512" cy="512" r="44" fill="#111827"/>
+</svg>
