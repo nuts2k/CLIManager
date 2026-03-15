@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: 前端调整及美化
 status: planning
-stopped_at: Phase 22 context gathered
-last_updated: "2026-03-15T09:35:44.952Z"
+stopped_at: Completed 22-01-PLAN.md (应用图标生成)
+last_updated: "2026-03-15T09:48:53.950Z"
 last_activity: 2026-03-15 — v2.3 roadmap created (Phases 17-22)
 progress:
   total_phases: 6
   completed_phases: 5
-  total_plans: 7
-  completed_plans: 7
+  total_plans: 9
+  completed_plans: 8
   percent: 0
 ---
 
@@ -64,6 +64,7 @@ v2.3 设计决策（roadmap 阶段）：
 - [Phase 19-01]: Input 组件已内置 aria-invalid:border-destructive，ProviderDialog 无需额外条件 className
 - [Phase 20-tab]: Tab 栏使用 variant=line 下划线风格，居左对齐，defaultValue=general 确保每次打开停留通用 Tab
 - [Phase 21-header]: --header-bg 色值 0.160 0.02 275 介于 background/card 之间，AppShell 改为始终渲染两视图用 opacity 实现过渡
+- [Phase 22-app-icon]: SVG 设计：1024x1024 画布，深色背景 #111827，中心橙圆 r=88+内圈镂空 r=44，5个有机分布外围节点，连接线 10px；qlmanage 渲染 SVG→PNG；保留 app-icon.svg 供 Plan 02 托盘图标派生
 
 ### Pending Todos
 
@@ -75,6 +76,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-15T09:35:44.942Z
-Stopped at: Phase 22 context gathered
-Resume file: .planning/phases/22-app-icon/22-CONTEXT.md
+Last session: 2026-03-15T09:48:53.947Z
+Stopped at: Completed 22-01-PLAN.md (应用图标生成)
+Resume file: None
