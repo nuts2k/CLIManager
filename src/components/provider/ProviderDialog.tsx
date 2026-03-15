@@ -170,12 +170,9 @@ export function ProviderDialog({
         testModel: shouldResetTestModel
           ? nextSuggestedTestModel
           : prev.testModel,
-        upstreamModel:
-          nextProtocolType === "anthropic"
-            ? ""
-            : shouldResetUpstreamModel
-              ? nextSuggestedUpstreamModel
-              : prev.upstreamModel,
+        upstreamModel: shouldResetUpstreamModel
+          ? nextSuggestedUpstreamModel
+          : prev.upstreamModel,
       };
     });
   };
@@ -218,9 +215,7 @@ export function ProviderDialog({
     }));
   };
 
-  const showModelMapping =
-    form.protocolType === "open_ai_chat_completions" ||
-    form.protocolType === "open_ai_responses";
+  const showModelMapping = true;
 
   const handleSave = async () => {
     const result = formSchema.safeParse({
@@ -243,7 +238,10 @@ export function ProviderDialog({
       return;
     }
 
-    if (showModelMapping && form.upstreamModel.trim().length === 0) {
+    const isOpenAiProtocol =
+      form.protocolType === "open_ai_chat_completions" ||
+      form.protocolType === "open_ai_responses";
+    if (isOpenAiProtocol && form.upstreamModel.trim().length === 0) {
       setErrors((prev) => ({
         ...prev,
         upstreamModel: t("validation.upstreamModelRequired"),
@@ -376,7 +374,7 @@ export function ProviderDialog({
               </Select>
             </div>
 
-            {/* 模型映射（仅 OpenAI 类型显示） */}
+            {/* 模型映射 */}
             {showModelMapping && (
               <>
                 {/* 默认目标模型 */}
