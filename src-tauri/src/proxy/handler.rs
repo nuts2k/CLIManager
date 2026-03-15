@@ -19,6 +19,8 @@ pub async fn health_handler() -> (StatusCode, Json<Value>) {
 #[derive(Debug)]
 enum ResponseTranslationMode {
     Passthrough,
+    /// Anthropic 协议透传 + 模型反向映射
+    AnthropicPassthrough { request_model: String },
     OpenAiChatCompletions { request_model: String },
     OpenAiResponses { request_model: String },
 }
@@ -76,6 +78,119 @@ fn apply_upstream_model_mapping(mut body: Value, upstream: &UpstreamTarget) -> V
     }
 
     body
+}
+
+/// 非流式 Anthropic 响应中将 model 字段替换回原始请求模型名
+///
+/// 仅替换顶层 `model` 字段；响应中不含 model 字段时保持原样。
+fn reverse_model_in_response(mut body: Value, original_model: &str) -> Value {
+    if let Some(obj) = body.as_object_mut() {
+        if obj.contains_key("model") {
+            obj.insert("model".to_string(), json!(original_model));
+        }
+    }
+    body
+}
+
+/// 流式 SSE 行中将 model 字段值替换回原始模型名
+///
+/// - 仅处理 `data: ` 开头的行中的 JSON，其他行（event:、空行等）原样返回
+/// - 替换顶层 `model` 字段（如果存在）
+/// - 替换 `message.model` 嵌套字段（Anthropic message_start 事件格式）
+fn reverse_model_in_sse_line(line: &str, original_model: &str) -> String {
+    if let Some(json_str) = line.strip_prefix("data: ") {
+        if let Ok(mut value) = serde_json::from_str::<Value>(json_str) {
+            let mut modified = false;
+
+            // 替换顶层 model 字段
+            if let Some(obj) = value.as_object_mut() {
+                if obj.contains_key("model") {
+                    obj.insert("model".to_string(), json!(original_model));
+                    modified = true;
+                }
+            }
+
+            // 替换 message.model 嵌套字段（Anthropic message_start 事件）
+            if let Some(msg_obj) = value
+                .get_mut("message")
+                .and_then(|m| m.as_object_mut())
+            {
+                if msg_obj.contains_key("model") {
+                    msg_obj.insert("model".to_string(), json!(original_model));
+                    modified = true;
+                }
+            }
+
+            if modified {
+                let new_json = serde_json::to_string(&value)
+                    .unwrap_or_else(|_| json_str.to_string());
+                return format!("data: {}", new_json);
+            }
+        }
+    }
+    line.to_string()
+}
+
+/// 创建 Anthropic 透传 SSE 流的 model 反向映射流
+///
+/// 将上游字节流按行分割，对每个 `data: {...}` 行调用 `reverse_model_in_sse_line`
+/// 替换顶层 model 字段，其他行原样透传。
+///
+/// 内部维护行缓冲区，处理跨 chunk 的不完整行。
+fn create_anthropic_reverse_model_stream(
+    upstream: impl futures::stream::Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send + 'static,
+    original_model: String,
+) -> impl futures::stream::Stream<Item = Result<bytes::Bytes, std::convert::Infallible>> {
+    async_stream::stream! {
+        let mut buffer = String::new();
+        futures::pin_mut!(upstream);
+
+        while let Some(chunk) = futures::StreamExt::next(&mut upstream).await {
+            match chunk {
+                Ok(bytes) => {
+                    let text = String::from_utf8_lossy(&bytes);
+                    buffer.push_str(&text);
+
+                    // 按换行符分割，保留最后一个不完整片段
+                    let mut last_newline = 0;
+                    let mut lines_end = 0;
+                    for (i, ch) in buffer.char_indices() {
+                        if ch == '\n' {
+                            last_newline = i + 1;
+                            lines_end = last_newline;
+                        }
+                    }
+
+                    if lines_end > 0 {
+                        let to_process = buffer[..lines_end].to_string();
+                        buffer = buffer[lines_end..].to_string();
+
+                        for line in to_process.split('\n') {
+                            // 处理 \r\n 换行符
+                            let line = line.trim_end_matches('\r');
+                            let processed = reverse_model_in_sse_line(line, &original_model);
+                            yield Ok::<bytes::Bytes, std::convert::Infallible>(
+                                bytes::Bytes::from(format!("{}\n", processed))
+                            );
+                        }
+                    }
+                }
+                Err(_) => {
+                    // 上游错误：直接结束流
+                    break;
+                }
+            }
+        }
+
+        // 处理缓冲区中最后的不完整行
+        if !buffer.is_empty() {
+            let line = buffer.trim_end_matches('\r');
+            let processed = reverse_model_in_sse_line(line, &original_model);
+            yield Ok::<bytes::Bytes, std::convert::Infallible>(
+                bytes::Bytes::from(processed)
+            );
+        }
+    }
 }
 
 /// 全路径透传代理 handler
@@ -170,6 +285,38 @@ pub async fn proxy_handler(
                 Bytes::from(new_bytes),
                 ResponseTranslationMode::OpenAiResponses { request_model },
             )
+        }
+        ProtocolType::Anthropic if path == "/v1/messages" => {
+            // Anthropic 协议 + /v1/messages：执行模型映射（若有配置）
+            let has_mapping =
+                upstream.upstream_model.is_some() || upstream.upstream_model_map.is_some();
+            if has_mapping {
+                // 解析请求体
+                let body_value: Value = serde_json::from_slice(&body_bytes)
+                    .map_err(|e| ProxyError::TranslateError(format!("无法解析请求体: {}", e)))?;
+                // 记录原始模型名（用于响应反向映射）
+                let request_model = body_value
+                    .get("model")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+                // 复用现有三级优先级映射函数
+                let body_value = apply_upstream_model_mapping(body_value, &upstream);
+                let new_bytes = serde_json::to_vec(&body_value)
+                    .map_err(|e| ProxyError::Internal(e.to_string()))?;
+                let url =
+                    translate::request::build_upstream_url(&upstream.base_url, &path, &query);
+                (
+                    url,
+                    Bytes::from(new_bytes),
+                    ResponseTranslationMode::AnthropicPassthrough { request_model },
+                )
+            } else {
+                // 无映射配置 — 纯透传（保持原有行为）
+                let url =
+                    translate::request::build_upstream_url(&upstream.base_url, &path, &query);
+                (url, body_bytes, ResponseTranslationMode::Passthrough)
+            }
         }
         _ => {
             // 非 `/v1/messages` 请求保持透传，避免误改写 token_count / complete 等端点
@@ -294,6 +441,30 @@ pub async fn proxy_handler(
                 let anthropic_resp =
                     translate::responses_response::responses_to_anthropic(resp_value)?;
                 let resp_bytes = serde_json::to_vec(&anthropic_resp)
+                    .map_err(|e| ProxyError::Internal(e.to_string()))?;
+                Body::from(resp_bytes)
+            }
+        }
+        ResponseTranslationMode::AnthropicPassthrough { request_model } => {
+            if !status.is_success() {
+                // 4xx/5xx 错误响应直接透传，不做 model 替换
+                Body::from_stream(upstream_resp.bytes_stream())
+            } else if upstream_is_sse {
+                // 流式：逐行扫描替换 model 字段
+                Body::from_stream(create_anthropic_reverse_model_stream(
+                    upstream_resp.bytes_stream(),
+                    request_model,
+                ))
+            } else {
+                // 非流式：读完整响应，替换 model 后返回
+                let resp_bytes = upstream_resp
+                    .bytes()
+                    .await
+                    .map_err(|e| ProxyError::Internal(format!("读取上游响应失败: {}", e)))?;
+                let resp_value: Value = serde_json::from_slice(&resp_bytes)
+                    .map_err(|e| ProxyError::TranslateError(format!("响应解析失败: {}", e)))?;
+                let reversed = reverse_model_in_response(resp_value, &request_model);
+                let resp_bytes = serde_json::to_vec(&reversed)
                     .map_err(|e| ProxyError::Internal(e.to_string()))?;
                 Body::from(resp_bytes)
             }
