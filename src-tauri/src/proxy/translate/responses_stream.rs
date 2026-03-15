@@ -15,6 +15,11 @@ fn format_sse_event(event_type: &str, data: &Value) -> Bytes {
     Bytes::from(format!("event: {event_type}\ndata: {json_str}\n\n"))
 }
 
+/// 返回完整 SSE 块分隔符 `\n\n` 的起始位置。
+fn find_sse_block_end(buffer: &[u8]) -> Option<usize> {
+    buffer.windows(2).position(|window| window == b"\n\n")
+}
+
 /// 解析 Responses API SSE 块，返回 (event_type, data_json) 对
 ///
 /// Responses API SSE 格式：`event: type\ndata: json\n\n`
@@ -76,8 +81,8 @@ pub fn create_responses_anthropic_sse_stream(
     request_model: String,
 ) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send {
     async_stream::stream! {
-        // 跨 chunk SSE 行缓冲
-        let mut buffer = String::new();
+        // 跨 chunk SSE 字节缓冲
+        let mut buffer = Vec::new();
 
         // message_start 状态
         let mut message_started = false;
@@ -104,13 +109,13 @@ pub fn create_responses_anthropic_sse_stream(
                     break 'outer;
                 }
                 Ok(bytes) => {
-                    let text = String::from_utf8_lossy(&bytes);
-                    buffer.push_str(&text);
+                    buffer.extend_from_slice(&bytes);
 
                     // 消耗所有完整 SSE 块（以 \n\n 结尾）
-                    while let Some(pos) = buffer.find("\n\n") {
-                        let block = buffer[..pos].to_string();
-                        buffer = buffer[pos + 2..].to_string();
+                    while let Some(pos) = find_sse_block_end(&buffer) {
+                        let block_bytes = buffer[..pos].to_vec();
+                        buffer.drain(..pos + 2);
+                        let block = String::from_utf8_lossy(&block_bytes).into_owned();
 
                         if block.trim().is_empty() {
                             continue;
@@ -785,5 +790,57 @@ mod tests {
             cbs.pointer("/content_block/name").and_then(|v| v.as_str()),
             Some("immediate_tool")
         );
+    }
+
+    #[tokio::test]
+    async fn test_cross_chunk_utf8_text_delta_preserved() {
+        let utf8_event = "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"item_id\":\"item_utf8\",\"output_index\":0,\"content_index\":0,\"delta\":\"你\"}\n\n";
+        let utf8_bytes = utf8_event.as_bytes();
+        let split_start = utf8_bytes
+            .windows("你".len())
+            .position(|window| window == "你".as_bytes())
+            .unwrap();
+        let split_at = split_start + 1;
+
+        let chunks = vec![
+            make_event(
+                "response.created",
+                r#"{"type":"response.created","response":{"id":"resp_utf8","model":"gpt-4o","status":"in_progress"}}"#,
+            ),
+            make_event(
+                "response.output_item.added",
+                r#"{"type":"response.output_item.added","output_index":0,"item":{"id":"item_utf8","type":"message","role":"assistant","status":"in_progress","content":[]}}"#,
+            ),
+            make_event(
+                "response.content_part.added",
+                r#"{"type":"response.content_part.added","item_id":"item_utf8","output_index":0,"content_index":0,"part":{"type":"output_text","text":""}}"#,
+            ),
+            Ok::<Bytes, reqwest::Error>(Bytes::copy_from_slice(&utf8_bytes[..split_at])),
+            Ok::<Bytes, reqwest::Error>(Bytes::copy_from_slice(&utf8_bytes[split_at..])),
+            make_event(
+                "response.output_text.done",
+                r#"{"type":"response.output_text.done","item_id":"item_utf8","output_index":0,"content_index":0,"text":"你"}"#,
+            ),
+            make_event(
+                "response.output_item.done",
+                r#"{"type":"response.output_item.done","output_index":0,"item":{"id":"item_utf8","type":"message","role":"assistant","status":"completed"}}"#,
+            ),
+            make_event(
+                "response.completed",
+                r#"{"type":"response.completed","response":{"id":"resp_utf8","model":"gpt-4o","status":"completed","usage":{"input_tokens":3,"output_tokens":1}}}"#,
+            ),
+        ];
+
+        let events = collect_events(stream::iter(chunks), "claude-3-haiku").await;
+        let text_deltas: Vec<&str> = events
+            .iter()
+            .filter(|e| {
+                e.get("type").and_then(|v| v.as_str()) == Some("content_block_delta")
+                    && e.pointer("/delta/type").and_then(|v| v.as_str()) == Some("text_delta")
+            })
+            .filter_map(|e| e.pointer("/delta/text").and_then(|v| v.as_str()))
+            .collect();
+
+        assert_eq!(text_deltas, vec!["你"]);
     }
 }

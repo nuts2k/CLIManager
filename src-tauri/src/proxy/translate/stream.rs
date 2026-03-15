@@ -102,6 +102,11 @@ fn format_sse_event(event_type: &str, data: &Value) -> Bytes {
     Bytes::from(format!("event: {event_type}\ndata: {json_str}\n\n"))
 }
 
+/// 返回完整 SSE 块分隔符 `\n\n` 的起始位置。
+fn find_sse_block_end(buffer: &[u8]) -> Option<usize> {
+    buffer.windows(2).position(|window| window == b"\n\n")
+}
+
 /// 构造 message_start 事件 payload
 fn make_message_start(id: &str, model: &str) -> Value {
     json!({
@@ -172,8 +177,8 @@ pub fn create_anthropic_sse_stream(
     model: String,
 ) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send {
     async_stream::stream! {
-        // 跨 chunk SSE 行缓冲（处理 SSE 块被 TCP 分片的情况）
-        let mut buffer = String::new();
+        // 跨 chunk SSE 字节缓冲（处理 SSE 块被 TCP 分片的情况）
+        let mut buffer = Vec::new();
 
         // message_start 状态
         let mut message_started = false;
@@ -205,14 +210,14 @@ pub fn create_anthropic_sse_stream(
                     break 'outer;
                 }
                 Ok(bytes) => {
-                    let text = String::from_utf8_lossy(&bytes);
-                    buffer.push_str(&text);
+                    buffer.extend_from_slice(&bytes);
 
                     // 每次消耗一个完整 SSE 块（以 \n\n 结尾）
                     // 不完整的块留在 buffer 中，等待下一个 chunk 拼接
-                    while let Some(pos) = buffer.find("\n\n") {
-                        let block = buffer[..pos].to_string();
-                        buffer = buffer[pos + 2..].to_string();
+                    while let Some(pos) = find_sse_block_end(&buffer) {
+                        let block_bytes = buffer[..pos].to_vec();
+                        buffer.drain(..pos + 2);
+                        let block = String::from_utf8_lossy(&block_bytes).into_owned();
 
                         if block.trim().is_empty() {
                             continue;
@@ -939,6 +944,35 @@ mod tests {
             types.contains(&"message_stop"),
             "截断后 [DONE] 应触发 message_stop"
         );
+    }
+
+    #[tokio::test]
+    async fn test_cross_chunk_utf8_text_delta_preserved() {
+        let raw =
+            "data: {\"id\":\"chatcmpl-utf8\",\"model\":\"gpt-4o\",\"choices\":[{\"delta\":{\"content\":\"你\"}}]}\n\ndata: [DONE]\n\n";
+        let raw_bytes = raw.as_bytes();
+        let split_start = raw_bytes
+            .windows("你".len())
+            .position(|window| window == "你".as_bytes())
+            .unwrap();
+        let split_at = split_start + 1;
+
+        let chunks = vec![
+            Ok::<_, reqwest::Error>(Bytes::copy_from_slice(&raw_bytes[..split_at])),
+            Ok::<_, reqwest::Error>(Bytes::copy_from_slice(&raw_bytes[split_at..])),
+        ];
+
+        let events = collect_events(stream::iter(chunks), "claude-3-haiku").await;
+        let text_deltas: Vec<&str> = events
+            .iter()
+            .filter(|e| {
+                e.get("type").and_then(|v| v.as_str()) == Some("content_block_delta")
+                    && e.pointer("/delta/type").and_then(|v| v.as_str()) == Some("text_delta")
+            })
+            .filter_map(|e| e.pointer("/delta/text").and_then(|v| v.as_str()))
+            .collect();
+
+        assert_eq!(text_deltas, vec!["你"]);
     }
 
     // ── finish_reason=length → max_tokens ──
