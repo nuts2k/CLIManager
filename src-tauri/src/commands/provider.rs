@@ -9,7 +9,7 @@ use crate::adapter::claude::ClaudeAdapter;
 use crate::adapter::codex::CodexAdapter;
 use crate::adapter::CliAdapter;
 use crate::error::AppError;
-use crate::provider::{normalize_origin_base_url, ModelConfig, ProtocolType, Provider};
+use crate::provider::{normalize_base_url_for_protocol, ModelConfig, ProtocolType, Provider};
 use crate::storage::local::{read_local_settings, write_local_settings, LocalSettings};
 
 #[derive(Debug, Clone, Serialize)]
@@ -103,7 +103,8 @@ pub(crate) fn validate_provider(provider: &Provider) -> Result<(), AppError> {
         ));
     }
 
-    normalize_origin_base_url(&provider.base_url).map_err(AppError::Validation)?;
+    normalize_base_url_for_protocol(&provider.base_url, &provider.protocol_type)
+        .map_err(AppError::Validation)?;
 
     if matches!(
         provider.protocol_type,
@@ -134,7 +135,8 @@ pub(crate) fn normalize_and_validate_provider(
     normalize_provider_fields(&mut provider);
     validate_provider(&provider)?;
     provider.base_url =
-        normalize_origin_base_url(&provider.base_url).map_err(AppError::Validation)?;
+        normalize_base_url_for_protocol(&provider.base_url, &provider.protocol_type)
+            .map_err(AppError::Validation)?;
     Ok(provider)
 }
 
@@ -884,9 +886,9 @@ pub async fn test_provider(provider_id: String) -> Result<TestResult, AppError> 
                 .await
         }
         ProtocolType::OpenAiChatCompletions => {
-            let url = format!(
-                "{}/v1/chat/completions",
-                provider.base_url.trim_end_matches('/')
+            let url = crate::proxy::translate::request::build_proxy_endpoint_url(
+                &provider.base_url,
+                "/chat/completions",
             );
             let request_body = serde_json::json!({
                 "model": model,
@@ -902,7 +904,10 @@ pub async fn test_provider(provider_id: String) -> Result<TestResult, AppError> 
                 .await
         }
         ProtocolType::OpenAiResponses => {
-            let url = format!("{}/v1/responses", provider.base_url.trim_end_matches('/'));
+            let url = crate::proxy::translate::request::build_proxy_endpoint_url(
+                &provider.base_url,
+                "/responses",
+            );
             let request_body = serde_json::json!({
                 "model": model,
                 "input": [{"role": "user", "content": "hi"}],
@@ -1081,6 +1086,19 @@ mod tests {
             AppError::Validation(ref message)
                 if message == "Provider base URL must not contain a path"
         ));
+    }
+
+    #[test]
+    fn test_normalize_and_validate_provider_allows_openai_base_url_with_path() {
+        let provider = Provider {
+            protocol_type: ProtocolType::OpenAiChatCompletions,
+            base_url: "https://gateway.example.com/openai/v1/".to_string(),
+            upstream_model: Some("gpt-5.2".to_string()),
+            ..make_provider("p1", "Test Provider", "claude")
+        };
+
+        let normalized = normalize_and_validate_provider(provider).unwrap();
+        assert_eq!(normalized.base_url, "https://gateway.example.com/openai/v1");
     }
 
     #[test]

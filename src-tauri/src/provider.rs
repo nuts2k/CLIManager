@@ -76,6 +76,45 @@ pub fn extract_origin_base_url(input: &str) -> Result<String, String> {
     Ok(url.as_str().trim_end_matches('/').to_string())
 }
 
+/// 规范化 OpenAI 系列 Provider 的 base_url。
+///
+/// 与 Anthropic 不同，OpenAI 兼容服务常见部署为带路径前缀的形式，
+/// 例如 `https://openrouter.ai/api/v1` 或 `https://gateway.example.com/openai/v1`。
+pub fn normalize_openai_base_url(input: &str) -> Result<String, String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Err("Provider base URL cannot be empty".to_string());
+    }
+
+    let url = reqwest::Url::parse(trimmed)
+        .map_err(|_| "Provider base URL must be a valid absolute URL".to_string())?;
+
+    match url.scheme() {
+        "http" | "https" => {}
+        _ => {
+            return Err("Provider base URL must start with http:// or https://".to_string());
+        }
+    }
+
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err("Provider base URL must not include username or password".to_string());
+    }
+
+    if url.host_str().is_none() {
+        return Err("Provider base URL must include a host".to_string());
+    }
+
+    if url.query().is_some() {
+        return Err("Provider base URL must not contain a query string".to_string());
+    }
+
+    if url.fragment().is_some() {
+        return Err("Provider base URL must not contain a fragment".to_string());
+    }
+
+    Ok(url.as_str().trim_end_matches('/').to_string())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ProtocolType {
@@ -83,6 +122,19 @@ pub enum ProtocolType {
     #[serde(alias = "open_ai_compatible")]
     OpenAiChatCompletions,
     OpenAiResponses,
+}
+
+/// 按协议规范化 Provider base_url。
+pub fn normalize_base_url_for_protocol(
+    input: &str,
+    protocol_type: &ProtocolType,
+) -> Result<String, String> {
+    match protocol_type {
+        ProtocolType::Anthropic => normalize_origin_base_url(input),
+        ProtocolType::OpenAiChatCompletions | ProtocolType::OpenAiResponses => {
+            normalize_openai_base_url(input)
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -456,6 +508,36 @@ mod tests {
     fn test_normalize_origin_base_url_rejects_query() {
         let err = normalize_origin_base_url("https://api.openai.com?foo=bar").unwrap_err();
         assert_eq!(err, "Provider base URL must not contain a query string");
+    }
+
+    #[test]
+    fn test_normalize_openai_base_url_preserves_path_prefix() {
+        let normalized =
+            normalize_openai_base_url("https://openrouter.ai/api/v1/chat/completions/").unwrap();
+        assert_eq!(normalized, "https://openrouter.ai/api/v1/chat/completions");
+    }
+
+    #[test]
+    fn test_normalize_openai_base_url_rejects_query() {
+        let err = normalize_openai_base_url("https://api.openai.com/v1?foo=bar").unwrap_err();
+        assert_eq!(err, "Provider base URL must not contain a query string");
+    }
+
+    #[test]
+    fn test_normalize_base_url_for_protocol_uses_protocol_specific_rules() {
+        let anthropic_err = normalize_base_url_for_protocol(
+            "https://api.anthropic.com/v1/messages",
+            &ProtocolType::Anthropic,
+        )
+        .unwrap_err();
+        assert_eq!(anthropic_err, "Provider base URL must not contain a path");
+
+        let openai = normalize_base_url_for_protocol(
+            "https://gateway.example.com/openai/v1",
+            &ProtocolType::OpenAiResponses,
+        )
+        .unwrap();
+        assert_eq!(openai, "https://gateway.example.com/openai/v1");
     }
 
     #[test]

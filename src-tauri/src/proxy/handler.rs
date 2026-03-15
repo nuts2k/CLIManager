@@ -173,12 +173,7 @@ pub async fn proxy_handler(
         }
         _ => {
             // 非 `/v1/messages` 请求保持透传，避免误改写 token_count / complete 等端点
-            let url = format!(
-                "{}{}{}",
-                upstream.base_url.trim_end_matches('/'),
-                path,
-                query
-            );
+            let url = translate::request::build_upstream_url(&upstream.base_url, &path, &query);
             (url, body_bytes, ResponseTranslationMode::Passthrough)
         }
     };
@@ -744,6 +739,91 @@ mod tests {
     #[tokio::test]
     async fn test_openai_responses_non_messages_request_passthrough() {
         assert_non_messages_request_passthrough(ProtocolType::OpenAiResponses).await;
+    }
+
+    #[tokio::test]
+    async fn test_openai_non_messages_request_passthrough_with_base_path_prefix() {
+        use axum::routing::post;
+
+        let captured_uri: Arc<TokioMutex<Option<String>>> = Arc::new(TokioMutex::new(None));
+        let captured_uri_clone = captured_uri.clone();
+
+        let mock_app = Router::new().route(
+            "/openai/v1/token_count",
+            post(move |req: axum::extract::Request| {
+                let captured = captured_uri_clone.clone();
+                async move {
+                    *captured.lock().await = Some(
+                        req.uri()
+                            .path_and_query()
+                            .map(|value| value.as_str().to_string())
+                            .unwrap_or_else(|| req.uri().path().to_string()),
+                    );
+                    axum::Json(json!({"count": 7}))
+                }
+            }),
+        );
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream_port = listener.local_addr().unwrap().port();
+        let (tx, rx) = oneshot::channel::<()>();
+        tokio::spawn(async move {
+            axum::serve(listener, mock_app)
+                .with_graceful_shutdown(async {
+                    rx.await.ok();
+                })
+                .await
+                .ok();
+        });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let upstream = super::super::state::UpstreamTarget {
+            api_key: "sk-test".to_string(),
+            base_url: format!("http://127.0.0.1:{}/openai/v1", upstream_port),
+            protocol_type: ProtocolType::OpenAiChatCompletions,
+            upstream_model: None,
+            upstream_model_map: None,
+        };
+
+        let service = crate::proxy::ProxyService::new();
+        service.start("claude", 0, upstream).await.unwrap();
+
+        let proxy_port = service
+            .status()
+            .await
+            .servers
+            .into_iter()
+            .find(|s| s.cli_id == "claude")
+            .unwrap()
+            .port;
+
+        let resp: Value = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .unwrap()
+            .post(format!(
+                "http://127.0.0.1:{}/v1/token_count?beta=true",
+                proxy_port
+            ))
+            .header("x-api-key", "PROXY_MANAGED")
+            .header("content-type", "application/json")
+            .json(&json!({"text": "count these tokens"}))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+
+        assert_eq!(
+            captured_uri.lock().await.as_deref(),
+            Some("/openai/v1/token_count?beta=true"),
+            "带路径前缀的 OpenAI base_url 不应拼出重复 /v1"
+        );
+        assert_eq!(resp["count"], 7);
+
+        service.stop("claude").await.unwrap();
+        let _ = tx.send(());
     }
 
     #[tokio::test]

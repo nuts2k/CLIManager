@@ -6,7 +6,7 @@ use tokio::sync::Mutex;
 
 use crate::adapter::CliAdapter;
 use crate::error::AppError;
-use crate::provider::{normalize_origin_base_url, ProtocolType, Provider};
+use crate::provider::{normalize_base_url_for_protocol, ProtocolType, Provider};
 use crate::proxy::{proxy_port_for_cli, ProxyService, ProxyStatusInfo, UpstreamTarget};
 use crate::storage::local::{ProxySettings, ProxyTakeover};
 
@@ -31,7 +31,7 @@ fn build_upstream_target(
     protocol_type: String,
 ) -> Result<UpstreamTarget, String> {
     let pt = parse_protocol_type(&protocol_type)?;
-    let normalized_base_url = normalize_origin_base_url(&base_url)?;
+    let normalized_base_url = normalize_base_url_for_protocol(&base_url, &pt)?;
 
     Ok(UpstreamTarget {
         api_key,
@@ -888,11 +888,23 @@ mod tests {
     }
 
     #[test]
-    fn test_build_upstream_target_rejects_base_url_with_path() {
+    fn test_build_upstream_target_allows_openai_base_url_with_path() {
+        let target = build_upstream_target(
+            "sk-test".to_string(),
+            "https://gateway.example.com/openai/v1".to_string(),
+            "open_ai_compatible".to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(target.base_url, "https://gateway.example.com/openai/v1");
+    }
+
+    #[test]
+    fn test_build_upstream_target_rejects_anthropic_base_url_with_path() {
         let err = build_upstream_target(
             "sk-test".to_string(),
-            "https://api.openai.com/v1".to_string(),
-            "open_ai_compatible".to_string(),
+            "https://api.anthropic.com/v1".to_string(),
+            "anthropic".to_string(),
         )
         .unwrap_err();
 

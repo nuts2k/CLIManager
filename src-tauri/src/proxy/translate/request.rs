@@ -2,7 +2,8 @@
 //!
 //! 公开函数：
 //! - `anthropic_to_openai()` — 主转换函数
-//! - `build_proxy_endpoint_url()` — 端点 URL 重写
+//! - `build_proxy_endpoint_url()` — 转换请求的端点 URL 重写
+//! - `build_upstream_url()` — 统一的上游 URL 组装
 //! - `clean_schema()` — 递归清理 JSON Schema 不兼容字段
 
 use crate::proxy::error::ProxyError;
@@ -242,13 +243,14 @@ fn convert_message_to_openai(msg: &Value) -> Vec<Value> {
     vec![json!({"role": role, "content": content})]
 }
 
-/// 重写端点 URL：将 /v1/messages 替换为 /v1/chat/completions
+/// 统一组装上游 URL。
 ///
 /// 规则：
-/// - base_url 不含 /v1 → 追加 /v1 + endpoint_suffix
-/// - base_url 含 /v1 → 保留 /v1，用 endpoint_suffix 替换 /v1 之后的路径
-/// - 自动处理尾部斜杠
-pub fn build_proxy_endpoint_url(base_url: &str, endpoint_suffix: &str) -> String {
+/// - `target_path` 以 `/v1` 开头时：视为完整 API 路径，避免与已有 `/v1` 重复
+/// - `target_path` 不以 `/v1` 开头时：视为 `/v1` 之下的端点后缀
+/// - `base_url` 含 `/v1` 时，保留其前缀并替换其后的路径
+/// - 自动处理尾部斜杠，并保留 query
+pub fn build_upstream_url(base_url: &str, target_path: &str, query: &str) -> String {
     let base = base_url.trim_end_matches('/');
 
     // 查找 /v1 在 URL 中的位置（忽略协议部分）
@@ -257,15 +259,24 @@ pub fn build_proxy_endpoint_url(base_url: &str, endpoint_suffix: &str) -> String
     let path_part = &base[scheme_end..];
 
     if let Some(v1_pos) = path_part.find("/v1") {
-        // base_url 含 /v1：保留 /v1，替换其后的路径
-        let absolute_v1_end = scheme_end + v1_pos + 3; // 指向 /v1 结束后
-        let prefix = &base[..absolute_v1_end];
-        // endpoint_suffix 已含前导 /，直接拼接
-        format!("{}{}", prefix, endpoint_suffix)
+        if target_path.starts_with("/v1") {
+            let prefix = &base[..scheme_end + v1_pos];
+            format!("{}{}{}", prefix, target_path, query)
+        } else {
+            let absolute_v1_end = scheme_end + v1_pos + 3; // 指向 /v1 结束后
+            let prefix = &base[..absolute_v1_end];
+            format!("{}{}{}", prefix, target_path, query)
+        }
+    } else if target_path.starts_with("/v1") {
+        format!("{}{}{}", base, target_path, query)
     } else {
-        // base_url 不含 /v1：追加 /v1 + endpoint_suffix
-        format!("{}/v1{}", base, endpoint_suffix)
+        format!("{}/v1{}{}", base, target_path, query)
     }
+}
+
+/// 重写转换请求的端点 URL：将 /v1/messages 替换为目标 OpenAI 端点。
+pub fn build_proxy_endpoint_url(base_url: &str, endpoint_suffix: &str) -> String {
+    build_upstream_url(base_url, endpoint_suffix, "")
 }
 
 /// 递归清理 JSON Schema，移除 OpenAI 不兼容的字段
@@ -327,6 +338,32 @@ mod tests {
         let result =
             build_proxy_endpoint_url("https://example.com/v1/responses", "/chat/completions");
         assert_eq!(result, "https://example.com/v1/chat/completions");
+    }
+
+    #[test]
+    fn test_build_upstream_url_passthrough_reuses_existing_v1_prefix() {
+        let result = build_upstream_url(
+            "https://gateway.example.com/openai/v1/chat/completions",
+            "/v1/token_count",
+            "?beta=true",
+        );
+        assert_eq!(
+            result,
+            "https://gateway.example.com/openai/v1/token_count?beta=true"
+        );
+    }
+
+    #[test]
+    fn test_build_upstream_url_passthrough_appends_v1_when_missing() {
+        let result = build_upstream_url(
+            "https://gateway.example.com/openai",
+            "/v1/models",
+            "?limit=1",
+        );
+        assert_eq!(
+            result,
+            "https://gateway.example.com/openai/v1/models?limit=1"
+        );
     }
 
     // ========== clean_schema 测试 ==========

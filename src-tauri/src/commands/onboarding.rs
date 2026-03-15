@@ -504,21 +504,37 @@ base_url = "https://azure.openai.com/v1"
     }
 
     #[test]
-    fn test_import_provider_rejects_base_url_with_path() {
+    fn test_import_provider_rejects_anthropic_base_url_with_path() {
         let tmp = TempDir::new().unwrap();
         let result = import_provider_to(
             tmp.path(),
-            "Codex Import".to_string(),
-            ProtocolType::OpenAiChatCompletions,
+            "Claude Import".to_string(),
+            ProtocolType::Anthropic,
             "sk-test-key".to_string(),
             "https://api.openai.com/v1".to_string(),
-            "codex".to_string(),
+            "claude".to_string(),
         );
         assert!(matches!(
             result,
             Err(AppError::Validation(ref message))
                 if message == "Provider base URL must not contain a path"
         ));
+    }
+
+    #[test]
+    fn test_import_provider_allows_openai_base_url_with_path() {
+        let tmp = TempDir::new().unwrap();
+        let provider = import_provider_to(
+            tmp.path(),
+            "Codex Import".to_string(),
+            ProtocolType::OpenAiChatCompletions,
+            "sk-test-key".to_string(),
+            "https://gateway.example.com/openai/v1/".to_string(),
+            "codex".to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(provider.base_url, "https://gateway.example.com/openai/v1");
     }
 
     #[test]
