@@ -116,14 +116,23 @@ export function AppShell() {
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       <Header onNavigate={setView} />
-      <main className="flex-1 overflow-hidden">
-        {view === "main" && <ProviderTabs refreshTrigger={syncKey} />}
-        {view === "settings" && (
-          <SettingsPage
-            onBack={() => setView("main")}
-            onShowImport={handleShowImport}
-          />
-        )}
+      <main className="relative flex-1 overflow-hidden">
+        {/* 首页视图：始终渲染，opacity 控制可见性以实现淡入淡出过渡 */}
+        <div
+          className={`absolute inset-0 transition-opacity duration-150 ease-out ${
+            view === "main" ? "opacity-100" : "opacity-0 pointer-events-none"
+          }`}
+        >
+          <ProviderTabs refreshTrigger={syncKey} />
+        </div>
+        {/* 设置页视图：始终渲染，opacity 控制可见性以实现淡入淡出过渡 */}
+        <div
+          className={`absolute inset-0 transition-opacity duration-150 ease-out ${
+            view === "settings" ? "opacity-100" : "opacity-0 pointer-events-none"
+          }`}
+        >
+          <SettingsPage onBack={() => setView("main")} onShowImport={handleShowImport} />
+        </div>
       </main>
       <ImportDialog
         open={showImportDialog}
