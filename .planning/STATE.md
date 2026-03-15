@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.3
-milestone_name: 前端调整及美化
-status: completed
-stopped_at: Milestone v2.3 completed and archived
+milestone: v2.4
+milestone_name: Anthropic 模型映射
+status: defining_requirements
+stopped_at: null
 last_updated: "2026-03-15"
-last_activity: 2026-03-15 — v2.3 milestone completed and archived
+last_activity: 2026-03-15 — Milestone v2.4 started
 progress:
-  total_phases: 6
-  completed_phases: 6
-  total_plans: 9
-  completed_plans: 9
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-15)
 
 **Core value:** 切换 Provider 时只做 surgical patch（精确修改凭据和模型字段），绝不重写配置文件的其他内容
-**Current focus:** Planning next milestone
+**Current focus:** Milestone v2.4 Anthropic 模型映射
 
 ## Current Position
 
-Phase: All 22 phases complete (v1.0 through v2.3)
-Plan: All plans complete
-Status: Between milestones
-Last activity: 2026-03-15 — v2.3 milestone completed and archived
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-15 — Milestone v2.4 started
 
-Progress: [##########] 100%
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -60,5 +60,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-15
-Stopped at: Milestone v2.3 completed and archived
+Stopped at: Milestone v2.4 started — defining requirements
 Resume file: None
