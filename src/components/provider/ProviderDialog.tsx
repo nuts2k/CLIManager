@@ -264,7 +264,7 @@ export function ProviderDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl flex flex-col max-h-[85vh]">
+      <DialogContent className="max-w-[640px] flex flex-col max-h-[85vh]">
         {/* 固定 Header */}
         <DialogHeader className="flex-shrink-0">
           <DialogTitle>
