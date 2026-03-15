@@ -167,7 +167,7 @@ Plans:
 | 17. 设计基础 | v2.3 | 2/2 | Complete | 2026-03-15 |
 | 18. 首页布局优化 | 2/2 | Complete    | 2026-03-15 | - |
 | 19. Provider 编辑改进 | 1/1 | Complete    | 2026-03-15 | - |
-| 20. 设置页 Tab 化 | 1/1 | Complete   | 2026-03-15 | - |
+| 20. 设置页 Tab 化 | 1/1 | Complete    | 2026-03-15 | - |
 | 21. 微动效与 Header 提升 | v2.3 | 0/TBD | Not started | - |
 | 22. 应用图标 | v2.3 | 0/TBD | Not started | - |
 
