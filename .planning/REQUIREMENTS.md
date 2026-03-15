@@ -9,9 +9,9 @@ Requirements for milestone v2.4 Anthropic 模型映射。
 
 ### 模型映射
 
-- [ ] **MMAP-01**: Anthropic 协议透传请求在转发前执行模型映射（复用三级优先级：精确匹配 > 默认模型 > 保留原名）
-- [ ] **MMAP-02**: Anthropic 透传响应中的 model 字段映射回原始模型名（客户端看到仍是 Claude 模型名）
-- [ ] **MMAP-03**: Anthropic 透传流式 SSE 中的 model 字段映射回原始模型名
+- [x] **MMAP-01**: Anthropic 协议透传请求在转发前执行模型映射（复用三级优先级：精确匹配 > 默认模型 > 保留原名）
+- [x] **MMAP-02**: Anthropic 透传响应中的 model 字段映射回原始模型名（客户端看到仍是 Claude 模型名）
+- [x] **MMAP-03**: Anthropic 透传流式 SSE 中的 model 字段映射回原始模型名
 - [x] **MMAP-04**: Anthropic 协议 Provider 编辑 UI 显示模型映射配置（默认模型和映射对均为可选，无建议值/placeholder）
 
 ## Future Requirements
@@ -32,9 +32,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MMAP-01 | Phase 23 | Pending |
-| MMAP-02 | Phase 23 | Pending |
-| MMAP-03 | Phase 23 | Pending |
+| MMAP-01 | Phase 23 | Complete |
+| MMAP-02 | Phase 23 | Complete |
+| MMAP-03 | Phase 23 | Complete |
 | MMAP-04 | Phase 23 | Complete |
 
 **Coverage:**

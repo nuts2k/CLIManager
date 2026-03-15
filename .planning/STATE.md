@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Anthropic 模型映射
 status: planning
-stopped_at: Completed 23-anthropic-model-mapping-02-PLAN.md
-last_updated: "2026-03-15T14:59:29.595Z"
+stopped_at: Completed 23-anthropic-model-mapping 23-01-PLAN.md
+last_updated: "2026-03-15T15:06:41.701Z"
 last_activity: 2026-03-15 — v2.4 roadmap created, Phase 23 ready to plan
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -56,6 +56,8 @@ Progress: [░░░░░░░░░░] 0%
 - Phase 23 合并后端+前端为单 Phase，2 个并行 Plan 最大化并行度
 - [Phase 23-anthropic-model-mapping]: showModelMapping 改为 true，所有协议统一显示映射区域，Anthropic 字段为可选
 - [Phase 23-anthropic-model-mapping]: isOpenAiProtocol 校验：upstreamModel 必填仅限 OpenAI 系列协议，Anthropic 可留空保存
+- [Phase 23-anthropic-model-mapping]: reverse_model_in_sse_line 处理 message.model 嵌套：Anthropic message_start 事件的 model 在 message.model 而非顶层
+- [Phase 23-anthropic-model-mapping]: 无映射配置时 Anthropic /v1/messages 走 Passthrough 而非 AnthropicPassthrough，保持零开销
 
 ### Pending Todos
 
@@ -67,6 +69,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-15T14:59:29.592Z
-Stopped at: Completed 23-anthropic-model-mapping-02-PLAN.md
+Last session: 2026-03-15T15:06:41.699Z
+Stopped at: Completed 23-anthropic-model-mapping 23-01-PLAN.md
 Resume file: None
