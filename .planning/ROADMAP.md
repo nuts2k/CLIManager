@@ -132,7 +132,9 @@ Plans:
   2. 模式切换（直连/代理）和 Provider 激活切换有可见的状态过渡动效
   3. Header 导航栏带有应用 Logo/名称标识，视觉层次比内容区域更突出
   4. 整体 UI 在视觉上感觉现代、精致，操作反馈即时且流畅
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 21-01-PLAN.md — Header 品牌视觉提升 + 页面切换淡入淡出 + 卡片状态过渡动效
 
 ### Phase 22: 应用图标
 **Goal**: 应用有专属的全新图标，托盘图标与应用图标视觉统一
@@ -168,9 +170,9 @@ Plans:
 | 18. 首页布局优化 | 2/2 | Complete    | 2026-03-15 | - |
 | 19. Provider 编辑改进 | 1/1 | Complete    | 2026-03-15 | - |
 | 20. 设置页 Tab 化 | 1/1 | Complete    | 2026-03-15 | - |
-| 21. 微动效与 Header 提升 | v2.3 | 0/TBD | Not started | - |
+| 21. 微动效与 Header 提升 | v2.3 | 0/1 | Not started | - |
 | 22. 应用图标 | v2.3 | 0/TBD | Not started | - |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*
-*Last updated: 2026-03-15 — Phase 20 planned (1 plan)*
+*Last updated: 2026-03-15 — Phase 21 planned (1 plan)*
