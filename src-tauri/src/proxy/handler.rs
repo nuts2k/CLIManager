@@ -1067,6 +1067,466 @@ mod tests {
         assert_eq!(json.0["status"], "ok");
     }
 
+    // ──────────────────────────────────────────────────────────────
+    // Anthropic 透传分支测试（MMAP-01 / MMAP-02 / MMAP-03）
+    // ──────────────────────────────────────────────────────────────
+
+    fn make_upstream_anthropic_target(base_url: &str) -> super::super::state::UpstreamTarget {
+        super::super::state::UpstreamTarget {
+            api_key: "sk-ant-test".to_string(),
+            base_url: base_url.to_string(),
+            protocol_type: crate::provider::ProtocolType::Anthropic,
+            upstream_model: None,
+            upstream_model_map: None,
+        }
+    }
+
+    /// 测试 1：Anthropic + /v1/messages + upstream_model_map 精确匹配 → 转发请求 model 为映射后值
+    #[tokio::test]
+    async fn test_anthropic_messages_model_map_exact_match() {
+        use axum::routing::post;
+
+        let captured_body: Arc<TokioMutex<Option<Value>>> = Arc::new(TokioMutex::new(None));
+        let captured_body_clone = captured_body.clone();
+
+        let mock_app = Router::new().route(
+            "/v1/messages",
+            post(move |body: axum::extract::Json<Value>| {
+                let captured = captured_body_clone.clone();
+                async move {
+                    *captured.lock().await = Some(body.0.clone());
+                    axum::Json(json!({
+                        "id": "msg_test",
+                        "type": "message",
+                        "role": "assistant",
+                        "model": "mapped-model-name",
+                        "content": [{"type": "text", "text": "Hello"}],
+                        "stop_reason": "end_turn",
+                        "usage": {"input_tokens": 5, "output_tokens": 3}
+                    }))
+                }
+            }),
+        );
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream_port = listener.local_addr().unwrap().port();
+        let (tx, rx) = oneshot::channel::<()>();
+        tokio::spawn(async move {
+            axum::serve(listener, mock_app)
+                .with_graceful_shutdown(async { rx.await.ok(); })
+                .await
+                .ok();
+        });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let mut model_map = HashMap::new();
+        model_map.insert(
+            "claude-3-5-sonnet-20241022".to_string(),
+            "mapped-model-name".to_string(),
+        );
+        let upstream = super::super::state::UpstreamTarget {
+            api_key: "sk-ant-test".to_string(),
+            base_url: format!("http://127.0.0.1:{}", upstream_port),
+            protocol_type: crate::provider::ProtocolType::Anthropic,
+            upstream_model: None,
+            upstream_model_map: Some(model_map),
+        };
+
+        let service = crate::proxy::ProxyService::new();
+        service.start("claude", 0, upstream).await.unwrap();
+        let proxy_port = service.status().await.servers.into_iter()
+            .find(|s| s.cli_id == "claude").unwrap().port;
+
+        let _ = reqwest::Client::builder().no_proxy().build().unwrap()
+            .post(format!("http://127.0.0.1:{}/v1/messages", proxy_port))
+            .header("x-api-key", "PROXY_MANAGED")
+            .header("content-type", "application/json")
+            .json(&json!({
+                "model": "claude-3-5-sonnet-20241022",
+                "max_tokens": 100,
+                "messages": [{"role": "user", "content": "Hello"}]
+            }))
+            .send().await.unwrap();
+
+        let body = captured_body.lock().await;
+        let received = body.as_ref().expect("mock 上游应已收到请求");
+        assert_eq!(
+            received["model"], "mapped-model-name",
+            "Anthropic 精确匹配：请求 model 应被映射为 mapped-model-name"
+        );
+
+        service.stop("claude").await.unwrap();
+        let _ = tx.send(());
+    }
+
+    /// 测试 2：Anthropic + /v1/messages + 只有 upstream_model（无 map）→ 转发 model 为 upstream_model
+    #[tokio::test]
+    async fn test_anthropic_messages_upstream_model_fallback() {
+        use axum::routing::post;
+
+        let captured_body: Arc<TokioMutex<Option<Value>>> = Arc::new(TokioMutex::new(None));
+        let captured_body_clone = captured_body.clone();
+
+        let mock_app = Router::new().route(
+            "/v1/messages",
+            post(move |body: axum::extract::Json<Value>| {
+                let captured = captured_body_clone.clone();
+                async move {
+                    *captured.lock().await = Some(body.0.clone());
+                    axum::Json(json!({
+                        "id": "msg_test",
+                        "type": "message",
+                        "role": "assistant",
+                        "model": "default-upstream-model",
+                        "content": [{"type": "text", "text": "Hello"}],
+                        "stop_reason": "end_turn",
+                        "usage": {"input_tokens": 5, "output_tokens": 3}
+                    }))
+                }
+            }),
+        );
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream_port = listener.local_addr().unwrap().port();
+        let (tx, rx) = oneshot::channel::<()>();
+        tokio::spawn(async move {
+            axum::serve(listener, mock_app)
+                .with_graceful_shutdown(async { rx.await.ok(); })
+                .await
+                .ok();
+        });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let upstream = super::super::state::UpstreamTarget {
+            api_key: "sk-ant-test".to_string(),
+            base_url: format!("http://127.0.0.1:{}", upstream_port),
+            protocol_type: crate::provider::ProtocolType::Anthropic,
+            upstream_model: Some("default-upstream-model".to_string()),
+            upstream_model_map: None,
+        };
+
+        let service = crate::proxy::ProxyService::new();
+        service.start("claude", 0, upstream).await.unwrap();
+        let proxy_port = service.status().await.servers.into_iter()
+            .find(|s| s.cli_id == "claude").unwrap().port;
+
+        let _ = reqwest::Client::builder().no_proxy().build().unwrap()
+            .post(format!("http://127.0.0.1:{}/v1/messages", proxy_port))
+            .header("x-api-key", "PROXY_MANAGED")
+            .header("content-type", "application/json")
+            .json(&json!({
+                "model": "claude-3-5-sonnet-20241022",
+                "max_tokens": 100,
+                "messages": [{"role": "user", "content": "Hello"}]
+            }))
+            .send().await.unwrap();
+
+        let body = captured_body.lock().await;
+        let received = body.as_ref().expect("mock 上游应已收到请求");
+        assert_eq!(
+            received["model"], "default-upstream-model",
+            "Anthropic upstream_model 兜底：请求 model 应被替换为 default-upstream-model"
+        );
+
+        service.stop("claude").await.unwrap();
+        let _ = tx.send(());
+    }
+
+    /// 测试 3：Anthropic + /v1/messages + 无任何映射配置 → 转发 model 保持原值不变
+    #[tokio::test]
+    async fn test_anthropic_messages_no_mapping_passthrough() {
+        use axum::routing::post;
+
+        let captured_body: Arc<TokioMutex<Option<Value>>> = Arc::new(TokioMutex::new(None));
+        let captured_body_clone = captured_body.clone();
+
+        let mock_app = Router::new().route(
+            "/v1/messages",
+            post(move |body: axum::extract::Json<Value>| {
+                let captured = captured_body_clone.clone();
+                async move {
+                    *captured.lock().await = Some(body.0.clone());
+                    axum::Json(json!({
+                        "id": "msg_test",
+                        "type": "message",
+                        "role": "assistant",
+                        "model": "claude-3-5-sonnet-20241022",
+                        "content": [{"type": "text", "text": "Hello"}],
+                        "stop_reason": "end_turn",
+                        "usage": {"input_tokens": 5, "output_tokens": 3}
+                    }))
+                }
+            }),
+        );
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream_port = listener.local_addr().unwrap().port();
+        let (tx, rx) = oneshot::channel::<()>();
+        tokio::spawn(async move {
+            axum::serve(listener, mock_app)
+                .with_graceful_shutdown(async { rx.await.ok(); })
+                .await
+                .ok();
+        });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let service = crate::proxy::ProxyService::new();
+        service.start("claude", 0, make_upstream_anthropic_target(
+            &format!("http://127.0.0.1:{}", upstream_port)
+        )).await.unwrap();
+        let proxy_port = service.status().await.servers.into_iter()
+            .find(|s| s.cli_id == "claude").unwrap().port;
+
+        let _ = reqwest::Client::builder().no_proxy().build().unwrap()
+            .post(format!("http://127.0.0.1:{}/v1/messages", proxy_port))
+            .header("x-api-key", "PROXY_MANAGED")
+            .header("content-type", "application/json")
+            .json(&json!({
+                "model": "claude-3-5-sonnet-20241022",
+                "max_tokens": 100,
+                "messages": [{"role": "user", "content": "Hello"}]
+            }))
+            .send().await.unwrap();
+
+        let body = captured_body.lock().await;
+        let received = body.as_ref().expect("mock 上游应已收到请求");
+        assert_eq!(
+            received["model"], "claude-3-5-sonnet-20241022",
+            "无映射配置时，请求 model 应保持原值"
+        );
+
+        service.stop("claude").await.unwrap();
+        let _ = tx.send(());
+    }
+
+    /// 测试 4：Anthropic + /v1/messages + 有映射 → 上游非流式响应 model 字段被替换回原始名
+    #[tokio::test]
+    async fn test_anthropic_messages_response_model_reverse_mapped() {
+        use axum::routing::post;
+
+        let mock_app = Router::new().route(
+            "/v1/messages",
+            post(move || async move {
+                axum::Json(json!({
+                    "id": "msg_test",
+                    "type": "message",
+                    "role": "assistant",
+                    "model": "mapped-model-name",  // 上游返回映射后的名字
+                    "content": [{"type": "text", "text": "Hello"}],
+                    "stop_reason": "end_turn",
+                    "usage": {"input_tokens": 5, "output_tokens": 3}
+                }))
+            }),
+        );
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream_port = listener.local_addr().unwrap().port();
+        let (tx, rx) = oneshot::channel::<()>();
+        tokio::spawn(async move {
+            axum::serve(listener, mock_app)
+                .with_graceful_shutdown(async { rx.await.ok(); })
+                .await
+                .ok();
+        });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let mut model_map = HashMap::new();
+        model_map.insert(
+            "claude-3-5-sonnet-20241022".to_string(),
+            "mapped-model-name".to_string(),
+        );
+        let upstream = super::super::state::UpstreamTarget {
+            api_key: "sk-ant-test".to_string(),
+            base_url: format!("http://127.0.0.1:{}", upstream_port),
+            protocol_type: crate::provider::ProtocolType::Anthropic,
+            upstream_model: None,
+            upstream_model_map: Some(model_map),
+        };
+
+        let service = crate::proxy::ProxyService::new();
+        service.start("claude", 0, upstream).await.unwrap();
+        let proxy_port = service.status().await.servers.into_iter()
+            .find(|s| s.cli_id == "claude").unwrap().port;
+
+        let resp: Value = reqwest::Client::builder().no_proxy().build().unwrap()
+            .post(format!("http://127.0.0.1:{}/v1/messages", proxy_port))
+            .header("x-api-key", "PROXY_MANAGED")
+            .header("content-type", "application/json")
+            .json(&json!({
+                "model": "claude-3-5-sonnet-20241022",
+                "max_tokens": 100,
+                "messages": [{"role": "user", "content": "Hello"}]
+            }))
+            .send().await.unwrap()
+            .json().await.unwrap();
+
+        assert_eq!(
+            resp["model"], "claude-3-5-sonnet-20241022",
+            "非流式响应：model 字段应被反向映射回原始请求模型名"
+        );
+
+        service.stop("claude").await.unwrap();
+        let _ = tx.send(());
+    }
+
+    /// 测试 5：Anthropic + /v1/messages + 有映射 → 流式 SSE 中 model 字段被替换回原始名
+    #[tokio::test]
+    async fn test_anthropic_messages_sse_model_reverse_mapped() {
+        use axum::routing::post;
+        use axum::response::sse::{Event, Sse};
+        use futures::stream;
+
+        let mock_app = Router::new().route(
+            "/v1/messages",
+            post(move || async move {
+                // 返回包含 model 字段的 SSE 事件
+                let events = vec![
+                    Ok::<Event, std::convert::Infallible>(Event::default()
+                        .data(r#"{"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","model":"mapped-model-name","content":[],"stop_reason":null,"usage":{"input_tokens":5,"output_tokens":0}}}"#)
+                    ),
+                    Ok(Event::default()
+                        .data(r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}"#)
+                    ),
+                    Ok(Event::default()
+                        .data(r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":3}}"#)
+                    ),
+                    Ok(Event::default().data("[DONE]")),
+                ];
+                Sse::new(stream::iter(events))
+            }),
+        );
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream_port = listener.local_addr().unwrap().port();
+        let (tx, rx) = oneshot::channel::<()>();
+        tokio::spawn(async move {
+            axum::serve(listener, mock_app)
+                .with_graceful_shutdown(async { rx.await.ok(); })
+                .await
+                .ok();
+        });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let mut model_map = HashMap::new();
+        model_map.insert(
+            "claude-3-5-sonnet-20241022".to_string(),
+            "mapped-model-name".to_string(),
+        );
+        let upstream = super::super::state::UpstreamTarget {
+            api_key: "sk-ant-test".to_string(),
+            base_url: format!("http://127.0.0.1:{}", upstream_port),
+            protocol_type: crate::provider::ProtocolType::Anthropic,
+            upstream_model: None,
+            upstream_model_map: Some(model_map),
+        };
+
+        let service = crate::proxy::ProxyService::new();
+        service.start("claude", 0, upstream).await.unwrap();
+        let proxy_port = service.status().await.servers.into_iter()
+            .find(|s| s.cli_id == "claude").unwrap().port;
+
+        let resp = reqwest::Client::builder().no_proxy().build().unwrap()
+            .post(format!("http://127.0.0.1:{}/v1/messages", proxy_port))
+            .header("x-api-key", "PROXY_MANAGED")
+            .header("content-type", "application/json")
+            .json(&json!({
+                "model": "claude-3-5-sonnet-20241022",
+                "max_tokens": 100,
+                "stream": true,
+                "messages": [{"role": "user", "content": "Hello"}]
+            }))
+            .send().await.unwrap();
+
+        let body_text = resp.text().await.unwrap();
+
+        // 验证 SSE 中 message_start 事件的 model 已被反向映射
+        assert!(
+            body_text.contains("claude-3-5-sonnet-20241022"),
+            "SSE 流式响应中 model 字段应被反向映射回原始请求模型名。收到:\n{}",
+            body_text
+        );
+        assert!(
+            !body_text.contains("mapped-model-name"),
+            "SSE 流式响应中不应包含上游映射模型名。收到:\n{}",
+            body_text
+        );
+
+        service.stop("claude").await.unwrap();
+        let _ = tx.send(());
+    }
+
+    /// 测试 6：Anthropic + 非 /v1/messages 路径（如 /v1/token_count）→ 保持纯透传，不做任何映射
+    #[tokio::test]
+    async fn test_anthropic_non_messages_path_passthrough() {
+        assert_non_messages_request_passthrough(crate::provider::ProtocolType::Anthropic).await;
+    }
+
+    // ── reverse_model_in_response 单元测试 ──
+
+    #[test]
+    fn test_reverse_model_in_response_replaces_model() {
+        let body = json!({
+            "id": "msg_test",
+            "model": "mapped-model-name",
+            "content": [{"type": "text", "text": "Hello"}]
+        });
+        let result = reverse_model_in_response(body, "claude-3-5-sonnet-20241022");
+        assert_eq!(result["model"], "claude-3-5-sonnet-20241022");
+        // 其他字段保持不变
+        assert_eq!(result["id"], "msg_test");
+    }
+
+    #[test]
+    fn test_reverse_model_in_response_no_model_field() {
+        // 响应中不含 model 字段时，不报错，其他字段保持
+        let body = json!({
+            "id": "msg_test",
+            "content": [{"type": "text", "text": "Hello"}]
+        });
+        let result = reverse_model_in_response(body, "claude-3-5-sonnet-20241022");
+        assert!(result.get("model").is_none(), "无 model 字段时不应插入");
+        assert_eq!(result["id"], "msg_test");
+    }
+
+    // ── reverse_model_in_sse_line 单元测试 ──
+
+    #[test]
+    fn test_reverse_model_in_sse_line_replaces_model() {
+        let line = r#"data: {"type":"message_start","message":{"model":"mapped-name","content":[]}}"#;
+        // 注意：该函数替换的是顶层 model 字段；message_start 嵌套结构不含顶层 model
+        // 只测试含顶层 model 的事件行
+        let line2 = r#"data: {"model":"mapped-name","type":"text"}"#;
+        let result = reverse_model_in_sse_line(line2, "claude-3-5-sonnet-20241022");
+        let json_part = result.strip_prefix("data: ").unwrap();
+        let v: Value = serde_json::from_str(json_part).unwrap();
+        assert_eq!(v["model"], "claude-3-5-sonnet-20241022");
+        // 其他字段保持
+        assert_eq!(v["type"], "text");
+    }
+
+    #[test]
+    fn test_reverse_model_in_sse_line_no_model() {
+        // 无 model 字段的行：原样返回
+        let line = r#"data: {"type":"content_block_delta","delta":{"text":"Hi"}}"#;
+        let result = reverse_model_in_sse_line(line, "claude-3-5-sonnet-20241022");
+        // 不含 model 字段，行内容不含模型名
+        let json_part = result.strip_prefix("data: ").unwrap();
+        let v: Value = serde_json::from_str(json_part).unwrap();
+        assert!(v.get("model").is_none());
+    }
+
+    #[test]
+    fn test_reverse_model_in_sse_line_non_data_line() {
+        // event: 行和空行不做修改
+        let event_line = "event: message_start";
+        let result = reverse_model_in_sse_line(event_line, "claude-3-5-sonnet-20241022");
+        assert_eq!(result, event_line);
+
+        let empty_line = "";
+        let result2 = reverse_model_in_sse_line(empty_line, "claude-3-5-sonnet-20241022");
+        assert_eq!(result2, empty_line);
+    }
+
     #[test]
     fn test_is_hop_by_hop() {
         assert!(is_hop_by_hop("host"));
