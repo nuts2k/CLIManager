@@ -53,26 +53,26 @@ Requirements for v2.3 前端调整及美化。Each maps to roadmap phases.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| HOME-01 | — | Pending |
-| HOME-02 | — | Pending |
-| HOME-03 | — | Pending |
-| HOME-04 | — | Pending |
-| EDIT-01 | — | Pending |
-| EDIT-02 | — | Pending |
-| EDIT-03 | — | Pending |
-| SETT-01 | — | Pending |
-| VISU-01 | — | Pending |
-| VISU-02 | — | Pending |
-| VISU-03 | — | Pending |
-| VISU-04 | — | Pending |
-| ICON-01 | — | Pending |
-| ICON-02 | — | Pending |
+| HOME-01 | Phase 18 | Pending |
+| HOME-02 | Phase 18 | Pending |
+| HOME-03 | Phase 18 | Pending |
+| HOME-04 | Phase 18 | Pending |
+| EDIT-01 | Phase 19 | Pending |
+| EDIT-02 | Phase 19 | Pending |
+| EDIT-03 | Phase 19 | Pending |
+| SETT-01 | Phase 20 | Pending |
+| VISU-01 | Phase 17 | Pending |
+| VISU-02 | Phase 21 | Pending |
+| VISU-03 | Phase 17 | Pending |
+| VISU-04 | Phase 21 | Pending |
+| ICON-01 | Phase 22 | Pending |
+| ICON-02 | Phase 22 | Pending |
 
 **Coverage:**
 - v2.3 requirements: 14 total
-- Mapped to phases: 0
-- Unmapped: 14
+- Mapped to phases: 14
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-15*
-*Last updated: 2026-03-15 after initial definition*
+*Last updated: 2026-03-15 after v2.3 roadmap creation (Phases 17-22)*

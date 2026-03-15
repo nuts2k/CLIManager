@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: 前端调整及美化
-status: defining
+status: ready_to_plan
 stopped_at: null
 last_updated: "2026-03-15T12:00:00.000Z"
-last_activity: 2026-03-15 — Milestone v2.3 started
+last_activity: 2026-03-15 — v2.3 roadmap created (Phases 17-22), ready to plan Phase 17
 progress:
-  total_phases: 0
+  total_phases: 6
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-15)
 
 **Core value:** 切换 Provider 时只做 surgical patch（精确修改凭据和模型字段），绝不重写配置文件的其他内容
-**Current focus:** Defining requirements for v2.3
+**Current focus:** Phase 17 — 设计基础（CSS 变量配色 + 间距/圆角规范）
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-03-15 — Milestone v2.3 started
+Phase: 17 of 22 (设计基础)
+Plan: — (not yet planned)
+Status: Ready to plan
+Last activity: 2026-03-15 — v2.3 roadmap created (Phases 17-22)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -48,6 +48,11 @@ Progress: [░░░░░░░░░░] 0%
 
 （v2.2 决策已归档至 .planning/milestones/v2.2-ROADMAP.md）
 
+v2.3 设计决策（roadmap 阶段）：
+- Phase 17 先行：CSS 变量体系是所有视觉工作的基础，其他 Phase 依赖它
+- Phase 21 依赖 Phase 18：微动效需要卡片结构稳定后才能叠加动效
+- ICON 独立为最后一个 Phase：纯设计资产，不阻塞其他前端工作
+
 ### Pending Todos
 
 None.
@@ -59,5 +64,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-15
-Stopped at: Milestone v2.2 archived
+Stopped at: v2.3 roadmap created — Phase 17 ready to plan
 Resume file: None
