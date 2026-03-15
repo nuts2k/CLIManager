@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: 前端调整及美化
 status: planning
-stopped_at: Completed 22-01-PLAN.md (应用图标生成)
-last_updated: "2026-03-15T09:48:53.950Z"
+stopped_at: Completed 22-02-PLAN.md (托盘图标生成)
+last_updated: "2026-03-15T09:52:40.146Z"
 last_activity: 2026-03-15 — v2.3 roadmap created (Phases 17-22)
 progress:
   total_phases: 6
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 9
-  completed_plans: 8
+  completed_plans: 9
   percent: 0
 ---
 
@@ -65,6 +65,8 @@ v2.3 设计决策（roadmap 阶段）：
 - [Phase 20-tab]: Tab 栏使用 variant=line 下划线风格，居左对齐，defaultValue=general 确保每次打开停留通用 Tab
 - [Phase 21-header]: --header-bg 色值 0.160 0.02 275 介于 background/card 之间，AppShell 改为始终渲染两视图用 opacity 实现过渡
 - [Phase 22-app-icon]: SVG 设计：1024x1024 画布，深色背景 #111827，中心橙圆 r=88+内圈镂空 r=44，5个有机分布外围节点，连接线 10px；qlmanage 渲染 SVG→PNG；保留 app-icon.svg 供 Plan 02 托盘图标派生
+- [Phase 22-app-icon]: 托盘图标用 Python Pillow 手工绘制（qlmanage 渲染透明 SVG 为白底，不符合 template 要求）
+- [Phase 22-app-icon]: tray-icon-template.png 和 @2x 均保持 44x44，与 lib.rs include_bytes! 完全兼容
 
 ### Pending Todos
 
@@ -76,6 +78,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-15T09:48:53.947Z
-Stopped at: Completed 22-01-PLAN.md (应用图标生成)
+Last session: 2026-03-15T09:52:40.143Z
+Stopped at: Completed 22-02-PLAN.md (托盘图标生成)
 Resume file: None

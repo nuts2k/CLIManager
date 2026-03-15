@@ -66,7 +66,7 @@
 - [x] **Phase 19: Provider 编辑改进** - 对话框加宽可滚动、表单字段分组、验证提示优化 (completed 2026-03-15)
 - [x] **Phase 20: 设置页 Tab 化** - 通用/高级/关于三 Tab 分组布局 (completed 2026-03-15)
 - [x] **Phase 21: 微动效与 Header 提升** - 全局微动效过渡和 Header 品牌视觉优化 (completed 2026-03-15)
-- [ ] **Phase 22: 应用图标** - 全新应用图标设计及托盘图标派生
+- [x] **Phase 22: 应用图标** - 全新应用图标设计及托盘图标派生 (completed 2026-03-15)
 
 ## Phase Details
 
@@ -174,7 +174,7 @@ Plans:
 | 19. Provider 编辑改进 | 1/1 | Complete    | 2026-03-15 | - |
 | 20. 设置页 Tab 化 | 1/1 | Complete    | 2026-03-15 | - |
 | 21. 微动效与 Header 提升 | 1/1 | Complete    | 2026-03-15 | - |
-| 22. 应用图标 | 1/2 | In Progress|  | - |
+| 22. 应用图标 | 2/2 | Complete   | 2026-03-15 | - |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*

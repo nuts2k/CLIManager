@@ -34,7 +34,7 @@ Requirements for v2.3 前端调整及美化。Each maps to roadmap phases.
 ### 图标
 
 - [x] **ICON-01**: 全新设计应用图标（生成全套 icns/ico/png 尺寸）
-- [ ] **ICON-02**: 托盘图标从应用图标派生（轮廓/简化版 template 图标），视觉统一
+- [x] **ICON-02**: 托盘图标从应用图标派生（轮廓/简化版 template 图标），视觉统一
 
 ## Future Requirements
 
@@ -66,7 +66,7 @@ Requirements for v2.3 前端调整及美化。Each maps to roadmap phases.
 | VISU-03 | Phase 17 | Complete |
 | VISU-04 | Phase 21 | Complete |
 | ICON-01 | Phase 22 | Complete |
-| ICON-02 | Phase 22 | Pending |
+| ICON-02 | Phase 22 | Complete |
 
 **Coverage:**
 - v2.3 requirements: 14 total
