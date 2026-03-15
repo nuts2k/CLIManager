@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: 前端调整及美化
 status: planning
-stopped_at: Phase 20 context gathered
-last_updated: "2026-03-15T08:45:28.921Z"
+stopped_at: Completed 20-tab-01-PLAN.md
+last_updated: "2026-03-15T08:55:35.643Z"
 last_activity: 2026-03-15 — v2.3 roadmap created (Phases 17-22)
 progress:
   total_phases: 6
-  completed_phases: 3
-  total_plans: 5
-  completed_plans: 5
+  completed_phases: 4
+  total_plans: 6
+  completed_plans: 6
   percent: 0
 ---
 
@@ -62,6 +62,7 @@ v2.3 设计决策（roadmap 阶段）：
 - [Phase 18-homepage-layout]: TooltipProvider 在按钮组外层包裹一次（delayDuration=300ms），卡片 hover 升起效果：shadow-sm→shadow-md + translateY(-2px)
 - [Phase 19-01]: 移除 Collapsible 改三分区平铺，upstreamModel 验证失败不再需要 setAdvancedOpen
 - [Phase 19-01]: Input 组件已内置 aria-invalid:border-destructive，ProviderDialog 无需额外条件 className
+- [Phase 20-tab]: Tab 栏使用 variant=line 下划线风格，居左对齐，defaultValue=general 确保每次打开停留通用 Tab
 
 ### Pending Todos
 
@@ -73,6 +74,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-15T08:45:28.918Z
-Stopped at: Phase 20 context gathered
-Resume file: .planning/phases/20-tab/20-CONTEXT.md
+Last session: 2026-03-15T08:55:35.641Z
+Stopped at: Completed 20-tab-01-PLAN.md
+Resume file: None

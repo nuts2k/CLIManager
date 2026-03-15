@@ -22,7 +22,7 @@ Requirements for v2.3 前端调整及美化。Each maps to roadmap phases.
 
 ### 设置页
 
-- [ ] **SETT-01**: 设置页改为 Tab 布局（通用 / 高级 / 关于）
+- [x] **SETT-01**: 设置页改为 Tab 布局（通用 / 高级 / 关于）
 
 ### 视觉风格
 
@@ -60,7 +60,7 @@ Requirements for v2.3 前端调整及美化。Each maps to roadmap phases.
 | EDIT-01 | Phase 19 | Complete |
 | EDIT-02 | Phase 19 | Complete |
 | EDIT-03 | Phase 19 | Complete |
-| SETT-01 | Phase 20 | Pending |
+| SETT-01 | Phase 20 | Complete |
 | VISU-01 | Phase 17 | Complete |
 | VISU-02 | Phase 21 | Pending |
 | VISU-03 | Phase 17 | Complete |

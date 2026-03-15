@@ -64,7 +64,7 @@
 - [x] **Phase 17: 设计基础** - 建立 CSS 变量体系、统一间距与圆角规范 (completed 2026-03-15)
 - [x] **Phase 18: 首页布局优化** - Provider 卡片操作外露、hover 效果、空状态和代理状态视觉优化 (completed 2026-03-15)
 - [x] **Phase 19: Provider 编辑改进** - 对话框加宽可滚动、表单字段分组、验证提示优化 (completed 2026-03-15)
-- [ ] **Phase 20: 设置页 Tab 化** - 通用/高级/关于三 Tab 分组布局
+- [x] **Phase 20: 设置页 Tab 化** - 通用/高级/关于三 Tab 分组布局 (completed 2026-03-15)
 - [ ] **Phase 21: 微动效与 Header 提升** - 全局微动效过渡和 Header 品牌视觉优化
 - [ ] **Phase 22: 应用图标** - 全新应用图标设计及托盘图标派生
 
@@ -167,7 +167,7 @@ Plans:
 | 17. 设计基础 | v2.3 | 2/2 | Complete | 2026-03-15 |
 | 18. 首页布局优化 | 2/2 | Complete    | 2026-03-15 | - |
 | 19. Provider 编辑改进 | 1/1 | Complete    | 2026-03-15 | - |
-| 20. 设置页 Tab 化 | v2.3 | 0/1 | Planned | - |
+| 20. 设置页 Tab 化 | 1/1 | Complete   | 2026-03-15 | - |
 | 21. 微动效与 Header 提升 | v2.3 | 0/TBD | Not started | - |
 | 22. 应用图标 | v2.3 | 0/TBD | Not started | - |
 
