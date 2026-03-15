@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Header } from "@/components/layout/Header";
 import { ProviderTabs } from "@/components/provider/ProviderTabs";
 import { ImportDialog } from "@/components/provider/ImportDialog";
@@ -11,12 +11,18 @@ import { useSyncListener } from "@/hooks/useSyncListener";
 import i18n from "@/i18n";
 import type { DetectedCliConfig } from "@/types/provider";
 
+type AppView = "main" | "settings";
+
+const VIEW_TRANSITION_MS = 150;
+
 export function AppShell() {
-  const [view, setView] = useState<"main" | "settings">("main");
+  const [view, setView] = useState<AppView>("main");
+  const [exitingView, setExitingView] = useState<AppView | null>(null);
   const [syncKey, setSyncKey] = useState(0);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [importConfigs, setImportConfigs] = useState<DetectedCliConfig[]>([]);
   const [showUpdateDialog, setShowUpdateDialog] = useState(false);
+  const viewTransitionTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
   const { refresh: refreshSettings } = useSettings();
 
   // 更新检查
@@ -113,26 +119,66 @@ export function AppShell() {
     }
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (viewTransitionTimerRef.current) {
+        clearTimeout(viewTransitionTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleNavigate = useCallback((nextView: AppView) => {
+    if (nextView === view) {
+      return;
+    }
+
+    const leavingView = view;
+
+    if (viewTransitionTimerRef.current) {
+      clearTimeout(viewTransitionTimerRef.current);
+    }
+
+    setExitingView(leavingView);
+    setView(nextView);
+
+    viewTransitionTimerRef.current = globalThis.setTimeout(() => {
+      setExitingView((current) => (current === leavingView ? null : current));
+      viewTransitionTimerRef.current = null;
+    }, VIEW_TRANSITION_MS);
+  }, [view]);
+
+  const showMainView = view === "main" || exitingView === "main";
+  const showSettingsView = view === "settings" || exitingView === "settings";
+
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <Header onNavigate={setView} />
+      <Header onNavigate={handleNavigate} />
       <main className="relative flex-1 overflow-hidden">
-        {/* 首页视图：始终渲染，opacity 控制可见性以实现淡入淡出过渡 */}
-        <div
-          className={`absolute inset-0 transition-opacity duration-150 ease-out ${
-            view === "main" ? "opacity-100" : "opacity-0 pointer-events-none"
-          }`}
-        >
-          <ProviderTabs refreshTrigger={syncKey} />
-        </div>
-        {/* 设置页视图：始终渲染，opacity 控制可见性以实现淡入淡出过渡 */}
-        <div
-          className={`absolute inset-0 transition-opacity duration-150 ease-out ${
-            view === "settings" ? "opacity-100" : "opacity-0 pointer-events-none"
-          }`}
-        >
-          <SettingsPage onBack={() => setView("main")} onShowImport={handleShowImport} />
-        </div>
+        {showMainView ? (
+          <div
+            inert={view !== "main"}
+            aria-hidden={view !== "main"}
+            className={`absolute inset-0 transition-opacity duration-150 ease-out ${
+              view === "main" ? "opacity-100" : "opacity-0 pointer-events-none"
+            }`}
+          >
+            <ProviderTabs refreshTrigger={syncKey} />
+          </div>
+        ) : null}
+        {showSettingsView ? (
+          <div
+            inert={view !== "settings"}
+            aria-hidden={view !== "settings"}
+            className={`absolute inset-0 transition-opacity duration-150 ease-out ${
+              view === "settings" ? "opacity-100" : "opacity-0 pointer-events-none"
+            }`}
+          >
+            <SettingsPage
+              onBack={() => handleNavigate("main")}
+              onShowImport={handleShowImport}
+            />
+          </div>
+        ) : null}
       </main>
       <ImportDialog
         open={showImportDialog}
