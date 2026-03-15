@@ -230,7 +230,7 @@ export function ProviderTabs({ refreshTrigger }: ProviderTabsProps) {
                   {t(tab.labelKey)}
                   {proxyStatus?.cli_statuses.find((s) => s.cli_id === tab.id)
                     ?.active && (
-                    <span className="size-2 rounded-full bg-green-500" />
+                    <span className="size-2 rounded-full bg-status-success" />
                   )}
                 </span>
               </TabsTrigger>

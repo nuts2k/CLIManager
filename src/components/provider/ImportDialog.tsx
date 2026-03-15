@@ -154,7 +154,7 @@ export function ImportDialog({
                         {maskApiKey(config.api_key)}
                       </span>
                     ) : (
-                      <span className="text-yellow-500">
+                      <span className="text-status-warning">
                         {t("import.missingApiKey")}
                       </span>
                     )}
@@ -164,7 +164,7 @@ export function ImportDialog({
                         {config.base_url}
                       </span>
                     ) : (
-                      <span className="text-yellow-500">
+                      <span className="text-status-warning">
                         {t("import.missingBaseUrl")}
                       </span>
                     )}

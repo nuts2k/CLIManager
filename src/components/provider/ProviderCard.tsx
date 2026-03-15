@@ -57,14 +57,14 @@ export function ProviderCard({
     <div
       className={`group relative flex items-center gap-3 rounded-lg border px-4 py-3 transition-colors ${
         isActive
-          ? "border-blue-500/50 bg-blue-500/5"
+          ? "border-status-active/50 bg-status-active/5"
           : "border-border hover:border-border/80 hover:bg-accent/30"
       }`}
     >
       {/* Active indicator bar */}
       <div
         className={`absolute left-0 top-2 bottom-2 w-1 rounded-full transition-colors ${
-          isActive ? "bg-blue-500" : "bg-transparent"
+          isActive ? "bg-status-active" : "bg-transparent"
         }`}
       />
 
