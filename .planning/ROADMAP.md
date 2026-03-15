@@ -119,7 +119,9 @@ Plans:
   1. 设置页顶部显示"通用"、"高级"、"关于"三个 Tab 选项，点击可切换
   2. 各 Tab 内容独立：通用含语言/主题等全局设置，高级含代理端口等技术配置，关于含版本和更新
   3. 刷新页面或重新打开设置后，上次选中的 Tab 保持（或默认停留"通用"）
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 20-01-PLAN.md — 设置页三 Tab 布局重构 + 关于页 Logo + i18n 翻译
 
 ### Phase 21: 微动效与 Header 提升
 **Goal**: 可交互元素有流畅的过渡动效，Header 视觉品牌感更强
@@ -165,10 +167,10 @@ Plans:
 | 17. 设计基础 | v2.3 | 2/2 | Complete | 2026-03-15 |
 | 18. 首页布局优化 | 2/2 | Complete    | 2026-03-15 | - |
 | 19. Provider 编辑改进 | 1/1 | Complete    | 2026-03-15 | - |
-| 20. 设置页 Tab 化 | v2.3 | 0/TBD | Not started | - |
+| 20. 设置页 Tab 化 | v2.3 | 0/1 | Planned | - |
 | 21. 微动效与 Header 提升 | v2.3 | 0/TBD | Not started | - |
 | 22. 应用图标 | v2.3 | 0/TBD | Not started | - |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*
-*Last updated: 2026-03-15 — Phase 19 planned (1 plan)*
+*Last updated: 2026-03-15 — Phase 20 planned (1 plan)*
