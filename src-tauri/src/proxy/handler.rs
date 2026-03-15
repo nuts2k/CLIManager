@@ -5,7 +5,6 @@ use axum::response::Response;
 use axum::Json;
 use bytes::Bytes;
 use serde_json::{json, Value};
-use std::collections::HashMap;
 
 use super::error::ProxyError;
 use super::state::{ProxyState, UpstreamTarget};
@@ -17,12 +16,35 @@ pub async fn health_handler() -> (StatusCode, Json<Value>) {
     (StatusCode::OK, Json(json!({"status": "ok"})))
 }
 
+#[derive(Debug)]
+enum ResponseTranslationMode {
+    Passthrough,
+    OpenAiChatCompletions { request_model: String },
+    OpenAiResponses { request_model: String },
+}
+
 /// 判断是否为 hop-by-hop header（代理不应转发）
 fn is_hop_by_hop(header_name: &str) -> bool {
     matches!(
         header_name.to_lowercase().as_str(),
         "host" | "content-length" | "transfer-encoding" | "connection"
     )
+}
+
+/// 仅 `/v1/messages` 需要做 Anthropic ↔ OpenAI 协议转换
+fn should_translate_messages_request(protocol_type: &ProtocolType, path: &str) -> bool {
+    matches!(
+        protocol_type,
+        ProtocolType::OpenAiChatCompletions | ProtocolType::OpenAiResponses
+    ) && path == "/v1/messages"
+}
+
+/// 根据上游实际 Content-Type 判断是否为 SSE 响应
+fn is_sse_response(headers: &reqwest::header::HeaderMap) -> bool {
+    headers
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.to_ascii_lowercase().contains("text/event-stream"))
 }
 
 /// 应用上游模型映射——三级优先级：精确匹配 > upstream_model 默认 > 保留原名
@@ -46,10 +68,7 @@ fn apply_upstream_model_mapping(mut body: Value, upstream: &UpstreamTarget) -> V
             .unwrap_or(original_model)
     } else {
         // 无 model_map，退回 upstream_model 或保留原名
-        upstream
-            .upstream_model
-            .clone()
-            .unwrap_or(original_model)
+        upstream.upstream_model.clone().unwrap_or(original_model)
     };
 
     if let Some(obj) = body.as_object_mut() {
@@ -89,83 +108,80 @@ pub async fn proxy_handler(
         .map_err(|e| ProxyError::Internal(format!("读取请求体失败: {}", e)))?;
 
     // 步骤 C 之后：协议路由分支
-    let (upstream_url, final_body_bytes, is_streaming, request_model) =
-        match upstream.protocol_type {
-            ProtocolType::OpenAiChatCompletions => {
-                // 1. 解析请求体
-                let body_value: Value = serde_json::from_slice(&body_bytes)
-                    .map_err(|e| ProxyError::TranslateError(format!("无法解析请求体: {}", e)))?;
+    let (upstream_url, final_body_bytes, response_mode) = match upstream.protocol_type {
+        ProtocolType::OpenAiChatCompletions
+            if should_translate_messages_request(&upstream.protocol_type, &path) =>
+        {
+            // 1. 解析请求体
+            let body_value: Value = serde_json::from_slice(&body_bytes)
+                .map_err(|e| ProxyError::TranslateError(format!("无法解析请求体: {}", e)))?;
 
-                // 2. 提取 stream 标志（转换前读取）
-                let is_streaming = body_value
-                    .get("stream")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
+            // 2. 提取原始模型名（用于流式 SSE 事件）
+            let request_model = body_value
+                .get("model")
+                .and_then(|m| m.as_str())
+                .unwrap_or("unknown")
+                .to_string();
 
-                // 3. 提取原始模型名（用于流式 SSE 事件）
-                let request_model = body_value
-                    .get("model")
-                    .and_then(|m| m.as_str())
-                    .unwrap_or("unknown")
-                    .to_string();
+            // 3. 模型名映射（在转换前执行，MODL-03）
+            let body_value = apply_upstream_model_mapping(body_value, &upstream);
 
-                // 4. 模型名映射（在转换前执行，MODL-03）
-                let body_value = apply_upstream_model_mapping(body_value, &upstream);
+            // 4. 请求转换 + 端点重写
+            let openai_body = translate::request::anthropic_to_openai(body_value)?;
+            let url = translate::request::build_proxy_endpoint_url(
+                &upstream.base_url,
+                "/chat/completions",
+            );
+            let new_bytes = serde_json::to_vec(&openai_body)
+                .map_err(|e| ProxyError::Internal(e.to_string()))?;
 
-                // 5. 请求转换 + 端点重写
-                let openai_body = translate::request::anthropic_to_openai(body_value)?;
-                let url = translate::request::build_proxy_endpoint_url(
-                    &upstream.base_url,
-                    "/chat/completions",
-                );
-                let new_bytes = serde_json::to_vec(&openai_body)
-                    .map_err(|e| ProxyError::Internal(e.to_string()))?;
+            (
+                url,
+                Bytes::from(new_bytes),
+                ResponseTranslationMode::OpenAiChatCompletions { request_model },
+            )
+        }
+        ProtocolType::OpenAiResponses
+            if should_translate_messages_request(&upstream.protocol_type, &path) =>
+        {
+            // 1. 解析请求体
+            let body_value: Value = serde_json::from_slice(&body_bytes)
+                .map_err(|e| ProxyError::TranslateError(format!("无法解析请求体: {}", e)))?;
 
-                (url, Bytes::from(new_bytes), is_streaming, request_model)
-            }
-            ProtocolType::OpenAiResponses => {
-                // 1. 解析请求体
-                let body_value: Value = serde_json::from_slice(&body_bytes)
-                    .map_err(|e| ProxyError::TranslateError(format!("无法解析请求体: {}", e)))?;
+            // 2. 提取原始模型名（用于流式 SSE 事件）
+            let request_model = body_value
+                .get("model")
+                .and_then(|m| m.as_str())
+                .unwrap_or("unknown")
+                .to_string();
 
-                // 2. 提取 stream 标志（转换前读取）
-                let is_streaming = body_value
-                    .get("stream")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
+            // 3. 模型名映射（在转换前执行）
+            let body_value = apply_upstream_model_mapping(body_value, &upstream);
 
-                // 3. 提取原始模型名（用于流式 SSE 事件）
-                let request_model = body_value
-                    .get("model")
-                    .and_then(|m| m.as_str())
-                    .unwrap_or("unknown")
-                    .to_string();
+            // 4. 请求转换 + 端点重写为 /responses
+            let responses_body = translate::responses_request::anthropic_to_responses(body_value)?;
+            let url =
+                translate::request::build_proxy_endpoint_url(&upstream.base_url, "/responses");
+            let new_bytes = serde_json::to_vec(&responses_body)
+                .map_err(|e| ProxyError::Internal(e.to_string()))?;
 
-                // 4. 模型名映射（在转换前执行）
-                let body_value = apply_upstream_model_mapping(body_value, &upstream);
-
-                // 5. 请求转换 + 端点重写为 /responses
-                let responses_body = translate::responses_request::anthropic_to_responses(body_value)?;
-                let url = translate::request::build_proxy_endpoint_url(
-                    &upstream.base_url,
-                    "/responses",
-                );
-                let new_bytes = serde_json::to_vec(&responses_body)
-                    .map_err(|e| ProxyError::Internal(e.to_string()))?;
-
-                (url, Bytes::from(new_bytes), is_streaming, request_model)
-            }
-            ProtocolType::Anthropic => {
-                // 透传路径：URL 拼接与现有逻辑一致
-                let url = format!(
-                    "{}{}{}",
-                    upstream.base_url.trim_end_matches('/'),
-                    path,
-                    query
-                );
-                (url, body_bytes, false, String::new())
-            }
-        };
+            (
+                url,
+                Bytes::from(new_bytes),
+                ResponseTranslationMode::OpenAiResponses { request_model },
+            )
+        }
+        _ => {
+            // 非 `/v1/messages` 请求保持透传，避免误改写 token_count / complete 等端点
+            let url = format!(
+                "{}{}{}",
+                upstream.base_url.trim_end_matches('/'),
+                path,
+                query
+            );
+            (url, body_bytes, ResponseTranslationMode::Passthrough)
+        }
+    };
 
     // 步骤 E & F：构建 reqwest 请求，透传 headers（跳过 hop-by-hop + 替换凭据）
     let mut req_builder = state.http_client.request(method, &upstream_url);
@@ -218,6 +234,7 @@ pub async fn proxy_handler(
     // 步骤 I：构建响应——透传上游 status + headers
     let status = upstream_resp.status();
     let resp_headers = upstream_resp.headers().clone();
+    let upstream_is_sse = is_sse_response(&resp_headers);
 
     let mut builder = Response::builder().status(status.as_u16());
 
@@ -234,12 +251,12 @@ pub async fn proxy_handler(
     }
 
     // 步骤 J：按 protocol_type 分支处理响应体
-    let body = match upstream.protocol_type {
-        ProtocolType::OpenAiChatCompletions => {
+    let body = match response_mode {
+        ResponseTranslationMode::OpenAiChatCompletions { request_model } => {
             if !status.is_success() {
                 // 4xx/5xx 直接透传（RESP-05）
                 Body::from_stream(upstream_resp.bytes_stream())
-            } else if is_streaming {
+            } else if upstream_is_sse {
                 // 流式：wrap 为 SSE 转换流
                 Body::from_stream(translate::stream::create_anthropic_sse_stream(
                     upstream_resp.bytes_stream(),
@@ -259,16 +276,18 @@ pub async fn proxy_handler(
                 Body::from(resp_bytes)
             }
         }
-        ProtocolType::OpenAiResponses => {
+        ResponseTranslationMode::OpenAiResponses { request_model } => {
             if !status.is_success() {
                 // 4xx/5xx 直接透传（RESP-05）
                 Body::from_stream(upstream_resp.bytes_stream())
-            } else if is_streaming {
+            } else if upstream_is_sse {
                 // 流式：wrap 为 Responses API -> Anthropic SSE 转换流
-                Body::from_stream(translate::responses_stream::create_responses_anthropic_sse_stream(
-                    upstream_resp.bytes_stream(),
-                    request_model,
-                ))
+                Body::from_stream(
+                    translate::responses_stream::create_responses_anthropic_sse_stream(
+                        upstream_resp.bytes_stream(),
+                        request_model,
+                    ),
+                )
             } else {
                 // 非流式：读完整响应，转换后返回
                 let resp_bytes = upstream_resp
@@ -277,13 +296,14 @@ pub async fn proxy_handler(
                     .map_err(|e| ProxyError::Internal(format!("读取上游响应失败: {}", e)))?;
                 let resp_value: Value = serde_json::from_slice(&resp_bytes)
                     .map_err(|e| ProxyError::TranslateError(format!("响应解析失败: {}", e)))?;
-                let anthropic_resp = translate::responses_response::responses_to_anthropic(resp_value)?;
+                let anthropic_resp =
+                    translate::responses_response::responses_to_anthropic(resp_value)?;
                 let resp_bytes = serde_json::to_vec(&anthropic_resp)
                     .map_err(|e| ProxyError::Internal(e.to_string()))?;
                 Body::from(resp_bytes)
             }
         }
-        ProtocolType::Anthropic => {
+        ResponseTranslationMode::Passthrough => {
             // 透传（现有行为）
             Body::from_stream(upstream_resp.bytes_stream())
         }
@@ -298,10 +318,7 @@ pub async fn proxy_handler(
 mod tests {
     use super::*;
     use axum::http::header::HeaderMap;
-    use axum::body::Body;
     use axum::Router;
-    use bytes::Bytes;
-    use futures::StreamExt;
     use serde_json::{json, Value};
     use std::collections::HashMap;
     use std::sync::Arc;
@@ -321,13 +338,128 @@ mod tests {
         }
     }
 
+    fn make_upstream_openai_target(base_url: &str) -> super::super::state::UpstreamTarget {
+        super::super::state::UpstreamTarget {
+            api_key: "sk-test".to_string(),
+            base_url: base_url.to_string(),
+            protocol_type: crate::provider::ProtocolType::OpenAiChatCompletions,
+            upstream_model: None,
+            upstream_model_map: None,
+        }
+    }
+
+    async fn assert_non_messages_request_passthrough(protocol_type: ProtocolType) {
+        use axum::routing::post;
+
+        let captured_uri: Arc<TokioMutex<Option<String>>> = Arc::new(TokioMutex::new(None));
+        let captured_body: Arc<TokioMutex<Option<Value>>> = Arc::new(TokioMutex::new(None));
+        let captured_uri_clone = captured_uri.clone();
+        let captured_body_clone = captured_body.clone();
+        let passthrough_resp = json!({"input_tokens": 42});
+        let passthrough_resp_for_route = passthrough_resp.clone();
+
+        let mock_app = Router::new().route(
+            "/v1/token_count",
+            post(move |req: axum::extract::Request| {
+                let captured_uri = captured_uri_clone.clone();
+                let captured_body = captured_body_clone.clone();
+                let resp = passthrough_resp_for_route.clone();
+                async move {
+                    let uri = req
+                        .uri()
+                        .path_and_query()
+                        .map(|value| value.as_str().to_string())
+                        .unwrap_or_else(|| req.uri().path().to_string());
+                    let body_bytes = axum::body::to_bytes(req.into_body(), 1024 * 1024)
+                        .await
+                        .unwrap();
+                    let body_value: Value = serde_json::from_slice(&body_bytes).unwrap();
+                    *captured_uri.lock().await = Some(uri);
+                    *captured_body.lock().await = Some(body_value);
+                    axum::Json(resp)
+                }
+            }),
+        );
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream_port = listener.local_addr().unwrap().port();
+        let (tx, rx) = oneshot::channel::<()>();
+        tokio::spawn(async move {
+            axum::serve(listener, mock_app)
+                .with_graceful_shutdown(async {
+                    rx.await.ok();
+                })
+                .await
+                .ok();
+        });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let base_url = format!("http://127.0.0.1:{}", upstream_port);
+        let upstream = super::super::state::UpstreamTarget {
+            api_key: "sk-test".to_string(),
+            base_url,
+            protocol_type,
+            upstream_model: None,
+            upstream_model_map: None,
+        };
+
+        let service = crate::proxy::ProxyService::new();
+        service.start("claude", 0, upstream).await.unwrap();
+
+        let proxy_port = service
+            .status()
+            .await
+            .servers
+            .into_iter()
+            .find(|s| s.cli_id == "claude")
+            .unwrap()
+            .port;
+
+        let passthrough_req = json!({
+            "text": "count these tokens",
+            "metadata": {"source": "test"}
+        });
+
+        let resp: Value = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .unwrap()
+            .post(format!(
+                "http://127.0.0.1:{}/v1/token_count?beta=true",
+                proxy_port
+            ))
+            .header("x-api-key", "PROXY_MANAGED")
+            .header("content-type", "application/json")
+            .json(&passthrough_req)
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+
+        assert_eq!(
+            captured_uri.lock().await.as_deref(),
+            Some("/v1/token_count?beta=true"),
+            "非 /v1/messages 请求不应被重写"
+        );
+        assert_eq!(
+            captured_body.lock().await.as_ref(),
+            Some(&passthrough_req),
+            "非 /v1/messages 请求体应保持透传"
+        );
+        assert_eq!(resp, passthrough_resp, "非 /v1/messages 响应应保持透传");
+
+        service.stop("claude").await.unwrap();
+        let _ = tx.send(());
+    }
+
     // ── Task 1 TDD RED：OpenAiResponses 路由分支行为测试 ──
 
     /// 验证 OpenAiResponses 请求被路由到 /responses 端点（而非 /chat/completions）
     #[tokio::test]
     async fn test_responses_api_endpoint() {
         use axum::routing::post;
-        use crate::proxy::{ProxyService, ProxyState};
 
         // 记录请求路径
         let captured_path: Arc<TokioMutex<Option<String>>> = Arc::new(TokioMutex::new(None));
@@ -358,16 +490,29 @@ mod tests {
         let (tx, rx) = oneshot::channel::<()>();
         tokio::spawn(async move {
             axum::serve(listener, mock_app)
-                .with_graceful_shutdown(async { rx.await.ok(); })
-                .await.ok();
+                .with_graceful_shutdown(async {
+                    rx.await.ok();
+                })
+                .await
+                .ok();
         });
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         let service = crate::proxy::ProxyService::new();
         let base_url = format!("http://127.0.0.1:{}", upstream_port);
-        service.start("claude", 0, make_upstream_responses_target(&base_url)).await.unwrap();
+        service
+            .start("claude", 0, make_upstream_responses_target(&base_url))
+            .await
+            .unwrap();
 
-        let proxy_port = service.status().await.servers.into_iter().find(|s| s.cli_id == "claude").unwrap().port;
+        let proxy_port = service
+            .status()
+            .await
+            .servers
+            .into_iter()
+            .find(|s| s.cli_id == "claude")
+            .unwrap()
+            .port;
 
         // 发送 Anthropic 格式请求
         let anthropic_req = json!({
@@ -376,7 +521,10 @@ mod tests {
             "messages": [{"role": "user", "content": "Hello"}]
         });
 
-        let _ = reqwest::Client::builder().no_proxy().build().unwrap()
+        let _ = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .unwrap()
             .post(format!("http://127.0.0.1:{}/v1/messages", proxy_port))
             .header("x-api-key", "PROXY_MANAGED")
             .header("content-type", "application/json")
@@ -387,7 +535,11 @@ mod tests {
 
         // 验证请求命中 /v1/responses（而非 /v1/chat/completions）
         let path = captured_path.lock().await;
-        assert_eq!(path.as_deref(), Some("/v1/responses"), "OpenAiResponses 请求应路由到 /v1/responses 端点");
+        assert_eq!(
+            path.as_deref(),
+            Some("/v1/responses"),
+            "OpenAiResponses 请求应路由到 /v1/responses 端点"
+        );
 
         service.stop("claude").await.unwrap();
         let _ = tx.send(());
@@ -425,16 +577,29 @@ mod tests {
         let (tx, rx) = oneshot::channel::<()>();
         tokio::spawn(async move {
             axum::serve(listener, mock_app)
-                .with_graceful_shutdown(async { rx.await.ok(); })
-                .await.ok();
+                .with_graceful_shutdown(async {
+                    rx.await.ok();
+                })
+                .await
+                .ok();
         });
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         let service = crate::proxy::ProxyService::new();
         let base_url = format!("http://127.0.0.1:{}", upstream_port);
-        service.start("claude", 0, make_upstream_responses_target(&base_url)).await.unwrap();
+        service
+            .start("claude", 0, make_upstream_responses_target(&base_url))
+            .await
+            .unwrap();
 
-        let proxy_port = service.status().await.servers.into_iter().find(|s| s.cli_id == "claude").unwrap().port;
+        let proxy_port = service
+            .status()
+            .await
+            .servers
+            .into_iter()
+            .find(|s| s.cli_id == "claude")
+            .unwrap()
+            .port;
 
         let anthropic_req = json!({
             "model": "claude-3-5-sonnet-20241022",
@@ -442,7 +607,10 @@ mod tests {
             "messages": [{"role": "user", "content": "Hello"}]
         });
 
-        let _ = reqwest::Client::builder().no_proxy().build().unwrap()
+        let _ = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .unwrap()
             .post(format!("http://127.0.0.1:{}/v1/messages", proxy_port))
             .header("x-api-key", "PROXY_MANAGED")
             .header("content-type", "application/json")
@@ -454,9 +622,19 @@ mod tests {
         // 验证上游收到的是 Responses API 格式（有 input 字段，无 messages 字段）
         let body = captured_body.lock().await;
         let received = body.as_ref().expect("mock 上游应已收到请求");
-        assert!(received.get("input").is_some(), "Responses API 请求应包含 input 字段");
-        assert!(received.get("messages").is_none(), "Responses API 请求不应包含 messages 字段");
-        assert_eq!(received.get("max_output_tokens").and_then(|v| v.as_u64()), Some(100), "max_tokens 应映射为 max_output_tokens");
+        assert!(
+            received.get("input").is_some(),
+            "Responses API 请求应包含 input 字段"
+        );
+        assert!(
+            received.get("messages").is_none(),
+            "Responses API 请求不应包含 messages 字段"
+        );
+        assert_eq!(
+            received.get("max_output_tokens").and_then(|v| v.as_u64()),
+            Some(100),
+            "max_tokens 应映射为 max_output_tokens"
+        );
 
         service.stop("claude").await.unwrap();
         let _ = tx.send(());
@@ -495,14 +673,20 @@ mod tests {
         let (tx, rx) = oneshot::channel::<()>();
         tokio::spawn(async move {
             axum::serve(listener, mock_app)
-                .with_graceful_shutdown(async { rx.await.ok(); })
-                .await.ok();
+                .with_graceful_shutdown(async {
+                    rx.await.ok();
+                })
+                .await
+                .ok();
         });
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         // 带模型映射的 UpstreamTarget
         let mut model_map = HashMap::new();
-        model_map.insert("claude-3-5-sonnet-20241022".to_string(), "o1-mini".to_string());
+        model_map.insert(
+            "claude-3-5-sonnet-20241022".to_string(),
+            "o1-mini".to_string(),
+        );
         let upstream = super::super::state::UpstreamTarget {
             api_key: "sk-test".to_string(),
             base_url: format!("http://127.0.0.1:{}", upstream_port),
@@ -514,7 +698,14 @@ mod tests {
         let service = crate::proxy::ProxyService::new();
         service.start("claude", 0, upstream).await.unwrap();
 
-        let proxy_port = service.status().await.servers.into_iter().find(|s| s.cli_id == "claude").unwrap().port;
+        let proxy_port = service
+            .status()
+            .await
+            .servers
+            .into_iter()
+            .find(|s| s.cli_id == "claude")
+            .unwrap()
+            .port;
 
         let anthropic_req = json!({
             "model": "claude-3-5-sonnet-20241022",
@@ -522,7 +713,10 @@ mod tests {
             "messages": [{"role": "user", "content": "Hello"}]
         });
 
-        let _ = reqwest::Client::builder().no_proxy().build().unwrap()
+        let _ = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .unwrap()
             .post(format!("http://127.0.0.1:{}/v1/messages", proxy_port))
             .header("x-api-key", "PROXY_MANAGED")
             .header("content-type", "application/json")
@@ -533,7 +727,199 @@ mod tests {
 
         let body = captured_body.lock().await;
         let received = body.as_ref().expect("mock 上游应已收到请求");
-        assert_eq!(received["model"], "o1-mini", "模型名应在转换前被映射为 o1-mini");
+        assert_eq!(
+            received["model"], "o1-mini",
+            "模型名应在转换前被映射为 o1-mini"
+        );
+
+        service.stop("claude").await.unwrap();
+        let _ = tx.send(());
+    }
+
+    #[tokio::test]
+    async fn test_openai_chat_non_messages_request_passthrough() {
+        assert_non_messages_request_passthrough(ProtocolType::OpenAiChatCompletions).await;
+    }
+
+    #[tokio::test]
+    async fn test_openai_responses_non_messages_request_passthrough() {
+        assert_non_messages_request_passthrough(ProtocolType::OpenAiResponses).await;
+    }
+
+    #[tokio::test]
+    async fn test_openai_chat_stream_request_with_json_fallback() {
+        use axum::routing::post;
+
+        let mock_resp = json!({
+            "id": "chatcmpl-fallback",
+            "object": "chat.completion",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "Hello fallback"},
+                "finish_reason": "stop"
+            }],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8}
+        });
+
+        let mock_app = Router::new().route(
+            "/v1/chat/completions",
+            post(move || {
+                let resp = mock_resp.clone();
+                async move { axum::Json(resp) }
+            }),
+        );
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream_port = listener.local_addr().unwrap().port();
+        let (tx, rx) = oneshot::channel::<()>();
+        tokio::spawn(async move {
+            axum::serve(listener, mock_app)
+                .with_graceful_shutdown(async {
+                    rx.await.ok();
+                })
+                .await
+                .ok();
+        });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let service = crate::proxy::ProxyService::new();
+        let base_url = format!("http://127.0.0.1:{}", upstream_port);
+        service
+            .start("claude", 0, make_upstream_openai_target(&base_url))
+            .await
+            .unwrap();
+
+        let proxy_port = service
+            .status()
+            .await
+            .servers
+            .into_iter()
+            .find(|s| s.cli_id == "claude")
+            .unwrap()
+            .port;
+
+        let anthropic_req = json!({
+            "model": "claude-3-5-sonnet-20241022",
+            "max_tokens": 100,
+            "stream": true,
+            "messages": [{"role": "user", "content": "Hello"}]
+        });
+
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let resp = client
+            .post(format!("http://127.0.0.1:{}/v1/messages", proxy_port))
+            .header("x-api-key", "PROXY_MANAGED")
+            .header("content-type", "application/json")
+            .json(&anthropic_req)
+            .send()
+            .await
+            .unwrap();
+
+        let content_type = resp
+            .headers()
+            .get("content-type")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        let body: Value = resp.json().await.unwrap();
+
+        assert!(
+            content_type.contains("application/json"),
+            "上游返回 JSON 时不应误转成 SSE"
+        );
+        assert_eq!(body["content"][0]["type"], "text");
+        assert_eq!(body["content"][0]["text"], "Hello fallback");
+        assert_eq!(body["stop_reason"], "end_turn");
+
+        service.stop("claude").await.unwrap();
+        let _ = tx.send(());
+    }
+
+    #[tokio::test]
+    async fn test_openai_responses_stream_request_with_json_fallback() {
+        use axum::routing::post;
+
+        let mock_resp = json!({
+            "id": "resp-fallback",
+            "object": "response",
+            "output": [{
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": "Hello fallback"}],
+                "status": "completed"
+            }],
+            "usage": {"input_tokens": 5, "output_tokens": 3}
+        });
+
+        let mock_app = Router::new().route(
+            "/v1/responses",
+            post(move || {
+                let resp = mock_resp.clone();
+                async move { axum::Json(resp) }
+            }),
+        );
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream_port = listener.local_addr().unwrap().port();
+        let (tx, rx) = oneshot::channel::<()>();
+        tokio::spawn(async move {
+            axum::serve(listener, mock_app)
+                .with_graceful_shutdown(async {
+                    rx.await.ok();
+                })
+                .await
+                .ok();
+        });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let service = crate::proxy::ProxyService::new();
+        let base_url = format!("http://127.0.0.1:{}", upstream_port);
+        service
+            .start("claude", 0, make_upstream_responses_target(&base_url))
+            .await
+            .unwrap();
+
+        let proxy_port = service
+            .status()
+            .await
+            .servers
+            .into_iter()
+            .find(|s| s.cli_id == "claude")
+            .unwrap()
+            .port;
+
+        let anthropic_req = json!({
+            "model": "claude-3-5-sonnet-20241022",
+            "max_tokens": 100,
+            "stream": true,
+            "messages": [{"role": "user", "content": "Hello"}]
+        });
+
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let resp = client
+            .post(format!("http://127.0.0.1:{}/v1/messages", proxy_port))
+            .header("x-api-key", "PROXY_MANAGED")
+            .header("content-type", "application/json")
+            .json(&anthropic_req)
+            .send()
+            .await
+            .unwrap();
+
+        let content_type = resp
+            .headers()
+            .get("content-type")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        let body: Value = resp.json().await.unwrap();
+
+        assert!(
+            content_type.contains("application/json"),
+            "上游返回 JSON 时不应误转成 SSE"
+        );
+        assert_eq!(body["content"][0]["type"], "text");
+        assert_eq!(body["content"][0]["text"], "Hello fallback");
+        assert_eq!(body["stop_reason"], "end_turn");
 
         service.stop("claude").await.unwrap();
         let _ = tx.send(());
