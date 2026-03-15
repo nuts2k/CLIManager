@@ -157,7 +157,7 @@ Plans:
 | 14. 数据模型 + 转换核心 | v2.2 | 4/4 | Complete | 2026-03-14 |
 | 15. Handler 集成与协议路由 | v2.2 | 2/2 | Complete | 2026-03-14 |
 | 16. Responses API + Provider UI | v2.2 | 4/4 | Complete | 2026-03-14 |
-| 17. 设计基础 | 2/2 | Complete   | 2026-03-15 | - |
+| 17. 设计基础 | 2/2 | Complete    | 2026-03-15 | - |
 | 18. 首页布局优化 | v2.3 | 0/TBD | Not started | - |
 | 19. Provider 编辑改进 | v2.3 | 0/TBD | Not started | - |
 | 20. 设置页 Tab 化 | v2.3 | 0/TBD | Not started | - |
