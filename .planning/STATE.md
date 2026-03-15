@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Anthropic 模型映射
-status: defining_requirements
+status: ready_to_plan
 stopped_at: null
 last_updated: "2026-03-15"
-last_activity: 2026-03-15 — Milestone v2.4 started
+last_activity: 2026-03-15 — v2.4 roadmap created, Phase 23 ready to plan
 progress:
-  total_phases: 0
+  total_phases: 1
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-15)
 
 **Core value:** 切换 Provider 时只做 surgical patch（精确修改凭据和模型字段），绝不重写配置文件的其他内容
-**Current focus:** Milestone v2.4 Anthropic 模型映射
+**Current focus:** Phase 23 — Anthropic 模型映射
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-03-15 — Milestone v2.4 started
+Phase: 23 (Anthropic 模型映射)
+Plan: — (not yet planned)
+Status: Ready to plan
+Last activity: 2026-03-15 — v2.4 roadmap created, Phase 23 ready to plan
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -49,6 +49,12 @@ Progress: [░░░░░░░░░░] 0%
 
 （v2.3 决策已归档至 .planning/milestones/v2.3-ROADMAP.md）
 
+关键架构背景（v2.4 相关）：
+- handler.rs 三分支路由：Anthropic 分支目前直接透传，不执行模型映射
+- 模型映射三级优先级逻辑已在 OpenAI 分支实现，v2.4 复用该逻辑到 Anthropic 分支
+- 响应反向映射：客户端发送的是 Claude 模型名，代理替换后上游返回的是目标模型名，需映射回来
+- Phase 23 合并后端+前端为单 Phase，2 个并行 Plan 最大化并行度
+
 ### Pending Todos
 
 None.
@@ -60,5 +66,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-15
-Stopped at: Milestone v2.4 started — defining requirements
+Stopped at: v2.4 roadmap created — Phase 23 ready to plan
 Resume file: None

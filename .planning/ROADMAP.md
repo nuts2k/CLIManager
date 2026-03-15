@@ -8,6 +8,7 @@
 - ✅ **v2.1 Release Engineering** — Phases 12-13 (shipped 2026-03-14)
 - ✅ **v2.2 协议转换** — Phases 14-16 (shipped 2026-03-15)
 - ✅ **v2.3 前端调整及美化** — Phases 17-22 (shipped 2026-03-15)
+- 🚧 **v2.4 Anthropic 模型映射** — Phase 23 (in progress)
 
 ## Phases
 
@@ -69,6 +70,29 @@
 
 </details>
 
+### 🚧 v2.4 Anthropic 模型映射 (In Progress)
+
+**Milestone Goal:** Anthropic 协议透传路径支持模型映射，使用户可通过 Anthropic 协议连接不同模型名的 Provider
+
+- [ ] **Phase 23: Anthropic 模型映射** — 后端透传映射 + 前端配置 UI（2 个并行 Plan）
+
+## Phase Details
+
+### Phase 23: Anthropic 模型映射
+**Goal**: Anthropic 协议透传路径完整支持模型映射 — 代理层请求/响应/流式映射 + Provider 编辑 UI 配置入口
+**Depends on**: Phase 22 (v2.3 完成)
+**Requirements**: MMAP-01, MMAP-02, MMAP-03, MMAP-04
+**Parallelism**: 2 plans（后端 + 前端）无依赖，可并行执行
+**Success Criteria** (what must be TRUE):
+  1. 代理模式下，Anthropic 协议 Provider 配置了模型映射时，转发出去的请求中 model 字段已被替换为目标模型名
+  2. 代理模式下，上游返回的非流式响应中 model 字段被映射回原始 Claude 模型名，客户端看到的是原始名
+  3. 代理模式下，上游返回的 SSE 流式响应中 model 字段被映射回原始 Claude 模型名
+  4. 无模型映射配置时，Anthropic 透传路径行为不变（原始 model 名透传）
+  5. 编辑 Anthropic 协议 Provider 时，表单中出现默认模型字段和模型映射对列表区域
+  6. 模型映射对和默认模型均为可选，字段留空时不影响保存
+  7. 配置的映射规则持久化保存，重新打开 Provider 编辑时映射数据正确回填
+**Plans**: TBD (Plan A: 后端映射, Plan B: 前端 UI — 并行)
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -95,7 +119,8 @@
 | 20. 设置页 Tab 化 | v2.3 | 1/1 | Complete | 2026-03-15 |
 | 21. 微动效与 Header 提升 | v2.3 | 1/1 | Complete | 2026-03-15 |
 | 22. 应用图标 | v2.3 | 2/2 | Complete | 2026-03-15 |
+| 23. Anthropic 模型映射 | v2.4 | 0/2 | Not started | - |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*
-*Last updated: 2026-03-15 — v2.3 前端调整及美化 shipped*
+*Last updated: 2026-03-15 — v2.4 Anthropic 模型映射 roadmap created (single phase, 2 parallel plans)*

@@ -32,16 +32,16 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MMAP-01 | — | Pending |
-| MMAP-02 | — | Pending |
-| MMAP-03 | — | Pending |
-| MMAP-04 | — | Pending |
+| MMAP-01 | Phase 23 | Pending |
+| MMAP-02 | Phase 23 | Pending |
+| MMAP-03 | Phase 23 | Pending |
+| MMAP-04 | Phase 23 | Pending |
 
 **Coverage:**
 - v2.4 requirements: 4 total
-- Mapped to phases: 0
-- Unmapped: 4
+- Mapped to phases: 4
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-15*
-*Last updated: 2026-03-15 after initial definition*
+*Last updated: 2026-03-15 — traceability updated after roadmap creation*
