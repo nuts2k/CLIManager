@@ -1,35 +1,31 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <!-- 深色背景 -->
-  <rect width="1024" height="1024" fill="#111827"/>
+  <!-- macOS squircle 圆角背景（~22% 圆角比例，匹配 Apple 图标规范） -->
+  <rect width="1024" height="1024" rx="228" ry="228" fill="#111827"/>
 
   <!-- 连接线：中心 → 各外围节点（先画线，节点叠在上面） -->
   <!-- 节点坐标：
     中心: (512, 512)
-    节点1: (512, 175)   上方, 距离337
-    节点2: (790, 340)   右上, 距离336
-    节点3: (750, 690)   右下, 距离292
-    节点4: (270, 720)   左下, 距离318
-    节点5: (230, 330)   左上, 距离330
+    节点1: (512, 195)   上方, 距离317
+    节点2: (770, 350)   右上, 距离306
+    节点3: (735, 680)   右下, 距离278
+    节点4: (285, 710)   左下, 距离288
+    节点5: (250, 345)   左上, 距离310
   -->
-  <line x1="512" y1="512" x2="512" y2="175" stroke="#F97316" stroke-width="10" stroke-linecap="round"/>
-  <line x1="512" y1="512" x2="790" y2="340" stroke="#F97316" stroke-width="10" stroke-linecap="round"/>
-  <line x1="512" y1="512" x2="750" y2="690" stroke="#F97316" stroke-width="10" stroke-linecap="round"/>
-  <line x1="512" y1="512" x2="270" y2="720" stroke="#F97316" stroke-width="10" stroke-linecap="round"/>
-  <line x1="512" y1="512" x2="230" y2="330" stroke="#F97316" stroke-width="10" stroke-linecap="round"/>
+  <line x1="512" y1="512" x2="512" y2="195" stroke="#F97316" stroke-width="10" stroke-linecap="round"/>
+  <line x1="512" y1="512" x2="770" y2="350" stroke="#F97316" stroke-width="10" stroke-linecap="round"/>
+  <line x1="512" y1="512" x2="735" y2="680" stroke="#F97316" stroke-width="10" stroke-linecap="round"/>
+  <line x1="512" y1="512" x2="285" y2="710" stroke="#F97316" stroke-width="10" stroke-linecap="round"/>
+  <line x1="512" y1="512" x2="250" y2="345" stroke="#F97316" stroke-width="10" stroke-linecap="round"/>
 
-  <!-- 外围节点（半径约 40-52px，有大小变化增加有机感） -->
-  <!-- 节点1：正上方偏，r=44 -->
-  <circle cx="512" cy="175" r="44" fill="#F97316"/>
-  <!-- 节点2：右上，r=48 -->
-  <circle cx="790" cy="340" r="48" fill="#F97316"/>
-  <!-- 节点3：右下，r=42 -->
-  <circle cx="750" cy="690" r="42" fill="#F97316"/>
-  <!-- 节点4：左下，r=50 -->
-  <circle cx="270" cy="720" r="50" fill="#F97316"/>
-  <!-- 节点5：左上，r=40 -->
-  <circle cx="230" cy="330" r="40" fill="#F97316"/>
+  <!-- 外围节点（半径约 40-50px，有大小变化增加有机感） -->
+  <!-- 节点略微内收，避免被圆角裁掉 -->
+  <circle cx="512" cy="195" r="44" fill="#F97316"/>
+  <circle cx="770" cy="350" r="48" fill="#F97316"/>
+  <circle cx="735" cy="680" r="42" fill="#F97316"/>
+  <circle cx="285" cy="710" r="50" fill="#F97316"/>
+  <circle cx="250" cy="345" r="40" fill="#F97316"/>
 
-  <!-- 中心枢纽节点：r=88 (约画布宽 17%) -->
+  <!-- 中心枢纽节点：r=88 -->
   <circle cx="512" cy="512" r="88" fill="#F97316"/>
   <!-- 中心内圈：深色镂空，突出枢纽感 -->
   <circle cx="512" cy="512" r="44" fill="#111827"/>
