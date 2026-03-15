@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: 前端调整及美化
-status: ready_to_plan
-stopped_at: null
-last_updated: "2026-03-15T12:00:00.000Z"
-last_activity: 2026-03-15 — v2.3 roadmap created (Phases 17-22), ready to plan Phase 17
+status: planning
+stopped_at: Completed 17-01-PLAN.md
+last_updated: "2026-03-15T07:19:24.704Z"
+last_activity: 2026-03-15 — v2.3 roadmap created (Phases 17-22)
 progress:
   total_phases: 6
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 2
+  completed_plans: 1
   percent: 0
 ---
 
@@ -52,6 +52,8 @@ v2.3 设计决策（roadmap 阶段）：
 - Phase 17 先行：CSS 变量体系是所有视觉工作的基础，其他 Phase 依赖它
 - Phase 21 依赖 Phase 18：微动效需要卡片结构稳定后才能叠加动效
 - ICON 独立为最后一个 Phase：纯设计资产，不阻塞其他前端工作
+- [Phase 17-design-foundation]: 品牌橙色 #F97316 映射为 oklch(0.702 0.183 56.518)，通过 --brand-accent CSS 变量引用，status-active 与 brand-accent 取相同值保持品牌一致性
+- [Phase 17-design-foundation]: 语义色命名原则：status-success/warning/active 而非具体色相名，未来换色只需修改 :root 定义
 
 ### Pending Todos
 
@@ -63,6 +65,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-15
-Stopped at: v2.3 roadmap created — Phase 17 ready to plan
+Last session: 2026-03-15T07:19:24.702Z
+Stopped at: Completed 17-01-PLAN.md
 Resume file: None

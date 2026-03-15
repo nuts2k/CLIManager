@@ -26,7 +26,7 @@ Requirements for v2.3 前端调整及美化。Each maps to roadmap phases.
 
 ### 视觉风格
 
-- [ ] **VISU-01**: 使用 CSS 变量统一全局配色方案（橙色强调色融入，无硬编码色值）
+- [x] **VISU-01**: 使用 CSS 变量统一全局配色方案（橙色强调色融入，无硬编码色值）
 - [ ] **VISU-02**: 可交互元素加入 hover/切换/加载微动效过渡（150-300ms）
 - [ ] **VISU-03**: 全局间距和圆角规范统一
 - [ ] **VISU-04**: Header 导航栏视觉提升，品牌感更强
@@ -61,7 +61,7 @@ Requirements for v2.3 前端调整及美化。Each maps to roadmap phases.
 | EDIT-02 | Phase 19 | Pending |
 | EDIT-03 | Phase 19 | Pending |
 | SETT-01 | Phase 20 | Pending |
-| VISU-01 | Phase 17 | Pending |
+| VISU-01 | Phase 17 | Complete |
 | VISU-02 | Phase 21 | Pending |
 | VISU-03 | Phase 17 | Pending |
 | VISU-04 | Phase 21 | Pending |
