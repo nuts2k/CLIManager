@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Eye, EyeOff, Loader2, ChevronDown, X } from "lucide-react";
+import { Eye, EyeOff, Loader2, X } from "lucide-react";
 import { z } from "zod/v4";
 import {
   Dialog,
@@ -19,11 +19,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import type { Provider, ProtocolType } from "@/types/provider";
 
 interface ProviderDialogProps {
@@ -81,7 +76,6 @@ export function ProviderDialog({
   const { t } = useTranslation();
   const [saving, setSaving] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const [form, setForm] = useState<ProviderFormData>({
@@ -104,7 +98,6 @@ export function ProviderDialog({
     if (open) {
       setErrors({});
       setShowApiKey(false);
-      setAdvancedOpen(false);
       if (mode === "edit" && provider) {
         // 旧值兼容：open_ai_compatible 自动映射为 open_ai_chat_completions
         const protocolType: ProtocolType =
@@ -255,7 +248,6 @@ export function ProviderDialog({
         ...prev,
         upstreamModel: t("validation.upstreamModelRequired"),
       }));
-      setAdvancedOpen(true);
       return;
     }
 
@@ -272,8 +264,9 @@ export function ProviderDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
+      <DialogContent className="max-w-xl flex flex-col max-h-[85vh]">
+        {/* 固定 Header */}
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle>
             {mode === "create"
               ? t("dialog.createTitle")
@@ -281,242 +274,250 @@ export function ProviderDialog({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex flex-col gap-4">
-          {/* Name */}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="provider-name">{t("provider.name")}</Label>
-            <Input
-              id="provider-name"
-              value={form.name}
-              onChange={(e) => updateField("name", e.target.value)}
-              aria-invalid={!!errors.name}
-            />
-            {errors.name && (
-              <p className="text-xs text-destructive">{errors.name}</p>
-            )}
-          </div>
+        {/* 中间表单区域 — 独立滚动 */}
+        <div className="overflow-y-auto flex-1 min-h-0">
+          <div className="flex flex-col gap-4 px-1">
 
-          {/* API Key */}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="provider-api-key">{t("provider.apiKey")}</Label>
-            <div className="relative">
-              <Input
-                id="provider-api-key"
-                type={showApiKey ? "text" : "password"}
-                value={form.apiKey}
-                onChange={(e) => updateField("apiKey", e.target.value)}
-                className="pr-10"
-                aria-invalid={!!errors.apiKey}
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                className="absolute right-2 top-1/2 -translate-y-1/2"
-                onClick={() => setShowApiKey(!showApiKey)}
-              >
-                {showApiKey ? (
-                  <EyeOff className="size-3.5" />
-                ) : (
-                  <Eye className="size-3.5" />
-                )}
-              </Button>
+            {/* 分区 1 — 基础信息 */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-muted-foreground">{t("section.basic")}</span>
+              <div className="flex-1 border-t border-border" />
             </div>
-            {errors.apiKey && (
-              <p className="text-xs text-destructive">{errors.apiKey}</p>
-            )}
-          </div>
 
-          {/* Base URL */}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="provider-base-url">{t("provider.baseUrl")}</Label>
-            <Input
-              id="provider-base-url"
-              value={form.baseUrl}
-              onChange={(e) => updateField("baseUrl", e.target.value)}
-              aria-invalid={!!errors.baseUrl}
-            />
-            {errors.baseUrl && (
-              <p className="text-xs text-destructive">{errors.baseUrl}</p>
-            )}
-          </div>
-
-          {/* Advanced section */}
-          <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
-            <CollapsibleTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full justify-between"
-              >
-                {t("provider.advanced")}
-                <ChevronDown
-                  className={`size-4 transition-transform ${advancedOpen ? "rotate-180" : ""}`}
-                />
-              </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="flex flex-col gap-4 pt-2">
-              {/* Model */}
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="provider-model">{t("provider.model")}</Label>
-                <Input
-                  id="provider-model"
-                  value={form.model}
-                  onChange={(e) => updateField("model", e.target.value)}
-                />
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="provider-test-model">
-                  {t("provider.testModel")}
-                </Label>
-                <Input
-                  id="provider-test-model"
-                  placeholder={getSuggestedTestModel(form.protocolType)}
-                  value={form.testModel}
-                  onChange={(e) => updateField("testModel", e.target.value)}
-                />
-              </div>
-
-              {/* Protocol Type */}
-              <div className="flex flex-col gap-1.5">
-                <Label>{t("provider.protocolType")}</Label>
-                <Select
-                  value={form.protocolType}
-                  onValueChange={(v) => updateProtocolType(v as ProtocolType)}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="anthropic">
-                      {t("protocol.anthropic")}
-                    </SelectItem>
-                    <SelectItem value="open_ai_chat_completions">
-                      {t("protocol.openAiChatCompletions")}
-                    </SelectItem>
-                    <SelectItem value="open_ai_responses">
-                      {t("protocol.openAiResponses")}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* 模型映射（仅 OpenAI 类型显示） */}
-              {showModelMapping && (
-                <>
-                  {/* 默认目标模型 */}
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="provider-upstream-model">
-                      {t("provider.upstreamModel")}
-                    </Label>
-                    <Input
-                      id="provider-upstream-model"
-                      placeholder={getSuggestedUpstreamModel(form.protocolType)}
-                      value={form.upstreamModel}
-                      onChange={(e) =>
-                        updateField("upstreamModel", e.target.value)
-                      }
-                      aria-invalid={!!errors.upstreamModel}
-                    />
-                    {errors.upstreamModel && (
-                      <p className="text-xs text-destructive">
-                        {errors.upstreamModel}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* 模型名映射 */}
-                  <div className="flex flex-col gap-2">
-                    <Label className="text-muted-foreground text-xs">
-                      {t("provider.modelMapping")}
-                    </Label>
-                    {form.upstreamModelMap.map((entry, idx) => (
-                      <div key={idx} className="flex items-center gap-2">
-                        <Input
-                          placeholder={t("provider.sourceModel")}
-                          value={entry.source}
-                          onChange={(e) =>
-                            updateModelMapEntry(idx, "source", e.target.value)
-                          }
-                          className="flex-1"
-                        />
-                        <Input
-                          placeholder={t("provider.targetModel")}
-                          value={entry.target}
-                          onChange={(e) =>
-                            updateModelMapEntry(idx, "target", e.target.value)
-                          }
-                          className="flex-1"
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-xs"
-                          onClick={() => removeModelMapEntry(idx)}
-                        >
-                          <X className="size-3.5" />
-                        </Button>
-                      </div>
-                    ))}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="w-full"
-                      onClick={addModelMapEntry}
-                    >
-                      {t("provider.addMapping")}
-                    </Button>
-                  </div>
-                </>
+            {/* Name */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="provider-name">{t("provider.name")}</Label>
+              <Input
+                id="provider-name"
+                value={form.name}
+                onChange={(e) => updateField("name", e.target.value)}
+                placeholder={t("placeholder.name")}
+                aria-invalid={!!errors.name}
+              />
+              {errors.name && (
+                <p className="text-xs text-destructive">{errors.name}</p>
               )}
+            </div>
 
-              {/* Notes */}
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="provider-notes">{t("provider.notes")}</Label>
+            {/* API Key */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="provider-api-key">{t("provider.apiKey")}</Label>
+              <div className="relative">
                 <Input
-                  id="provider-notes"
-                  value={form.notes}
-                  onChange={(e) => updateField("notes", e.target.value)}
+                  id="provider-api-key"
+                  type={showApiKey ? "text" : "password"}
+                  value={form.apiKey}
+                  onChange={(e) => updateField("apiKey", e.target.value)}
+                  placeholder={t("placeholder.apiKey")}
+                  className="pr-10"
+                  aria-invalid={!!errors.apiKey}
                 />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  className="absolute right-2 top-1/2 -translate-y-1/2"
+                  onClick={() => setShowApiKey(!showApiKey)}
+                >
+                  {showApiKey ? (
+                    <EyeOff className="size-3.5" />
+                  ) : (
+                    <Eye className="size-3.5" />
+                  )}
+                </Button>
               </div>
+              {errors.apiKey && (
+                <p className="text-xs text-destructive">{errors.apiKey}</p>
+              )}
+            </div>
 
-              {/* Model Config */}
-              <div className="flex flex-col gap-2">
-                <Label className="text-muted-foreground text-xs">
-                  {t("provider.modelConfig")}
-                </Label>
-                <div className="grid grid-cols-2 gap-2">
+            {/* Base URL */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="provider-base-url">{t("provider.baseUrl")}</Label>
+              <Input
+                id="provider-base-url"
+                value={form.baseUrl}
+                onChange={(e) => updateField("baseUrl", e.target.value)}
+                placeholder={t("placeholder.baseUrl")}
+                aria-invalid={!!errors.baseUrl}
+              />
+              {errors.baseUrl && (
+                <p className="text-xs text-destructive">{errors.baseUrl}</p>
+              )}
+            </div>
+
+            {/* 分区 2 — 协议设置 */}
+            <div className="flex items-center gap-2 pt-2">
+              <span className="text-sm font-semibold text-muted-foreground">{t("section.protocol")}</span>
+              <div className="flex-1 border-t border-border" />
+            </div>
+
+            {/* Protocol Type */}
+            <div className="flex flex-col gap-1.5">
+              <Label>{t("provider.protocolType")}</Label>
+              <Select
+                value={form.protocolType}
+                onValueChange={(v) => updateProtocolType(v as ProtocolType)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="anthropic">
+                    {t("protocol.anthropic")}
+                  </SelectItem>
+                  <SelectItem value="open_ai_chat_completions">
+                    {t("protocol.openAiChatCompletions")}
+                  </SelectItem>
+                  <SelectItem value="open_ai_responses">
+                    {t("protocol.openAiResponses")}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* 模型映射（仅 OpenAI 类型显示） */}
+            {showModelMapping && (
+              <>
+                {/* 默认目标模型 */}
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="provider-upstream-model">
+                    {t("provider.upstreamModel")}
+                  </Label>
                   <Input
-                    placeholder="haiku_model"
-                    value={form.haikuModel}
-                    onChange={(e) => updateField("haikuModel", e.target.value)}
-                  />
-                  <Input
-                    placeholder="sonnet_model"
-                    value={form.sonnetModel}
-                    onChange={(e) => updateField("sonnetModel", e.target.value)}
-                  />
-                  <Input
-                    placeholder="opus_model"
-                    value={form.opusModel}
-                    onChange={(e) => updateField("opusModel", e.target.value)}
-                  />
-                  <Input
-                    placeholder="reasoning_effort"
-                    value={form.reasoningEffort}
+                    id="provider-upstream-model"
+                    placeholder={getSuggestedUpstreamModel(form.protocolType)}
+                    value={form.upstreamModel}
                     onChange={(e) =>
-                      updateField("reasoningEffort", e.target.value)
+                      updateField("upstreamModel", e.target.value)
                     }
+                    aria-invalid={!!errors.upstreamModel}
                   />
+                  {errors.upstreamModel && (
+                    <p className="text-xs text-destructive">
+                      {errors.upstreamModel}
+                    </p>
+                  )}
                 </div>
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
+
+                {/* 模型名映射 */}
+                <div className="flex flex-col gap-2">
+                  <Label className="text-muted-foreground text-xs">
+                    {t("provider.modelMapping")}
+                  </Label>
+                  {form.upstreamModelMap.map((entry, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <Input
+                        placeholder={t("provider.sourceModel")}
+                        value={entry.source}
+                        onChange={(e) =>
+                          updateModelMapEntry(idx, "source", e.target.value)
+                        }
+                        className="flex-1"
+                      />
+                      <Input
+                        placeholder={t("provider.targetModel")}
+                        value={entry.target}
+                        onChange={(e) =>
+                          updateModelMapEntry(idx, "target", e.target.value)
+                        }
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        onClick={() => removeModelMapEntry(idx)}
+                      >
+                        <X className="size-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={addModelMapEntry}
+                  >
+                    {t("provider.addMapping")}
+                  </Button>
+                </div>
+              </>
+            )}
+
+            {/* 分区 3 — 模型配置 */}
+            <div className="flex items-center gap-2 pt-2">
+              <span className="text-sm font-semibold text-muted-foreground">{t("section.model")}</span>
+              <div className="flex-1 border-t border-border" />
+            </div>
+
+            {/* Model */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="provider-model">{t("provider.model")}</Label>
+              <Input
+                id="provider-model"
+                value={form.model}
+                onChange={(e) => updateField("model", e.target.value)}
+                placeholder={t("placeholder.model")}
+              />
+            </div>
+
+            {/* Test Model */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="provider-test-model">
+                {t("provider.testModel")}
+              </Label>
+              <Input
+                id="provider-test-model"
+                placeholder={getSuggestedTestModel(form.protocolType)}
+                value={form.testModel}
+                onChange={(e) => updateField("testModel", e.target.value)}
+              />
+            </div>
+
+            {/* Model Config — 2x2 grid */}
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                placeholder={t("placeholder.haikuModel")}
+                value={form.haikuModel}
+                onChange={(e) => updateField("haikuModel", e.target.value)}
+              />
+              <Input
+                placeholder={t("placeholder.sonnetModel")}
+                value={form.sonnetModel}
+                onChange={(e) => updateField("sonnetModel", e.target.value)}
+              />
+              <Input
+                placeholder={t("placeholder.opusModel")}
+                value={form.opusModel}
+                onChange={(e) => updateField("opusModel", e.target.value)}
+              />
+              <Input
+                placeholder={t("placeholder.reasoningEffort")}
+                value={form.reasoningEffort}
+                onChange={(e) =>
+                  updateField("reasoningEffort", e.target.value)
+                }
+              />
+            </div>
+
+            {/* Notes */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="provider-notes">{t("provider.notes")}</Label>
+              <Input
+                id="provider-notes"
+                value={form.notes}
+                onChange={(e) => updateField("notes", e.target.value)}
+                placeholder={t("placeholder.notes")}
+              />
+            </div>
+
+          </div>
         </div>
 
-        <DialogFooter>
+        {/* 固定 Footer */}
+        <DialogFooter className="flex-shrink-0 border-t pt-4">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             {t("actions.cancel")}
           </Button>

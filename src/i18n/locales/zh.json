@@ -75,6 +75,11 @@
     "openAiChatCompletions": "OpenAI Chat Completions",
     "openAiResponses": "OpenAI Responses"
   },
+  "section": {
+    "basic": "基础信息",
+    "protocol": "协议设置",
+    "model": "模型配置"
+  },
   "validation": {
     "required": "\u6b64\u5b57\u6bb5\u4e3a\u5fc5\u586b",
     "nameRequired": "\u8bf7\u8f93\u5165\u540d\u79f0",

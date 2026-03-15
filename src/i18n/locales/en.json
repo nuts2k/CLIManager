@@ -75,6 +75,11 @@
     "openAiChatCompletions": "OpenAI Chat Completions",
     "openAiResponses": "OpenAI Responses"
   },
+  "section": {
+    "basic": "Basic Info",
+    "protocol": "Protocol",
+    "model": "Model Config"
+  },
   "validation": {
     "required": "This field is required",
     "nameRequired": "Name is required",
