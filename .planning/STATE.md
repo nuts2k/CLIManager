@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: 前端调整及美化
 status: planning
-stopped_at: Phase 19 plans verified
-last_updated: "2026-03-15T08:23:52.907Z"
+stopped_at: Completed 19-01-PLAN.md
+last_updated: "2026-03-15T08:27:44.905Z"
 last_activity: 2026-03-15 — v2.3 roadmap created (Phases 17-22)
 progress:
   total_phases: 6
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 5
-  completed_plans: 4
+  completed_plans: 5
   percent: 0
 ---
 
@@ -60,6 +60,8 @@ v2.3 设计决策（roadmap 阶段）：
 - [Phase 18-homepage-layout]: 状态圆点提取到 Switch 条件分支外，确保 disabled 和正常两种状态下均可见
 - [Phase 18-homepage-layout]: Tab 绿点加 animate-pulse 传达服务活跃动态感，开关旁圆点仅做静态指示不加脉冲
 - [Phase 18-homepage-layout]: TooltipProvider 在按钮组外层包裹一次（delayDuration=300ms），卡片 hover 升起效果：shadow-sm→shadow-md + translateY(-2px)
+- [Phase 19-01]: 移除 Collapsible 改三分区平铺，upstreamModel 验证失败不再需要 setAdvancedOpen
+- [Phase 19-01]: Input 组件已内置 aria-invalid:border-destructive，ProviderDialog 无需额外条件 className
 
 ### Pending Todos
 
@@ -71,6 +73,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-15T08:23:52.904Z
-Stopped at: Phase 19 plans verified
-Resume file: .planning/phases/19-provider/19-01-PLAN.md
+Last session: 2026-03-15T08:27:44.903Z
+Stopped at: Completed 19-01-PLAN.md
+Resume file: None

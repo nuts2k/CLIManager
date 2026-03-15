@@ -16,9 +16,9 @@ Requirements for v2.3 前端调整及美化。Each maps to roadmap phases.
 
 ### Provider 编辑
 
-- [ ] **EDIT-01**: Provider 编辑 Dialog 加宽并支持内容区域滚动
-- [ ] **EDIT-02**: 编辑表单字段分组优化（基础信息 / 协议设置 / 模型配置 分区）
-- [ ] **EDIT-03**: 表单验证错误提示更友好、字段说明更清晰
+- [x] **EDIT-01**: Provider 编辑 Dialog 加宽并支持内容区域滚动
+- [x] **EDIT-02**: 编辑表单字段分组优化（基础信息 / 协议设置 / 模型配置 分区）
+- [x] **EDIT-03**: 表单验证错误提示更友好、字段说明更清晰
 
 ### 设置页
 
@@ -57,9 +57,9 @@ Requirements for v2.3 前端调整及美化。Each maps to roadmap phases.
 | HOME-02 | Phase 18 | Complete |
 | HOME-03 | Phase 18 | Complete |
 | HOME-04 | Phase 18 | Complete |
-| EDIT-01 | Phase 19 | Pending |
-| EDIT-02 | Phase 19 | Pending |
-| EDIT-03 | Phase 19 | Pending |
+| EDIT-01 | Phase 19 | Complete |
+| EDIT-02 | Phase 19 | Complete |
+| EDIT-03 | Phase 19 | Complete |
 | SETT-01 | Phase 20 | Pending |
 | VISU-01 | Phase 17 | Complete |
 | VISU-02 | Phase 21 | Pending |
