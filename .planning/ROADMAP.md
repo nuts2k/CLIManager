@@ -79,7 +79,10 @@
   2. 暗色背景、卡片、边框、文字各层级颜色均通过 CSS 变量定义且在整个 UI 中一致
   3. 组件间距遵循统一的间距阶梯（如 4/8/12/16/24px），无随意 px 值
   4. 圆角规范统一（如 rounded-md/rounded-lg），所有卡片和对话框视觉一致
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 17-01-PLAN.md — CSS 变量配色体系：品牌色 + 语义色定义，替换硬编码颜色
+- [ ] 17-02-PLAN.md — 间距阶梯与圆角规范统一，审计全部组件 + 视觉验证
 
 ### Phase 18: 首页布局优化
 **Goal**: 首页 Provider 卡片操作直观可发现，空状态精致，代理状态指示清晰
@@ -154,7 +157,7 @@
 | 14. 数据模型 + 转换核心 | v2.2 | 4/4 | Complete | 2026-03-14 |
 | 15. Handler 集成与协议路由 | v2.2 | 2/2 | Complete | 2026-03-14 |
 | 16. Responses API + Provider UI | v2.2 | 4/4 | Complete | 2026-03-14 |
-| 17. 设计基础 | v2.3 | 0/TBD | Not started | - |
+| 17. 设计基础 | v2.3 | 0/2 | Planned | - |
 | 18. 首页布局优化 | v2.3 | 0/TBD | Not started | - |
 | 19. Provider 编辑改进 | v2.3 | 0/TBD | Not started | - |
 | 20. 设置页 Tab 化 | v2.3 | 0/TBD | Not started | - |
@@ -163,4 +166,4 @@
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*
-*Last updated: 2026-03-15 — v2.3 前端调整及美化 roadmap added (Phases 17-22)*
+*Last updated: 2026-03-15 — Phase 17 planned (2 plans)*
