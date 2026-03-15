@@ -57,7 +57,7 @@
 
 </details>
 
-### 🚧 v2.3 前端调整及美化 (In Progress)
+### v2.3 前端调整及美化 (In Progress)
 
 **Milestone Goal:** 全面提升前端交互体验、视觉质感和设计一致性
 
@@ -144,7 +144,10 @@ Plans:
   1. 应用图标在 Finder/Dock 中显示新设计，替换旧图标，全套尺寸（16/32/128/256/512px）完整
   2. 托盘图标为应用图标的简化/轮廓版本，在 macOS 菜单栏中清晰可辨
   3. 托盘图标为 template 图标（黑白），在浅色和深色菜单栏下均正常显示
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 22-01-PLAN.md — 应用图标 SVG 生成 + 全套尺寸转换 + 文件同步
+- [ ] 22-02-PLAN.md — 托盘 template 图标派生 + 视觉验证
 
 ## Progress
 
@@ -171,8 +174,8 @@ Plans:
 | 19. Provider 编辑改进 | 1/1 | Complete    | 2026-03-15 | - |
 | 20. 设置页 Tab 化 | 1/1 | Complete    | 2026-03-15 | - |
 | 21. 微动效与 Header 提升 | 1/1 | Complete    | 2026-03-15 | - |
-| 22. 应用图标 | v2.3 | 0/TBD | Not started | - |
+| 22. 应用图标 | v2.3 | 0/2 | Not started | - |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*
-*Last updated: 2026-03-15 — Phase 21 planned (1 plan)*
+*Last updated: 2026-03-15 — Phase 22 planned (2 plans)*
