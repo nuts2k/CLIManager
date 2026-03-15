@@ -35,6 +35,13 @@
   --color-sidebar-accent-foreground: oklch(var(--sidebar-accent-foreground));
   --color-sidebar-border: oklch(var(--sidebar-border));
   --color-sidebar-ring: oklch(var(--sidebar-ring));
+  /* 品牌与语义色 */
+  --color-brand-accent: oklch(var(--brand-accent));
+  --color-brand-accent-foreground: oklch(var(--brand-accent-foreground));
+  --color-status-success: oklch(var(--status-success));
+  --color-status-warning: oklch(var(--status-warning));
+  --color-status-active: oklch(var(--status-active));
+  --color-status-active-foreground: oklch(var(--status-active-foreground));
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -76,6 +83,13 @@
   --sidebar-accent-foreground: 0.985 0.002 247.839;
   --sidebar-border: 0.274 0.019 286.067;
   --sidebar-ring: 0.551 0.027 286.029;
+  /* 品牌与语义色 */
+  --brand-accent: 0.702 0.183 56.518;              /* 橙色 #F97316 */
+  --brand-accent-foreground: 0.985 0.002 247.839;  /* 白色前景，与品牌色搭配 */
+  --status-success: 0.627 0.194 149.214;           /* 绿色，代理活跃等成功状态 */
+  --status-warning: 0.795 0.184 86.047;            /* 黄色，警告提示 */
+  --status-active: 0.702 0.183 56.518;             /* 活跃 Provider 指示色，同品牌橙色 */
+  --status-active-foreground: 0.985 0.002 247.839; /* 活跃状态前景 */
 }
 
 @layer base {
