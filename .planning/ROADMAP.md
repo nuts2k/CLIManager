@@ -61,7 +61,7 @@
 
 **Milestone Goal:** 全面提升前端交互体验、视觉质感和设计一致性
 
-- [ ] **Phase 17: 设计基础** - 建立 CSS 变量体系、统一间距与圆角规范
+- [x] **Phase 17: 设计基础** - 建立 CSS 变量体系、统一间距与圆角规范 (completed 2026-03-15)
 - [ ] **Phase 18: 首页布局优化** - Provider 卡片操作外露、hover 效果、空状态和代理状态视觉优化
 - [ ] **Phase 19: Provider 编辑改进** - 对话框加宽可滚动、表单字段分组、验证提示优化
 - [ ] **Phase 20: 设置页 Tab 化** - 通用/高级/关于三 Tab 分组布局
@@ -157,7 +157,7 @@ Plans:
 | 14. 数据模型 + 转换核心 | v2.2 | 4/4 | Complete | 2026-03-14 |
 | 15. Handler 集成与协议路由 | v2.2 | 2/2 | Complete | 2026-03-14 |
 | 16. Responses API + Provider UI | v2.2 | 4/4 | Complete | 2026-03-14 |
-| 17. 设计基础 | 1/2 | In Progress|  | - |
+| 17. 设计基础 | 2/2 | Complete   | 2026-03-15 | - |
 | 18. 首页布局优化 | v2.3 | 0/TBD | Not started | - |
 | 19. Provider 编辑改进 | v2.3 | 0/TBD | Not started | - |
 | 20. 设置页 Tab 化 | v2.3 | 0/TBD | Not started | - |
