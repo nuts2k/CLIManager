@@ -70,6 +70,7 @@
   --color-status-warning: oklch(var(--status-warning));
   --color-status-active: oklch(var(--status-active));
   --color-status-active-foreground: oklch(var(--status-active-foreground));
+  --color-header-bg: oklch(var(--header-bg));
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -111,6 +112,8 @@
   --sidebar-accent-foreground: 0.985 0.002 247.839;
   --sidebar-border: 0.274 0.019 286.067;
   --sidebar-ring: 0.551 0.027 286.029;
+  /* Header 背景色（介于 --background 和 --card 之间，营造层次感） */
+  --header-bg: 0.160 0.02 275;                     /* 比 card 更深，比 background 略浅 */
   /* 品牌与语义色 */
   --brand-accent: 0.702 0.183 56.518;              /* 橙色 #F97316 */
   --brand-accent-foreground: 0.985 0.002 247.839;  /* 白色前景，与品牌色搭配 */
