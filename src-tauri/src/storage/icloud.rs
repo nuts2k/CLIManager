@@ -3,7 +3,7 @@ use std::path::{Component, Path, PathBuf};
 
 use super::atomic_write;
 use crate::error::AppError;
-use crate::provider::Provider;
+use crate::provider::{suggested_test_model, Provider};
 
 /// Resolve the iCloud providers directory.
 /// Falls back to ~/.cli-manager/providers/ if iCloud Drive is unavailable.
@@ -62,6 +62,22 @@ fn write_provider_to_path(path: &Path, provider: &Provider) -> Result<(), AppErr
     atomic_write(path, json.as_bytes())
 }
 
+fn parse_provider_content(content: &str) -> Result<Provider, AppError> {
+    let value: serde_json::Value = serde_json::from_str(content)?;
+    let has_test_model_field = value
+        .as_object()
+        .is_some_and(|object| object.contains_key("test_model"));
+    let mut provider: Provider = serde_json::from_value(value)?;
+
+    // 兼容旧版本 provider：历史 JSON 中没有 test_model 字段时，
+    // 按协议补一个建议值；显式 null 则保留为 None，允许用户清空。
+    if !has_test_model_field {
+        provider.test_model = Some(suggested_test_model(&provider.protocol_type).to_string());
+    }
+
+    Ok(provider)
+}
+
 /// List all providers, sorted by created_at.
 pub fn list_providers() -> Result<Vec<Provider>, AppError> {
     let dir = get_icloud_providers_dir()?;
@@ -95,7 +111,7 @@ pub fn list_providers_in(dir: &Path) -> Result<Vec<Provider>, AppError> {
                     continue;
                 }
             };
-            let provider = match serde_json::from_str::<Provider>(&content) {
+            let provider = match parse_provider_content(&content) {
                 Ok(p) => p,
                 Err(e) => {
                     log::warn!("Skipping malformed provider file {}: {}", path.display(), e);
@@ -178,7 +194,7 @@ pub fn get_provider_in(dir: &Path, id: &str) -> Result<Provider, AppError> {
         path: path.display().to_string(),
         source: e,
     })?;
-    let provider: Provider = serde_json::from_str(&content)?;
+    let provider = parse_provider_content(&content)?;
     Ok(provider)
 }
 
@@ -264,6 +280,31 @@ mod tests {
     }
 
     #[test]
+    fn test_list_providers_migrates_missing_legacy_test_model() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path();
+        let path = dir.join("legacy-openai.json");
+        let json = r#"{
+            "id": "legacy-openai",
+            "cli_id": "claude",
+            "name": "Legacy OpenAI",
+            "protocol_type": "open_ai_chat_completions",
+            "api_key": "sk-test",
+            "base_url": "https://api.example.com",
+            "model": "",
+            "upstream_model": "gpt-5.2",
+            "created_at": 1710000000000,
+            "updated_at": 1710000000000,
+            "schema_version": 1
+        }"#;
+        fs::write(&path, json).unwrap();
+
+        let providers = list_providers_in(dir).unwrap();
+        assert_eq!(providers.len(), 1);
+        assert_eq!(providers[0].test_model.as_deref(), Some("gpt-5.2"));
+    }
+
+    #[test]
     fn test_get_provider_returns_specific() {
         let tmp = TempDir::new().unwrap();
         let dir = tmp.path();
@@ -286,6 +327,55 @@ mod tests {
             AppError::NotFound(id) => assert_eq!(id, "nonexistent-id"),
             other => panic!("Expected NotFound, got: {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_get_provider_migrates_missing_legacy_test_model() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path();
+        let path = dir.join("legacy-openai.json");
+        let json = r#"{
+            "id": "legacy-openai",
+            "cli_id": "claude",
+            "name": "Legacy OpenAI",
+            "protocol_type": "open_ai_chat_completions",
+            "api_key": "sk-test",
+            "base_url": "https://api.example.com",
+            "model": "",
+            "upstream_model": "gpt-5.2",
+            "created_at": 1710000000000,
+            "updated_at": 1710000000000,
+            "schema_version": 1
+        }"#;
+        fs::write(&path, json).unwrap();
+
+        let provider = get_provider_in(dir, "legacy-openai").unwrap();
+        assert_eq!(provider.test_model.as_deref(), Some("gpt-5.2"));
+    }
+
+    #[test]
+    fn test_get_provider_keeps_explicit_null_test_model() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path();
+        let path = dir.join("explicit-null.json");
+        let json = r#"{
+            "id": "explicit-null",
+            "cli_id": "claude",
+            "name": "Explicit Null",
+            "protocol_type": "open_ai_chat_completions",
+            "api_key": "sk-test",
+            "base_url": "https://api.example.com",
+            "model": "",
+            "test_model": null,
+            "upstream_model": "gpt-5.2",
+            "created_at": 1710000000000,
+            "updated_at": 1710000000000,
+            "schema_version": 1
+        }"#;
+        fs::write(&path, json).unwrap();
+
+        let provider = get_provider_in(dir, "explicit-null").unwrap();
+        assert_eq!(provider.test_model, None);
     }
 
     #[test]

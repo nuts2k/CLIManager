@@ -124,16 +124,14 @@ export function ProviderDialog({
           apiKey: provider.api_key,
           baseUrl: provider.base_url,
           model: provider.model,
-          testModel:
-            provider.test_model ?? getSuggestedTestModel(protocolType),
+          testModel: provider.test_model ?? "",
           protocolType,
           notes: provider.notes ?? "",
           haikuModel: provider.model_config?.haiku_model ?? "",
           sonnetModel: provider.model_config?.sonnet_model ?? "",
           opusModel: provider.model_config?.opus_model ?? "",
           reasoningEffort: provider.model_config?.reasoning_effort ?? "",
-          upstreamModel:
-            provider.upstream_model ?? getSuggestedUpstreamModel(protocolType),
+          upstreamModel: provider.upstream_model ?? "",
           upstreamModelMap,
         });
       } else {

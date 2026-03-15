@@ -163,7 +163,7 @@ pub struct Provider {
     pub model_config: Option<ModelConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub test_model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub upstream_model: Option<String>,
@@ -343,10 +343,10 @@ mod tests {
     }
 
     #[test]
-    fn test_provider_test_model_none_skipped() {
+    fn test_provider_test_model_none_serializes_as_null() {
         let provider = sample_provider();
         let json = serde_json::to_string(&provider).unwrap();
-        assert!(!json.contains("test_model"));
+        assert!(json.contains("\"test_model\":null") || json.contains("\"test_model\": null"));
     }
 
     #[test]
