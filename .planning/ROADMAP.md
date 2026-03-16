@@ -81,7 +81,7 @@
 <details>
 <summary>v2.5 Claude 全局配置 Overlay (Phases 24-25) — PLANNING</summary>
 
-- [ ] **Phase 24: 「Claude settings overlay end-to-end」** — 端到端交付 overlay 的 UI + 存储 + 合并 + 保护字段 + apply 触发 + watcher + 错误可见性
+- [ ] **Phase 24: 「Claude settings overlay end-to-end」** — 端到端交付 overlay 的 UI + 存储 + 深度合并 + 保护字段 + apply 触发 + watcher + 错误可见性
 - [ ] **Phase 25: 「测试覆盖」** — 自动化测试覆盖深度合并/保护字段优先级/ClaudeAdapter overlay 注入
 
 </details>
@@ -98,7 +98,13 @@
   3. 无论 overlay 如何设置，`env.ANTHROPIC_AUTH_TOKEN` 与 `env.ANTHROPIC_BASE_URL` 的最终值始终以 Provider/Proxy 写入为准；当 overlay 包含这些保护字段时会被忽略，且用户能在 UI 中看到“该字段由 Provider/Proxy 管理，不可覆盖”的提示。
   4. overlay 会被可靠持久化：iCloud 可用时写入可同步位置，不可用时自动降级写入本地目录；用户在 UI 中可以清楚看到当前存放位置（iCloud / 本地降级）以及是否跨设备同步。
   5. 自动对齐机制可观察且安全：应用启动时若 overlay 存在会 best-effort apply（失败不阻断启动但可通过日志/通知获知）；iCloud 同步导致 overlay 变更时 watcher 会自动触发 apply；当 overlay 文件或 `~/.claude/settings.json` 非法时会返回可见错误且不会静默覆盖/写坏原文件。
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 24-01-PLAN.md — overlay 存储（iCloud 优先/本地降级）+ get/set 后端命令
+- [ ] 24-02-PLAN.md — Settings UI：overlay 编辑/校验/保存 + 位置显示 + 保护字段提示
+- [ ] 24-03-PLAN.md — overlay 合并引擎 + ClaudeAdapter patch 集成（深度合并/null 删除/保护字段优先）
+- [ ] 24-04-PLAN.md — apply 触发点：保存即 apply、启动对齐、watcher 自动 apply + 错误可见性事件
 
 ### Phase 25: 「测试覆盖」
 **Goal**: 关键 overlay 注入行为具备可重复验证的自动化测试，防止深度合并/保护字段优先级/ClaudeAdapter surgical patch 回归。
@@ -137,7 +143,7 @@
 | 21. 微动效与 Header 提升 | v2.3 | 1/1 | Complete | 2026-03-15 |
 | 22. 应用图标 | v2.3 | 2/2 | Complete | 2026-03-15 |
 | 23. Anthropic 模型映射 | v2.4 | 2/2 | Complete | 2026-03-15 |
-| 24. Claude settings overlay end-to-end | v2.5 | 0/0 | Not started | - |
+| 24. Claude settings overlay end-to-end | v2.5 | 0/4 | Not started | - |
 | 25. 测试覆盖 | v2.5 | 0/0 | Not started | - |
 
 ---
