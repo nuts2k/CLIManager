@@ -107,8 +107,10 @@ export function useUpdater(): UseUpdaterReturn {
 
       // 安装完成后重启
       try {
-        const { relaunch } = await import("@tauri-apps/plugin-process");
+        const { relaunch, exit } = await import("@tauri-apps/plugin-process");
         await relaunch();
+        // 若 relaunch resolve 后进程仍未终止，强制退出（新进程已启动）
+        await exit(0);
       } catch {
         // 自动重启失败时恢复为可关闭错误态，提示用户手动重启
         setStatus("error");
