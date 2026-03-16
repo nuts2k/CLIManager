@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.4
-milestone_name: Anthropic 模型映射
+milestone: v2.5
+milestone_name: Claude 全局配置 Overlay
 status: planning
-stopped_at: Completed 23-anthropic-model-mapping 23-01-PLAN.md
-last_updated: "2026-03-15T15:44:49.210Z"
-last_activity: 2026-03-15 — v2.4 roadmap created, Phase 23 ready to plan
+stopped_at: —
+last_updated: "2026-03-16T00:00:00.000Z"
+last_activity: 2026-03-16 — Milestone v2.5 started
 progress:
-  total_phases: 1
-  completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
   percent: 0
 ---
 
@@ -21,16 +21,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-15)
 
 **Core value:** 切换 Provider 时只做 surgical patch（精确修改凭据和模型字段），绝不重写配置文件的其他内容
-**Current focus:** Phase 23 — Anthropic 模型映射
+**Current focus:** v2.5 Claude 全局配置 Overlay
 
 ## Current Position
 
-Phase: 23 (Anthropic 模型映射)
-Plan: — (not yet planned)
-Status: Ready to plan
-Last activity: 2026-03-15 — v2.4 roadmap created, Phase 23 ready to plan
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-16 — Milestone v2.5 started
 
 Progress: [░░░░░░░░░░] 0%
+
+> 注：v2.5 将重新生成 REQUIREMENTS.md/ROADMAP.md，并从 Phase 24 开始继续编号。
 
 ## Performance Metrics
 
