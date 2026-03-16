@@ -5,9 +5,9 @@ milestone_name: Claude 全局配置 Overlay
 status: planning
 stopped_at: —
 last_updated: "2026-03-16T00:00:00.000Z"
-last_activity: 2026-03-16 — Milestone v2.5 started
+last_activity: 2026-03-16 — Milestone v2.5 roadmap revised (Phase 24-25)
 progress:
-  total_phases: 0
+  total_phases: 2
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -25,14 +25,14 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: **24 — 「Claude settings overlay end-to-end」** (ready)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-03-16 — Milestone v2.5 started
+Status: Ready to plan
+Last activity: 2026-03-16 — Milestone v2.5 roadmap revised (Phase 24-25)
 
 Progress: [░░░░░░░░░░] 0%
 
-> 注：v2.5 将重新生成 REQUIREMENTS.md/ROADMAP.md，并从 Phase 24 开始继续编号。
+> 注：v2.5 从 Phase 24 开始继续编号。
 
 ## Performance Metrics
 
@@ -61,6 +61,10 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 23-anthropic-model-mapping]: reverse_model_in_sse_line 处理 message.model 嵌套：Anthropic message_start 事件的 model 在 message.model 而非顶层
 - [Phase 23-anthropic-model-mapping]: 无映射配置时 Anthropic /v1/messages 走 Passthrough 而非 AnthropicPassthrough，保持零开销
 
+v2.5 路线（Phase 24-25，最大化同 Phase 并行）：
+- Phase 24: 「Claude settings overlay end-to-end」（UI + 存储 + 深度合并 + 保护字段 + apply 触发 + watcher + 错误可见性）
+- Phase 25: 「测试覆盖」（合并规则/保护字段优先级/adapter 注入）
+
 ### Pending Todos
 
 None.
@@ -71,6 +75,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-15T15:06:41.699Z
-Stopped at: Completed 23-anthropic-model-mapping 23-01-PLAN.md
-Resume file: None
+Last session: 2026-03-16T00:00:00.000Z
+Stopped at: Roadmap ready — Phase 24
+Resume file: Run /gsd:plan-phase 24

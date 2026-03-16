@@ -56,28 +56,28 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| COVL-01 | Phase TBD | Pending |
-| COVL-02 | Phase TBD | Pending |
-| COVL-03 | Phase TBD | Pending |
-| COVL-04 | Phase TBD | Pending |
-| COVL-05 | Phase TBD | Pending |
-| COVL-06 | Phase TBD | Pending |
-| COVL-07 | Phase TBD | Pending |
-| COVL-08 | Phase TBD | Pending |
-| COVL-09 | Phase TBD | Pending |
-| COVL-10 | Phase TBD | Pending |
-| COVL-11 | Phase TBD | Pending |
-| COVL-12 | Phase TBD | Pending |
-| COVL-13 | Phase TBD | Pending |
-| COVL-14 | Phase TBD | Pending |
-| COVL-15 | Phase TBD | Pending |
-| COVL-16 | Phase TBD | Pending |
+| COVL-01 | Phase 24 | Pending |
+| COVL-02 | Phase 24 | Pending |
+| COVL-03 | Phase 24 | Pending |
+| COVL-04 | Phase 24 | Pending |
+| COVL-05 | Phase 24 | Pending |
+| COVL-06 | Phase 24 | Pending |
+| COVL-07 | Phase 24 | Pending |
+| COVL-08 | Phase 24 | Pending |
+| COVL-09 | Phase 24 | Pending |
+| COVL-10 | Phase 24 | Pending |
+| COVL-11 | Phase 24 | Pending |
+| COVL-12 | Phase 24 | Pending |
+| COVL-13 | Phase 24 | Pending |
+| COVL-14 | Phase 25 | Pending |
+| COVL-15 | Phase 25 | Pending |
+| COVL-16 | Phase 25 | Pending |
 
 **Coverage:**
 - v2.5 requirements: 16 total
-- Mapped to phases: 0
-- Unmapped: 16 ⚠️
+- Mapped to phases: 16
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-03-16*
-*Last updated: 2026-03-16 after initial definition*
+*Last updated: 2026-03-16 after roadmap revision (Phase 24-25)*
