@@ -708,6 +708,194 @@ mod tests {
         assert!(result.backups_created[0].ends_with(".bak"));
     }
 
+    // ----------------------------------------------------------------
+    // COVL-15 / COVL-16 边界测试
+    // ----------------------------------------------------------------
+
+    #[test]
+    fn test_patch_overlay_protected_and_custom_coexist() {
+        // overlay 同时含保护字段和自定义 env 字段：保护字段被剥离，自定义字段写入成功
+        let tmp = TempDir::new().unwrap();
+        let config_dir = tmp.path().join("config");
+        let backup_dir = tmp.path().join("backups");
+        fs::create_dir_all(&config_dir).unwrap();
+        fs::write(config_dir.join("settings.json"), "{}").unwrap();
+
+        let overlay = r#"{"env": {"ANTHROPIC_AUTH_TOKEN": "HACKED", "MY_VAR": "custom"}}"#;
+        let overlay_path = write_overlay(&config_dir, overlay);
+
+        let adapter = ClaudeAdapter::new_with_paths_and_overlay(config_dir.clone(), backup_dir, overlay_path);
+        adapter.patch(&test_provider()).unwrap();
+
+        let patched: Value =
+            serde_json::from_str(&fs::read_to_string(config_dir.join("settings.json")).unwrap())
+                .unwrap();
+
+        // 保护字段来自 provider，overlay 的值被忽略
+        assert_eq!(patched["env"]["ANTHROPIC_AUTH_TOKEN"], "sk-ant-new-key-123");
+        // 自定义字段写入成功
+        assert_eq!(patched["env"]["MY_VAR"], "custom");
+    }
+
+    #[test]
+    fn test_patch_sequential_different_providers() {
+        // 先用 provider_a patch，再用 provider_b patch，保护字段始终与当前 provider 一致
+        let tmp = TempDir::new().unwrap();
+        let config_dir = tmp.path().join("config");
+        let backup_dir = tmp.path().join("backups");
+        fs::create_dir_all(&config_dir).unwrap();
+        fs::write(config_dir.join("settings.json"), "{}").unwrap();
+
+        let provider_a = Provider {
+            id: "id-a".to_string(),
+            cli_id: "claude".to_string(),
+            name: "Provider A".to_string(),
+            protocol_type: crate::provider::ProtocolType::Anthropic,
+            api_key: "key-a".to_string(),
+            base_url: "url-a".to_string(),
+            model: "claude-sonnet-4-20250514".to_string(),
+            model_config: None,
+            notes: None,
+            test_model: None,
+            upstream_model: None,
+            upstream_model_map: None,
+            created_at: 1710000000000,
+            updated_at: 1710000000000,
+            schema_version: 1,
+        };
+        let provider_b = Provider {
+            id: "id-b".to_string(),
+            cli_id: "claude".to_string(),
+            name: "Provider B".to_string(),
+            protocol_type: crate::provider::ProtocolType::Anthropic,
+            api_key: "key-b".to_string(),
+            base_url: "url-b".to_string(),
+            model: "claude-sonnet-4-20250514".to_string(),
+            model_config: None,
+            notes: None,
+            test_model: None,
+            upstream_model: None,
+            upstream_model_map: None,
+            created_at: 1710000000000,
+            updated_at: 1710000000000,
+            schema_version: 1,
+        };
+
+        let overlay = r#"{"env": {"EXTRA": "shared"}}"#;
+        let overlay_path = write_overlay(&config_dir, overlay);
+
+        let adapter = ClaudeAdapter::new_with_paths_and_overlay(config_dir.clone(), backup_dir, overlay_path);
+
+        // 第一次：patch provider_a
+        adapter.patch(&provider_a).unwrap();
+        let patched_a: Value =
+            serde_json::from_str(&fs::read_to_string(config_dir.join("settings.json")).unwrap())
+                .unwrap();
+        assert_eq!(patched_a["env"]["ANTHROPIC_AUTH_TOKEN"], "key-a");
+        assert_eq!(patched_a["env"]["ANTHROPIC_BASE_URL"], "url-a");
+        assert_eq!(patched_a["env"]["EXTRA"], "shared");
+
+        // 第二次：patch provider_b（切换 provider）
+        adapter.patch(&provider_b).unwrap();
+        let patched_b: Value =
+            serde_json::from_str(&fs::read_to_string(config_dir.join("settings.json")).unwrap())
+                .unwrap();
+        assert_eq!(patched_b["env"]["ANTHROPIC_AUTH_TOKEN"], "key-b");
+        assert_eq!(patched_b["env"]["ANTHROPIC_BASE_URL"], "url-b");
+        assert_eq!(patched_b["env"]["EXTRA"], "shared");
+    }
+
+    #[test]
+    fn test_patch_then_clear_overlay_fields_survive() {
+        // patch with overlay 注入自定义字段后，clear 只删除保护字段，overlay 注入的字段保留
+        let tmp = TempDir::new().unwrap();
+        let config_dir = tmp.path().join("config");
+        let backup_dir = tmp.path().join("backups");
+        fs::create_dir_all(&config_dir).unwrap();
+        fs::write(config_dir.join("settings.json"), "{}").unwrap();
+
+        let overlay = r#"{"env": {"MY_OVERLAY_VAR": "injected"}}"#;
+        let overlay_path = write_overlay(&config_dir, overlay);
+
+        let adapter = ClaudeAdapter::new_with_paths_and_overlay(config_dir.clone(), backup_dir, overlay_path);
+
+        // patch 后验证保护字段和自定义字段都存在
+        adapter.patch(&test_provider()).unwrap();
+        let after_patch: Value =
+            serde_json::from_str(&fs::read_to_string(config_dir.join("settings.json")).unwrap())
+                .unwrap();
+        assert_eq!(after_patch["env"]["ANTHROPIC_AUTH_TOKEN"], "sk-ant-new-key-123");
+        assert_eq!(after_patch["env"]["MY_OVERLAY_VAR"], "injected");
+
+        // clear 后验证保护字段被删除，overlay 注入的自定义字段保留
+        adapter.clear().unwrap();
+        let after_clear: Value =
+            serde_json::from_str(&fs::read_to_string(config_dir.join("settings.json")).unwrap())
+                .unwrap();
+        assert!(after_clear["env"].as_object().unwrap().get("ANTHROPIC_AUTH_TOKEN").is_none());
+        assert!(after_clear["env"].as_object().unwrap().get("ANTHROPIC_BASE_URL").is_none());
+        assert_eq!(after_clear["env"]["MY_OVERLAY_VAR"], "injected");
+    }
+
+    #[test]
+    fn test_patch_with_overlay_adds_top_level_keys() {
+        // overlay 在 env 之外添加顶层 key（如 permissions），与 surgical patch 行为共存
+        let tmp = TempDir::new().unwrap();
+        let config_dir = tmp.path().join("config");
+        let backup_dir = tmp.path().join("backups");
+        fs::create_dir_all(&config_dir).unwrap();
+
+        let original = r#"{"env": {}}"#;
+        fs::write(config_dir.join("settings.json"), original).unwrap();
+
+        let overlay = r#"{"permissions": {"allow": ["Bash", "Read"]}, "env": {"EXTRA": "val"}}"#;
+        let overlay_path = write_overlay(&config_dir, overlay);
+
+        let adapter = ClaudeAdapter::new_with_paths_and_overlay(config_dir.clone(), backup_dir, overlay_path);
+        adapter.patch(&test_provider()).unwrap();
+
+        let patched: Value =
+            serde_json::from_str(&fs::read_to_string(config_dir.join("settings.json")).unwrap())
+                .unwrap();
+
+        // overlay 顶层 key 写入
+        assert_eq!(patched["permissions"]["allow"], serde_json::json!(["Bash", "Read"]));
+        // overlay env 字段写入
+        assert_eq!(patched["env"]["EXTRA"], "val");
+        // 保护字段来自 provider
+        assert_eq!(patched["env"]["ANTHROPIC_AUTH_TOKEN"], "sk-ant-new-key-123");
+        assert_eq!(patched["env"]["ANTHROPIC_BASE_URL"], "https://proxy.example.com");
+    }
+
+    #[test]
+    fn test_patch_with_empty_overlay_object() {
+        // overlay 文件内容为 `{}`，patch 行为与无 overlay 完全一致
+        let tmp = TempDir::new().unwrap();
+        let config_dir = tmp.path().join("config");
+        let backup_dir = tmp.path().join("backups");
+        fs::create_dir_all(&config_dir).unwrap();
+
+        let original = r#"{"permissions": {"allow": ["Bash"]}, "env": {"ANTHROPIC_AUTH_TOKEN": "old", "CUSTOM": "keep"}}"#;
+        fs::write(config_dir.join("settings.json"), original).unwrap();
+
+        let overlay = r#"{}"#;
+        let overlay_path = write_overlay(&config_dir, overlay);
+
+        let adapter = ClaudeAdapter::new_with_paths_and_overlay(config_dir.clone(), backup_dir, overlay_path);
+        adapter.patch(&test_provider()).unwrap();
+
+        let patched: Value =
+            serde_json::from_str(&fs::read_to_string(config_dir.join("settings.json")).unwrap())
+                .unwrap();
+
+        // 保护字段来自 provider
+        assert_eq!(patched["env"]["ANTHROPIC_AUTH_TOKEN"], "sk-ant-new-key-123");
+        assert_eq!(patched["env"]["ANTHROPIC_BASE_URL"], "https://proxy.example.com");
+        // 原有字段保留
+        assert_eq!(patched["env"]["CUSTOM"], "keep");
+        assert!(patched["permissions"]["allow"].is_array());
+    }
+
     #[test]
     fn test_clear_removes_managed_env_fields_only() {
         let tmp = TempDir::new().unwrap();
