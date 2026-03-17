@@ -71,7 +71,30 @@
     "proxyModeDescription": "Route CLI requests through local proxy, switch providers without restarting CLI",
     "tabGeneral": "General",
     "tabAdvanced": "Advanced",
-    "tabAbout": "About"
+    "tabAbout": "About",
+    "claudeOverlay": {
+      "title": "Claude Global Config Overlay",
+      "description": "Inject global config fields into Claude Code via JSON, deep-merged with the existing config file (protected fields are excluded).",
+      "editorLabel": "Overlay JSON",
+      "placeholder": "{\n  \"env\": {\n    \"FOO\": \"BAR\"\n  }\n}",
+      "saveButton": "Save",
+      "saving": "Saving...",
+      "loading": "Loading...",
+      "storageLocation": "Storage Location",
+      "filePath": "File Path",
+      "syncEnabled": "Cross-Device Sync",
+      "syncYes": "Yes (iCloud sync)",
+      "syncNo": "No (local only)",
+      "locationIcloud": "iCloud",
+      "locationLocal": "Local fallback",
+      "protectedFieldsTitle": "Protected Fields (overlay cannot override)",
+      "protectedFieldsDesc": "The following fields are managed by Provider/Proxy and will not take effect even if set in the Overlay:",
+      "saveSuccess": "Overlay saved",
+      "loadError": "Failed to load overlay",
+      "saveError": "Save failed",
+      "jsonInvalid": "Invalid JSON format, please check your input",
+      "jsonMustBeObject": "JSON root must be an object ({}), not an array or other type"
+    }
   },
   "protocol": {
     "anthropic": "Anthropic",

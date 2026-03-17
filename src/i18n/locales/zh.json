@@ -71,7 +71,30 @@
     "proxyModeDescription": "CLI \u8bf7\u6c42\u7ecf\u672c\u5730\u4ee3\u7406\u8f6c\u53d1\uff0c\u5207\u6362 Provider \u65e0\u9700\u91cd\u542f CLI",
     "tabGeneral": "\u901a\u7528",
     "tabAdvanced": "\u9ad8\u7ea7",
-    "tabAbout": "\u5173\u4e8e"
+    "tabAbout": "\u5173\u4e8e",
+    "claudeOverlay": {
+      "title": "Claude 全局配置 Overlay",
+      "description": "通过 JSON 格式向 Claude Code 注入全局配置字段，与原有配置文件深度合并（保护字段除外）。",
+      "editorLabel": "Overlay JSON",
+      "placeholder": "{\n  \"env\": {\n    \"FOO\": \"BAR\"\n  }\n}",
+      "saveButton": "保存",
+      "saving": "保存中...",
+      "loading": "加载中...",
+      "storageLocation": "存储位置",
+      "filePath": "文件路径",
+      "syncEnabled": "跨设备同步",
+      "syncYes": "是（iCloud 同步）",
+      "syncNo": "否（仅本设备）",
+      "locationIcloud": "iCloud",
+      "locationLocal": "本地降级",
+      "protectedFieldsTitle": "受保护字段（overlay 不可覆盖）",
+      "protectedFieldsDesc": "以下字段由 Provider/Proxy 管理，即使在 Overlay 中填写也不会生效：",
+      "saveSuccess": "Overlay 已保存",
+      "loadError": "读取 overlay 失败",
+      "saveError": "保存失败",
+      "jsonInvalid": "JSON 格式错误，请检查输入",
+      "jsonMustBeObject": "JSON 根节点必须是 object（{}），不能是数组或其他类型"
+    }
   },
   "protocol": {
     "anthropic": "Anthropic",

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -17,7 +18,13 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useSettings } from "@/hooks/useSettings";
 import { useProxyStatus } from "@/hooks/useProxyStatus";
-import { refreshTrayMenu, proxySetGlobal } from "@/lib/tauri";
+import {
+  refreshTrayMenu,
+  proxySetGlobal,
+  getClaudeSettingsOverlay,
+  setClaudeSettingsOverlay,
+} from "@/lib/tauri";
+import type { ClaudeSettingsOverlayStorage } from "@/lib/tauri";
 import i18n from "@/i18n";
 import { AboutSection } from "@/components/settings/AboutSection";
 import { useUpdater } from "@/components/updater/useUpdater";
@@ -142,6 +149,77 @@ export function SettingsPage({ onBack, onShowImport }: SettingsPageProps) {
     await refreshTrayMenu();
   };
 
+  // Claude overlay 状态
+  const [overlayJson, setOverlayJson] = useState<string>("");
+  const [overlayInitialLoading, setOverlayInitialLoading] = useState<boolean>(true);
+  const [overlayIsSaving, setOverlayIsSaving] = useState<boolean>(false);
+  const [overlayStorageInfo, setOverlayStorageInfo] =
+    useState<ClaudeSettingsOverlayStorage | null>(null);
+  const [overlayLoadError, setOverlayLoadError] = useState<string | null>(null);
+  const [overlaySaveError, setOverlaySaveError] = useState<string | null>(null);
+
+  // 首次加载 overlay
+  useEffect(() => {
+    let cancelled = false;
+    async function loadOverlay() {
+      setOverlayInitialLoading(true);
+      setOverlayLoadError(null);
+      try {
+        const state = await getClaudeSettingsOverlay();
+        if (!cancelled) {
+          setOverlayJson(state.overlay_json ?? "");
+          setOverlayStorageInfo(state.storage);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setOverlayLoadError(t("settings.claudeOverlay.loadError") + ": " + String(err));
+        }
+      } finally {
+        if (!cancelled) {
+          setOverlayInitialLoading(false);
+        }
+      }
+    }
+    void loadOverlay();
+    return () => {
+      cancelled = true;
+    };
+  }, [t]);
+
+  // 保存 overlay
+  const handleOverlaySave = async () => {
+    setOverlaySaveError(null);
+
+    // 前端 JSON 校验
+    if (overlayJson.trim() !== "") {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(overlayJson);
+      } catch {
+        setOverlaySaveError(t("settings.claudeOverlay.jsonInvalid"));
+        return;
+      }
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        setOverlaySaveError(t("settings.claudeOverlay.jsonMustBeObject"));
+        return;
+      }
+    }
+
+    setOverlayIsSaving(true);
+    try {
+      await setClaudeSettingsOverlay(overlayJson);
+      // 保存成功后刷新状态
+      const state = await getClaudeSettingsOverlay();
+      setOverlayJson(state.overlay_json ?? "");
+      setOverlayStorageInfo(state.storage);
+      toast.success(t("settings.claudeOverlay.saveSuccess"));
+    } catch (err) {
+      setOverlaySaveError(t("settings.claudeOverlay.saveError") + ": " + String(err));
+    } finally {
+      setOverlayIsSaving(false);
+    }
+  };
+
   return (
     <div className="flex h-full flex-col">
       {/* Header with back button */}
@@ -251,6 +329,115 @@ export function SettingsPage({ onBack, onShowImport }: SettingsPageProps) {
               </section>
             </>
           )}
+
+          <Separator />
+
+          {/* Claude Overlay Section */}
+          <section className="space-y-4">
+            <div className="space-y-1">
+              <h3 className="text-sm font-medium text-foreground">
+                {t("settings.claudeOverlay.title")}
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                {t("settings.claudeOverlay.description")}
+              </p>
+            </div>
+
+            {/* 读取失败错误 */}
+            {overlayLoadError && (
+              <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {overlayLoadError}
+              </div>
+            )}
+
+            {/* 编辑器 */}
+            <div className="space-y-1.5">
+              <Label htmlFor="overlayJson">
+                {t("settings.claudeOverlay.editorLabel")}
+              </Label>
+              <Textarea
+                id="overlayJson"
+                className="min-h-[160px] font-mono text-xs"
+                placeholder={t("settings.claudeOverlay.placeholder")}
+                value={overlayInitialLoading ? "" : overlayJson}
+                disabled={overlayInitialLoading || overlayIsSaving}
+                onChange={(e) => {
+                  setOverlayJson(e.target.value);
+                  setOverlaySaveError(null);
+                }}
+                aria-invalid={overlaySaveError ? true : undefined}
+              />
+            </div>
+
+            {/* 保存错误 */}
+            {overlaySaveError && (
+              <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {overlaySaveError}
+              </div>
+            )}
+
+            {/* 保存按钮 */}
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={overlayInitialLoading || overlayIsSaving}
+              onClick={() => {
+                void handleOverlaySave();
+              }}
+            >
+              {overlayInitialLoading
+                ? t("settings.claudeOverlay.loading")
+                : overlayIsSaving
+                  ? t("settings.claudeOverlay.saving")
+                  : t("settings.claudeOverlay.saveButton")}
+            </Button>
+
+            {/* 存储位置信息 */}
+            {overlayStorageInfo && (
+              <div className="space-y-1 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                <div className="flex gap-2">
+                  <span className="font-medium text-foreground">
+                    {t("settings.claudeOverlay.storageLocation")}:
+                  </span>
+                  <span>
+                    {overlayStorageInfo.location === "icloud"
+                      ? t("settings.claudeOverlay.locationIcloud")
+                      : t("settings.claudeOverlay.locationLocal")}
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <span className="font-medium text-foreground">
+                    {t("settings.claudeOverlay.filePath")}:
+                  </span>
+                  <span className="break-all font-mono">
+                    {overlayStorageInfo.file_path}
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <span className="font-medium text-foreground">
+                    {t("settings.claudeOverlay.syncEnabled")}:
+                  </span>
+                  <span>
+                    {overlayStorageInfo.sync_enabled
+                      ? t("settings.claudeOverlay.syncYes")
+                      : t("settings.claudeOverlay.syncNo")}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* 受保护字段说明 */}
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+              <p className="font-medium mb-1">
+                {t("settings.claudeOverlay.protectedFieldsTitle")}
+              </p>
+              <p className="mb-1">{t("settings.claudeOverlay.protectedFieldsDesc")}</p>
+              <ul className="list-disc pl-4 space-y-0.5 font-mono">
+                <li>env.ANTHROPIC_AUTH_TOKEN</li>
+                <li>env.ANTHROPIC_BASE_URL</li>
+              </ul>
+            </div>
+          </section>
         </TabsContent>
 
         {/* 关于 Tab */}
