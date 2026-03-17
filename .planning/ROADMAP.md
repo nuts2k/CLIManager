@@ -147,7 +147,7 @@ Plans:
 | 22. 应用图标 | v2.3 | 2/2 | Complete | 2026-03-15 |
 | 23. Anthropic 模型映射 | v2.4 | 2/2 | Complete | 2026-03-15 |
 | 24. Claude settings overlay end-to-end | 4/4 | Complete   | 2026-03-17 | - |
-| 25. 测试覆盖 | 1/1 | Complete   | 2026-03-17 | - |
+| 25. 测试覆盖 | 1/1 | Complete    | 2026-03-17 | - |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*

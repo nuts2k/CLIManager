@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: complete
+status: Phase 25 全部完成
 stopped_at: Completed 25-01-PLAN.md
-last_updated: "2026-03-17T03:50:00.000Z"
+last_updated: "2026-03-17T03:53:02.533Z"
 last_activity: 2026-03-17 — 25-01 补充 overlay 边界测试，全量 405 个测试通过
 progress:
   total_phases: 2
