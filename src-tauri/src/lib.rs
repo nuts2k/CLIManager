@@ -42,6 +42,8 @@ pub fn run() {
             commands::proxy::proxy_disable,
             commands::proxy::proxy_set_global,
             commands::proxy::proxy_get_mode_status,
+            commands::claude_settings::get_claude_settings_overlay,
+            commands::claude_settings::set_claude_settings_overlay,
         ]);
 
     #[cfg(desktop)]
