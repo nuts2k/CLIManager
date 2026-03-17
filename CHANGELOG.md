@@ -6,6 +6,31 @@
 
 ---
 
+## v0.2.5 (2026-03-17)
+
+### 新功能
+- Settings → Advanced 新增 Claude overlay 编辑小节（JSON 多行编辑/校验/保存）
+- overlay 存储层：iCloud 优先写入，不可用时本地降级，UI 显示存放位置
+- json_merge 深度合并引擎：object 递归合并、array 替换、scalar 覆盖、null 删除
+- ClaudeAdapter patch 集成 overlay 深度合并 + 保护字段（Provider/Proxy 凭据）永远优先
+- 保存即 apply + 启动 best-effort apply + iCloud watcher 文件变更自动 apply
+- startup 通知缓存回放（解决 Tauri setup 时序问题）
+- Textarea 通用 UI 组件
+
+### 修复
+- 修复前端 overlay_json 与后端 content 字段名不匹配
+- 修复更新重启后 Dialog overlay 遮挡设置按钮
+- 保留 Claude overlay apply 的代理接管配置
+- 将空 Claude overlay 视为已清空
+- 支持自定义 Claude config 目录的 overlay 路径
+
+### 测试
+- 补充 json_merge 深度合并边界测试（空 overlay/嵌套 null 删除）
+- 补充保护字段优先级边界测试（保护+自定义共存/序贯 patch）
+- 补充 ClaudeAdapter overlay 集成边界测试（overlay+clear 交互/顶层 key 合并）
+
+### 其他
+- rustfmt 格式化及代码结构位置修复
 ## v0.2.4 (2026-03-15)
 
 ### 新功能
