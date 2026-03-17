@@ -23,13 +23,13 @@ Requirements for milestone v2.5 Claude 全局配置 Overlay。
 
 ### 应用触发点（自动对齐）
 
-- [ ] **COVL-09**: 用户保存 overlay 后立即 apply 到 `~/.claude/settings.json`（强一致）
-- [ ] **COVL-10**: 应用启动时若 overlay 存在，后端执行一次 best-effort apply；失败不阻断启动但应记录日志/通知 UI
-- [ ] **COVL-11**: iCloud 同步导致 overlay 文件变更时，文件 watcher 自动触发 apply（无需用户重启应用）
+- [x] **COVL-09**: 用户保存 overlay 后立即 apply 到 `~/.claude/settings.json`（强一致）
+- [x] **COVL-10**: 应用启动时若 overlay 存在，后端执行一次 best-effort apply；失败不阻断启动但应记录日志/通知 UI
+- [x] **COVL-11**: iCloud 同步导致 overlay 文件变更时，文件 watcher 自动触发 apply（无需用户重启应用）
 
 ### 错误处理
 
-- [ ] **COVL-12**: overlay 文件存在但 JSON 不合法时，apply 返回错误并在 UI 显示错误信息
+- [x] **COVL-12**: overlay 文件存在但 JSON 不合法时，apply 返回错误并在 UI 显示错误信息
 - [x] **COVL-13**: `~/.claude/settings.json` 存在但不是合法 JSON 时，保持现有策略：拒绝写入并返回可见错误（不静默覆盖）
 
 ### 测试
@@ -64,10 +64,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | COVL-06 | Phase 24 | Complete |
 | COVL-07 | Phase 24 | Complete |
 | COVL-08 | Phase 24 | Complete |
-| COVL-09 | Phase 24 | Pending |
-| COVL-10 | Phase 24 | Pending |
-| COVL-11 | Phase 24 | Pending |
-| COVL-12 | Phase 24 | Pending |
+| COVL-09 | Phase 24 | Complete |
+| COVL-10 | Phase 24 | Complete |
+| COVL-11 | Phase 24 | Complete |
+| COVL-12 | Phase 24 | Complete |
 | COVL-13 | Phase 24 | Complete |
 | COVL-14 | Phase 25 | Pending |
 | COVL-15 | Phase 25 | Pending |

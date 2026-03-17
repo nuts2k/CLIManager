@@ -81,7 +81,7 @@
 <details>
 <summary>v2.5 Claude 全局配置 Overlay (Phases 24-25) — PLANNING</summary>
 
-- [ ] **Phase 24: 「Claude settings overlay end-to-end」** — 端到端交付 overlay 的 UI + 存储 + 深度合并 + 保护字段 + apply 触发 + watcher + 错误可见性
+- [x] **Phase 24: 「Claude settings overlay end-to-end」** — 端到端交付 overlay 的 UI + 存储 + 深度合并 + 保护字段 + apply 触发 + watcher + 错误可见性 (completed 2026-03-17)
 - [ ] **Phase 25: 「测试覆盖」** — 自动化测试覆盖深度合并/保护字段优先级/ClaudeAdapter overlay 注入
 
 </details>
@@ -143,7 +143,7 @@ Plans:
 | 21. 微动效与 Header 提升 | v2.3 | 1/1 | Complete | 2026-03-15 |
 | 22. 应用图标 | v2.3 | 2/2 | Complete | 2026-03-15 |
 | 23. Anthropic 模型映射 | v2.4 | 2/2 | Complete | 2026-03-15 |
-| 24. Claude settings overlay end-to-end | 3/4 | In Progress|  | - |
+| 24. Claude settings overlay end-to-end | 4/4 | Complete   | 2026-03-17 | - |
 | 25. 测试覆盖 | v2.5 | 0/0 | Not started | - |
 
 ---
