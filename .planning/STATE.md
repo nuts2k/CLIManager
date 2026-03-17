@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.5
-milestone_name: Claude 全局配置 Overlay
-status: Milestone v2.5 shipped
-stopped_at: Milestone complete
+milestone: v2.6
+milestone_name: 流量监控
+status: Defining requirements
+stopped_at: null
 last_updated: "2026-03-17"
-last_activity: 2026-03-17 — v2.5 milestone archived
+last_activity: 2026-03-17 — Milestone v2.6 started
 progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 5
-  completed_plans: 5
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-17)
 
 **Core value:** 切换 Provider 时只做 surgical patch（精确修改凭据和模型字段），绝不重写配置文件的其他内容
-**Current focus:** Planning next milestone
+**Current focus:** v2.6 流量监控 — 定义需求
 
 ## Current Position
 
-Milestone: **v2.5 Claude 全局配置 Overlay** (shipped)
-Status: Milestone complete, archived
-
-Progress: [██████████] 100%
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-17 — Milestone v2.6 started
 
 ## Performance Metrics
 
@@ -60,5 +60,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-17
-Stopped at: Milestone v2.5 complete
-Resume: `/gsd:new-milestone` to start next milestone
+Stopped at: Defining requirements for v2.6
+Resume: Continue requirements definition
