@@ -10,9 +10,10 @@
     "verifier": true,
     "nyquist_validation": true,
     "auto_advance": true,
-    "_auto_chain_active": true
+    "_auto_chain_active": false
   },
   "git": {
     "branching_strategy": "none"
-  }
+  },
+  "nyquist_validation_enabled": false
 }
