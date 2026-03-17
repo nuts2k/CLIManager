@@ -1,9 +1,9 @@
 use crate::adapter::json_merge::strip_protected_fields;
-use crate::adapter::CliAdapter;
 use crate::error::AppError;
 use crate::storage::icloud::{
     read_claude_settings_overlay, write_claude_settings_overlay, OverlayStorageInfo,
 };
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::Manager;
 
@@ -124,11 +124,40 @@ fn resolve_claude_apply_provider(
     ))
 }
 
+fn resolve_claude_config_dir_with_home(
+    local_settings: &crate::storage::local::LocalSettings,
+    home: &Path,
+) -> PathBuf {
+    local_settings
+        .cli_paths
+        .claude_config_dir
+        .as_ref()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join(".claude"))
+}
+
+fn resolve_claude_settings_path_with_home(
+    local_settings: &crate::storage::local::LocalSettings,
+    home: &Path,
+) -> PathBuf {
+    resolve_claude_config_dir_with_home(local_settings, home).join("settings.json")
+}
+
+fn resolve_claude_settings_path(
+    local_settings: &crate::storage::local::LocalSettings,
+) -> Result<PathBuf, AppError> {
+    let home = dirs::home_dir().ok_or(AppError::ICloudUnavailable)?;
+    Ok(resolve_claude_settings_path_with_home(
+        local_settings,
+        &home,
+    ))
+}
+
 // ============================================================
 // apply 核心实现
 // ============================================================
 
-/// 执行 overlay apply：将 overlay 深度合并到 `~/.claude/settings.json`。
+/// 执行 overlay apply：将 overlay 深度合并到 Claude `settings.json`。
 ///
 /// - source="save"/"watcher"：实时 emit 到前端
 /// - source="startup"：写入缓存队列（startup 期间前端 listener 尚未挂载）
@@ -184,14 +213,15 @@ pub fn apply_claude_settings_overlay(
         match crate::storage::icloud::get_provider_in(&providers_dir, provider_id) {
             Ok(provider) => {
                 let provider = resolve_claude_apply_provider(&local_settings, provider)?;
-                let adapter = crate::adapter::claude::ClaudeAdapter::new();
+                let adapter =
+                    crate::commands::provider::get_adapter_for_cli_pub("claude", &local_settings)?;
                 adapter.patch(&provider)
             }
             Err(e) => Err(e),
         }
     } else {
         // 无活跃 provider：只做 overlay 合并，但必须 strip 保护字段
-        apply_overlay_without_provider(&overlay_text)
+        apply_overlay_without_provider(&overlay_text, &local_settings)
     };
 
     // 6. 根据结果生成并分发通知
@@ -226,14 +256,17 @@ pub fn apply_claude_settings_overlay(
 /// 无活跃 Provider 时：直接将 overlay 合并到 settings.json，但 strip 保护字段。
 fn apply_overlay_without_provider(
     overlay_text: &str,
+    local_settings: &crate::storage::local::LocalSettings,
 ) -> Result<crate::adapter::PatchResult, AppError> {
     use crate::adapter::json_merge::{merge_with_null_delete, strip_protected_fields};
     use crate::storage::atomic_write;
     use std::fs;
 
-    let home = dirs::home_dir().ok_or(AppError::ICloudUnavailable)?;
-    let claude_dir = home.join(".claude");
-    let settings_path = claude_dir.join("settings.json");
+    let settings_path = resolve_claude_settings_path(local_settings)?;
+    let claude_dir = settings_path
+        .parent()
+        .ok_or_else(|| AppError::Validation("Claude settings 路径缺少父目录".to_string()))?
+        .to_path_buf();
 
     // 读取现有 settings
     let existing = if settings_path.exists() {
@@ -322,7 +355,7 @@ pub fn get_claude_settings_overlay() -> Result<GetClaudeSettingsOverlayResponse,
     Ok(GetClaudeSettingsOverlayResponse { content, storage })
 }
 
-/// 保存 Claude settings overlay 文件，并立即 apply 到 ~/.claude/settings.json（强一致）。
+/// 保存 Claude settings overlay 文件，并立即 apply 到 Claude settings.json（强一致）。
 /// 仅做 JSON 校验（合法 JSON 且 root 为 object），通过后规范化格式写入。
 /// 写入前通过 SelfWriteTracker 标记路径，避免 watcher 处理自写事件。
 #[tauri::command]
@@ -389,9 +422,15 @@ pub fn take_claude_overlay_startup_notifications(
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_claude_apply_provider;
+    use super::{
+        apply_overlay_without_provider, resolve_claude_apply_provider,
+        resolve_claude_settings_path_with_home,
+    };
     use crate::provider::{ProtocolType, Provider};
-    use crate::storage::local::{LocalSettings, ProxyTakeover};
+    use crate::storage::local::{CliPaths, LocalSettings, ProxyTakeover};
+    use serde_json::Value;
+    use std::path::{Path, PathBuf};
+    use tempfile::TempDir;
 
     fn test_provider() -> Provider {
         Provider {
@@ -436,5 +475,53 @@ mod tests {
         assert_eq!(resolved.base_url, "http://127.0.0.1:15800");
         assert_eq!(resolved.model, "claude-sonnet-4-20250514");
         assert!(matches!(resolved.protocol_type, ProtocolType::Anthropic));
+    }
+
+    #[test]
+    fn test_resolve_claude_settings_path_with_home_uses_custom_config_dir() {
+        let home = Path::new("/fake-home");
+        let settings = LocalSettings {
+            cli_paths: CliPaths {
+                claude_config_dir: Some("/custom/claude".to_string()),
+                codex_config_dir: None,
+            },
+            ..LocalSettings::default()
+        };
+
+        let path = resolve_claude_settings_path_with_home(&settings, home);
+
+        assert_eq!(path, PathBuf::from("/custom/claude/settings.json"));
+    }
+
+    #[test]
+    fn test_apply_overlay_without_provider_uses_custom_claude_config_dir() {
+        let tmp = TempDir::new().unwrap();
+        let custom_dir = tmp.path().join("claude-custom");
+        std::fs::create_dir_all(&custom_dir).unwrap();
+
+        let settings = LocalSettings {
+            cli_paths: CliPaths {
+                claude_config_dir: Some(custom_dir.to_string_lossy().to_string()),
+                codex_config_dir: None,
+            },
+            ..LocalSettings::default()
+        };
+
+        let result = apply_overlay_without_provider(
+            r#"{"permissions": {"allow": ["Bash"]}, "env": {"EXTRA": "custom-dir"}}"#,
+            &settings,
+        )
+        .unwrap();
+
+        let written_path = custom_dir.join("settings.json");
+        assert_eq!(
+            result.files_written,
+            vec![written_path.display().to_string()]
+        );
+
+        let patched: Value =
+            serde_json::from_str(&std::fs::read_to_string(&written_path).unwrap()).unwrap();
+        assert_eq!(patched["permissions"]["allow"], serde_json::json!(["Bash"]));
+        assert_eq!(patched["env"]["EXTRA"], "custom-dir");
     }
 }
