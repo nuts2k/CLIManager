@@ -20,6 +20,7 @@ pub fn run() {
         .manage(watcher::SelfWriteTracker::new())
         .manage(proxy::ProxyService::new())
         .manage(commands::proxy::ProxyGlobalToggleLock::new())
+        .manage(commands::claude_settings::ClaudeOverlayStartupNotificationQueue::new())
         .invoke_handler(tauri::generate_handler![
             commands::provider::list_providers,
             commands::provider::get_provider,
@@ -44,6 +45,8 @@ pub fn run() {
             commands::proxy::proxy_get_mode_status,
             commands::claude_settings::get_claude_settings_overlay,
             commands::claude_settings::set_claude_settings_overlay,
+            commands::claude_settings::apply_claude_settings_overlay_cmd,
+            commands::claude_settings::take_claude_overlay_startup_notifications,
         ]);
 
     #[cfg(desktop)]
@@ -61,6 +64,21 @@ pub fn run() {
             // Existing file watcher setup
             let handle = app.handle().clone();
             watcher::start_file_watcher(handle)?;
+
+            // Startup overlay apply（COVL-10：best-effort，不阻断启动）
+            // 因为 setup 早于 WebView 事件监听，startup 结果写入缓存队列
+            // 由前端 useSyncListener 挂载后主动 take。
+            {
+                let handle_startup = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = commands::claude_settings::apply_claude_settings_overlay(
+                        &handle_startup,
+                        commands::claude_settings::ApplySource::Startup,
+                    ) {
+                        log::error!("startup overlay apply 失败: {}", e);
+                    }
+                });
+            }
 
             // 崩溃恢复：检测并还原遗留 takeover 标志
             let providers_dir =
