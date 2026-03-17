@@ -5,7 +5,7 @@
   "commit_docs": true,
   "model_profile": "balanced",
   "workflow": {
-    "research": false,
+    "research": true,
     "plan_check": true,
     "verifier": true,
     "nyquist_validation": true,
@@ -13,7 +13,6 @@
     "_auto_chain_active": false
   },
   "git": {
-    "branching_strategy": "none"
-  },
-  "nyquist_validation_enabled": false
+    "branching_strategy": "milestone"
+  }
 }
