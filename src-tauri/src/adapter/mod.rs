@@ -1,5 +1,6 @@
 pub mod claude;
 pub mod codex;
+pub mod json_merge;
 
 use crate::error::AppError;
 use crate::provider::Provider;
