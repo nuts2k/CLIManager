@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 24-02-PLAN.md
-last_updated: "2026-03-17T00:25:55.302Z"
+stopped_at: Completed 24-03-PLAN.md
+last_updated: "2026-03-17T00:26:30Z"
 last_activity: 2026-03-16 — Milestone v2.5 roadmap revised (Phase 24-25)
 progress:
   total_phases: 2
   completed_phases: 0
   total_plans: 4
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 Phase: **24 — 「Claude settings overlay end-to-end」** (ready)
 Plan: —
 Status: Ready to plan
-Last activity: 2026-03-16 — Milestone v2.5 roadmap revised (Phase 24-25)
+Last activity: 2026-03-17 — 24-03 json_merge 深度合并引擎 + ClaudeAdapter overlay 集成完成
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -68,6 +68,8 @@ v2.5 路线（Phase 24-25，最大化同 Phase 并行）：
 - [Phase 24-01]: set_claude_settings_overlay 仅写入不 apply：apply 逻辑留后续 plan 实现
 - [Phase 24-02]: 空字符串 overlay 跳过前端 JSON 校验，允许用户清空 overlay 内容
 - [Phase 24-02]: 保存成功后重新调用 getClaudeSettingsOverlay() 刷新，确保回填后端 pretty 化后的最终内容
+- [Phase 24-03]: overlay_path_override 注入模式：adapter 新增可选路径字段，测试时注入，生产时走全局存储
+- [Phase 24-03]: patch_claude_json 末尾始终强制回写保护字段，保证 provider 优先级无法被 overlay 绕过
 
 ### Pending Todos
 
@@ -79,6 +81,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-17T00:25:55.299Z
-Stopped at: Completed 24-02-PLAN.md
+Last session: 2026-03-17T00:26:30Z
+Stopped at: Completed 24-03-PLAN.md
 Resume file: None

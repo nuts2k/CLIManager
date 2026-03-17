@@ -16,9 +16,9 @@ Requirements for milestone v2.5 Claude 全局配置 Overlay。
 
 ### Overlay 合并与保护字段
 
-- [ ] **COVL-05**: overlay 应用到 `~/.claude/settings.json` 时采用深度合并：object 递归合并、array 整体替换、scalar 覆盖
-- [ ] **COVL-06**: overlay 支持以 null 删除字段（例如 `{ "permissions": null }` 删除 settings.json 中对应 key）
-- [ ] **COVL-07**: overlay 不得覆盖 Provider/Proxy 管理的保护字段：`env.ANTHROPIC_AUTH_TOKEN`、`env.ANTHROPIC_BASE_URL`（这些字段最终值必须由 Provider/Proxy 写回并保持优先级）
+- [x] **COVL-05**: overlay 应用到 `~/.claude/settings.json` 时采用深度合并：object 递归合并、array 整体替换、scalar 覆盖
+- [x] **COVL-06**: overlay 支持以 null 删除字段（例如 `{ "permissions": null }` 删除 settings.json 中对应 key）
+- [x] **COVL-07**: overlay 不得覆盖 Provider/Proxy 管理的保护字段：`env.ANTHROPIC_AUTH_TOKEN`、`env.ANTHROPIC_BASE_URL`（这些字段最终值必须由 Provider/Proxy 写回并保持优先级）
 - [x] **COVL-08**: overlay 中若包含保护字段，系统忽略这些字段且在 UI 侧提示“该字段由 Provider/Proxy 管理，不可覆盖”（提示形式可为说明文案或保存后 toast）
 
 ### 应用触发点（自动对齐）
@@ -30,7 +30,7 @@ Requirements for milestone v2.5 Claude 全局配置 Overlay。
 ### 错误处理
 
 - [ ] **COVL-12**: overlay 文件存在但 JSON 不合法时，apply 返回错误并在 UI 显示错误信息
-- [ ] **COVL-13**: `~/.claude/settings.json` 存在但不是合法 JSON 时，保持现有策略：拒绝写入并返回可见错误（不静默覆盖）
+- [x] **COVL-13**: `~/.claude/settings.json` 存在但不是合法 JSON 时，保持现有策略：拒绝写入并返回可见错误（不静默覆盖）
 
 ### 测试
 
@@ -60,15 +60,15 @@ Which phases cover which requirements. Updated during roadmap creation.
 | COVL-02 | Phase 24 | Complete |
 | COVL-03 | Phase 24 | Complete |
 | COVL-04 | Phase 24 | Complete |
-| COVL-05 | Phase 24 | Pending |
-| COVL-06 | Phase 24 | Pending |
-| COVL-07 | Phase 24 | Pending |
+| COVL-05 | Phase 24 | Complete |
+| COVL-06 | Phase 24 | Complete |
+| COVL-07 | Phase 24 | Complete |
 | COVL-08 | Phase 24 | Complete |
 | COVL-09 | Phase 24 | Pending |
 | COVL-10 | Phase 24 | Pending |
 | COVL-11 | Phase 24 | Pending |
 | COVL-12 | Phase 24 | Pending |
-| COVL-13 | Phase 24 | Pending |
+| COVL-13 | Phase 24 | Complete |
 | COVL-14 | Phase 25 | Pending |
 | COVL-15 | Phase 25 | Pending |
 | COVL-16 | Phase 25 | Pending |
