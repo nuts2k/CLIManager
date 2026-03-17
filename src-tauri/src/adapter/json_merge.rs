@@ -28,9 +28,9 @@ pub struct StripResult {
 /// - 如果 overlay.env 是 object，则移除其中所有 PROTECTED_ENV_KEYS 中的字段。
 /// - stripped_paths 形如 "env.ANTHROPIC_AUTH_TOKEN"。
 pub fn strip_protected_fields(overlay: &Value) -> Result<StripResult, AppError> {
-    let root_obj = overlay.as_object().ok_or_else(|| {
-        AppError::Validation("overlay root must be a JSON object".to_string())
-    })?;
+    let root_obj = overlay
+        .as_object()
+        .ok_or_else(|| AppError::Validation("overlay root must be a JSON object".to_string()))?;
 
     let mut stripped_paths = Vec::new();
     let mut new_root = root_obj.clone();
@@ -65,13 +65,10 @@ pub fn strip_protected_fields(overlay: &Value) -> Result<StripResult, AppError> 
 /// - overlay 的某个 key 为 null  => 从 base object 删除该 key（noop 若不存在）
 ///
 /// base 必须为 object，否则返回 Validation 错误。
-pub fn merge_with_null_delete(
-    base: &mut Value,
-    overlay: &Value,
-) -> Result<(), AppError> {
-    let base_obj = base.as_object_mut().ok_or_else(|| {
-        AppError::Validation("merge base must be a JSON object".to_string())
-    })?;
+pub fn merge_with_null_delete(base: &mut Value, overlay: &Value) -> Result<(), AppError> {
+    let base_obj = base
+        .as_object_mut()
+        .ok_or_else(|| AppError::Validation("merge base must be a JSON object".to_string()))?;
 
     let overlay_obj = match overlay.as_object() {
         Some(obj) => obj,
@@ -159,8 +156,12 @@ mod tests {
         let result = strip_protected_fields(&overlay).unwrap();
 
         assert_eq!(result.stripped_paths.len(), 2);
-        assert!(result.stripped_paths.contains(&"env.ANTHROPIC_AUTH_TOKEN".to_string()));
-        assert!(result.stripped_paths.contains(&"env.ANTHROPIC_BASE_URL".to_string()));
+        assert!(result
+            .stripped_paths
+            .contains(&"env.ANTHROPIC_AUTH_TOKEN".to_string()));
+        assert!(result
+            .stripped_paths
+            .contains(&"env.ANTHROPIC_BASE_URL".to_string()));
         assert_eq!(result.overlay["env"]["KEEP"], "yes");
     }
 

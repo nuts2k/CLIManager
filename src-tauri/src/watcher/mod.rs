@@ -89,7 +89,9 @@ fn process_events(
 
         // 判断文件来源目录
         let is_in_config = path.parent().map_or(false, |p| p == config_dir.as_path());
-        let is_in_providers = path.parent().map_or(false, |p| p == providers_dir.as_path());
+        let is_in_providers = path
+            .parent()
+            .map_or(false, |p| p == providers_dir.as_path());
 
         if is_in_config {
             // config 目录：只处理 overlay 文件名

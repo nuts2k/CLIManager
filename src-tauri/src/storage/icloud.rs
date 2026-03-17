@@ -262,7 +262,10 @@ pub fn get_icloud_config_dir() -> Result<(PathBuf, StorageLocation), AppError> {
         )
     } else {
         log::warn!("iCloud Drive not available, falling back to ~/.cli-manager/config");
-        (home.join(".cli-manager/config"), StorageLocation::LocalFallback)
+        (
+            home.join(".cli-manager/config"),
+            StorageLocation::LocalFallback,
+        )
     };
 
     if !config_dir.exists() {
@@ -282,9 +285,6 @@ pub fn get_claude_overlay_path() -> Result<(PathBuf, StorageLocation), AppError>
     Ok((file_path, location))
 }
 
-/// 读取 Claude settings overlay 文件内容。
-/// 文件不存在、为空文件或纯空白时返回 Ok((None, info))，视为空 overlay（noop）。
-/// 文件存在时返回原始文本内容，不做 JSON 校验（校验由 command/apply 执行）。
 /// 将 overlay 原始文本归一化为命令层可消费的语义：
 /// 空文件 / 纯空白文本视为“已清空”，等价于没有 overlay。
 pub(crate) fn normalize_overlay_text(content: String) -> Option<String> {
@@ -295,6 +295,9 @@ pub(crate) fn normalize_overlay_text(content: String) -> Option<String> {
     }
 }
 
+/// 读取 Claude settings overlay 文件内容。
+/// 文件不存在、为空文件或纯空白时返回 Ok((None, info))，视为空 overlay（noop）。
+/// 文件存在时返回原始文本内容，不做 JSON 校验（校验由 command/apply 执行）。
 pub fn read_claude_settings_overlay() -> Result<(Option<String>, OverlayStorageInfo), AppError> {
     let (file_path, location) = get_claude_overlay_path()?;
     let (config_dir, _) = get_icloud_config_dir()?;
@@ -379,9 +382,6 @@ mod tests {
     }
 
     #[test]
-    fn test_list_providers_returns_sorted() {
-        let tmp = TempDir::new().unwrap();
-    #[test]
     fn test_normalize_overlay_text_treats_blank_as_none() {
         assert_eq!(normalize_overlay_text(String::new()), None);
         assert_eq!(normalize_overlay_text(" \n\t ".to_string()), None);
@@ -395,6 +395,9 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_list_providers_returns_sorted() {
+        let tmp = TempDir::new().unwrap();
         let dir = tmp.path();
 
         let p1 = make_test_provider("id-1", "Provider A", 1710000002000);

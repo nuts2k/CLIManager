@@ -20,9 +20,15 @@ pub async fn health_handler() -> (StatusCode, Json<Value>) {
 enum ResponseTranslationMode {
     Passthrough,
     /// Anthropic 协议透传 + 模型反向映射
-    AnthropicPassthrough { request_model: String },
-    OpenAiChatCompletions { request_model: String },
-    OpenAiResponses { request_model: String },
+    AnthropicPassthrough {
+        request_model: String,
+    },
+    OpenAiChatCompletions {
+        request_model: String,
+    },
+    OpenAiResponses {
+        request_model: String,
+    },
 }
 
 /// 判断是否为 hop-by-hop header（代理不应转发）
@@ -111,10 +117,7 @@ fn reverse_model_in_sse_line(line: &str, original_model: &str) -> String {
             }
 
             // 替换 message.model 嵌套字段（Anthropic message_start 事件）
-            if let Some(msg_obj) = value
-                .get_mut("message")
-                .and_then(|m| m.as_object_mut())
-            {
+            if let Some(msg_obj) = value.get_mut("message").and_then(|m| m.as_object_mut()) {
                 if msg_obj.contains_key("model") {
                     msg_obj.insert("model".to_string(), json!(original_model));
                     modified = true;
@@ -122,8 +125,8 @@ fn reverse_model_in_sse_line(line: &str, original_model: &str) -> String {
             }
 
             if modified {
-                let new_json = serde_json::to_string(&value)
-                    .unwrap_or_else(|_| json_str.to_string());
+                let new_json =
+                    serde_json::to_string(&value).unwrap_or_else(|_| json_str.to_string());
                 return format!("data: {}", new_json);
             }
         }
@@ -328,8 +331,7 @@ pub async fn proxy_handler(
                 let body_value = apply_upstream_model_mapping(body_value, &upstream);
                 let new_bytes = serde_json::to_vec(&body_value)
                     .map_err(|e| ProxyError::Internal(e.to_string()))?;
-                let url =
-                    translate::request::build_upstream_url(&upstream.base_url, &path, &query);
+                let url = translate::request::build_upstream_url(&upstream.base_url, &path, &query);
                 (
                     url,
                     Bytes::from(new_bytes),
@@ -337,8 +339,7 @@ pub async fn proxy_handler(
                 )
             } else {
                 // 无映射配置 — 纯透传（保持原有行为）
-                let url =
-                    translate::request::build_upstream_url(&upstream.base_url, &path, &query);
+                let url = translate::request::build_upstream_url(&upstream.base_url, &path, &query);
                 (url, body_bytes, ResponseTranslationMode::Passthrough)
             }
         }
@@ -1308,7 +1309,9 @@ mod tests {
         let (tx, rx) = oneshot::channel::<()>();
         tokio::spawn(async move {
             axum::serve(listener, mock_app)
-                .with_graceful_shutdown(async { rx.await.ok(); })
+                .with_graceful_shutdown(async {
+                    rx.await.ok();
+                })
                 .await
                 .ok();
         });
@@ -1329,10 +1332,19 @@ mod tests {
 
         let service = crate::proxy::ProxyService::new();
         service.start("claude", 0, upstream).await.unwrap();
-        let proxy_port = service.status().await.servers.into_iter()
-            .find(|s| s.cli_id == "claude").unwrap().port;
+        let proxy_port = service
+            .status()
+            .await
+            .servers
+            .into_iter()
+            .find(|s| s.cli_id == "claude")
+            .unwrap()
+            .port;
 
-        let _ = reqwest::Client::builder().no_proxy().build().unwrap()
+        let _ = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .unwrap()
             .post(format!("http://127.0.0.1:{}/v1/messages", proxy_port))
             .header("x-api-key", "PROXY_MANAGED")
             .header("content-type", "application/json")
@@ -1341,7 +1353,9 @@ mod tests {
                 "max_tokens": 100,
                 "messages": [{"role": "user", "content": "Hello"}]
             }))
-            .send().await.unwrap();
+            .send()
+            .await
+            .unwrap();
 
         let body = captured_body.lock().await;
         let received = body.as_ref().expect("mock 上游应已收到请求");
@@ -1386,7 +1400,9 @@ mod tests {
         let (tx, rx) = oneshot::channel::<()>();
         tokio::spawn(async move {
             axum::serve(listener, mock_app)
-                .with_graceful_shutdown(async { rx.await.ok(); })
+                .with_graceful_shutdown(async {
+                    rx.await.ok();
+                })
                 .await
                 .ok();
         });
@@ -1402,10 +1418,19 @@ mod tests {
 
         let service = crate::proxy::ProxyService::new();
         service.start("claude", 0, upstream).await.unwrap();
-        let proxy_port = service.status().await.servers.into_iter()
-            .find(|s| s.cli_id == "claude").unwrap().port;
+        let proxy_port = service
+            .status()
+            .await
+            .servers
+            .into_iter()
+            .find(|s| s.cli_id == "claude")
+            .unwrap()
+            .port;
 
-        let _ = reqwest::Client::builder().no_proxy().build().unwrap()
+        let _ = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .unwrap()
             .post(format!("http://127.0.0.1:{}/v1/messages", proxy_port))
             .header("x-api-key", "PROXY_MANAGED")
             .header("content-type", "application/json")
@@ -1414,7 +1439,9 @@ mod tests {
                 "max_tokens": 100,
                 "messages": [{"role": "user", "content": "Hello"}]
             }))
-            .send().await.unwrap();
+            .send()
+            .await
+            .unwrap();
 
         let body = captured_body.lock().await;
         let received = body.as_ref().expect("mock 上游应已收到请求");
@@ -1459,20 +1486,36 @@ mod tests {
         let (tx, rx) = oneshot::channel::<()>();
         tokio::spawn(async move {
             axum::serve(listener, mock_app)
-                .with_graceful_shutdown(async { rx.await.ok(); })
+                .with_graceful_shutdown(async {
+                    rx.await.ok();
+                })
                 .await
                 .ok();
         });
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         let service = crate::proxy::ProxyService::new();
-        service.start("claude", 0, make_upstream_anthropic_target(
-            &format!("http://127.0.0.1:{}", upstream_port)
-        )).await.unwrap();
-        let proxy_port = service.status().await.servers.into_iter()
-            .find(|s| s.cli_id == "claude").unwrap().port;
+        service
+            .start(
+                "claude",
+                0,
+                make_upstream_anthropic_target(&format!("http://127.0.0.1:{}", upstream_port)),
+            )
+            .await
+            .unwrap();
+        let proxy_port = service
+            .status()
+            .await
+            .servers
+            .into_iter()
+            .find(|s| s.cli_id == "claude")
+            .unwrap()
+            .port;
 
-        let _ = reqwest::Client::builder().no_proxy().build().unwrap()
+        let _ = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .unwrap()
             .post(format!("http://127.0.0.1:{}/v1/messages", proxy_port))
             .header("x-api-key", "PROXY_MANAGED")
             .header("content-type", "application/json")
@@ -1481,7 +1524,9 @@ mod tests {
                 "max_tokens": 100,
                 "messages": [{"role": "user", "content": "Hello"}]
             }))
-            .send().await.unwrap();
+            .send()
+            .await
+            .unwrap();
 
         let body = captured_body.lock().await;
         let received = body.as_ref().expect("mock 上游应已收到请求");
@@ -1519,7 +1564,9 @@ mod tests {
         let (tx, rx) = oneshot::channel::<()>();
         tokio::spawn(async move {
             axum::serve(listener, mock_app)
-                .with_graceful_shutdown(async { rx.await.ok(); })
+                .with_graceful_shutdown(async {
+                    rx.await.ok();
+                })
                 .await
                 .ok();
         });
@@ -1540,10 +1587,19 @@ mod tests {
 
         let service = crate::proxy::ProxyService::new();
         service.start("claude", 0, upstream).await.unwrap();
-        let proxy_port = service.status().await.servers.into_iter()
-            .find(|s| s.cli_id == "claude").unwrap().port;
+        let proxy_port = service
+            .status()
+            .await
+            .servers
+            .into_iter()
+            .find(|s| s.cli_id == "claude")
+            .unwrap()
+            .port;
 
-        let resp: Value = reqwest::Client::builder().no_proxy().build().unwrap()
+        let resp: Value = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .unwrap()
             .post(format!("http://127.0.0.1:{}/v1/messages", proxy_port))
             .header("x-api-key", "PROXY_MANAGED")
             .header("content-type", "application/json")
@@ -1552,8 +1608,12 @@ mod tests {
                 "max_tokens": 100,
                 "messages": [{"role": "user", "content": "Hello"}]
             }))
-            .send().await.unwrap()
-            .json().await.unwrap();
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
 
         assert_eq!(
             resp["model"], "claude-3-5-sonnet-20241022",
@@ -1567,8 +1627,8 @@ mod tests {
     /// 测试 5：Anthropic + /v1/messages + 有映射 → 流式 SSE 中 model 字段被替换回原始名
     #[tokio::test]
     async fn test_anthropic_messages_sse_model_reverse_mapped() {
-        use axum::routing::post;
         use axum::response::sse::{Event, Sse};
+        use axum::routing::post;
         use futures::stream;
 
         let mock_app = Router::new().route(
@@ -1596,7 +1656,9 @@ mod tests {
         let (tx, rx) = oneshot::channel::<()>();
         tokio::spawn(async move {
             axum::serve(listener, mock_app)
-                .with_graceful_shutdown(async { rx.await.ok(); })
+                .with_graceful_shutdown(async {
+                    rx.await.ok();
+                })
                 .await
                 .ok();
         });
@@ -1617,10 +1679,19 @@ mod tests {
 
         let service = crate::proxy::ProxyService::new();
         service.start("claude", 0, upstream).await.unwrap();
-        let proxy_port = service.status().await.servers.into_iter()
-            .find(|s| s.cli_id == "claude").unwrap().port;
+        let proxy_port = service
+            .status()
+            .await
+            .servers
+            .into_iter()
+            .find(|s| s.cli_id == "claude")
+            .unwrap()
+            .port;
 
-        let resp = reqwest::Client::builder().no_proxy().build().unwrap()
+        let resp = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .unwrap()
             .post(format!("http://127.0.0.1:{}/v1/messages", proxy_port))
             .header("x-api-key", "PROXY_MANAGED")
             .header("content-type", "application/json")
@@ -1630,7 +1701,9 @@ mod tests {
                 "stream": true,
                 "messages": [{"role": "user", "content": "Hello"}]
             }))
-            .send().await.unwrap();
+            .send()
+            .await
+            .unwrap();
 
         let body_text = resp.text().await.unwrap();
 
@@ -1713,10 +1786,7 @@ mod tests {
         .collect::<Vec<_>>()
         .await;
 
-        assert!(
-            output.len() >= 2,
-            "应至少包含已透传的数据和最终错误"
-        );
+        assert!(output.len() >= 2, "应至少包含已透传的数据和最终错误");
         let successful_bytes = output[..output.len() - 1]
             .iter()
             .map(|item| item.as_ref().expect("错误前的 chunk 应成功"))
