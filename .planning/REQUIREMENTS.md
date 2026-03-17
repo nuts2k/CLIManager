@@ -9,8 +9,8 @@ Requirements for milestone v2.5 Claude 全局配置 Overlay。
 
 ### Overlay 编辑与存储
 
-- [ ] **COVL-01**: 用户可以在 Settings → Advanced → Claude 小节编辑一段 JSON overlay（多行文本）
-- [ ] **COVL-02**: overlay 保存前必须通过 JSON 校验（root 必须为 object）；不合法时给出错误提示且拒绝保存
+- [x] **COVL-01**: 用户可以在 Settings → Advanced → Claude 小节编辑一段 JSON overlay（多行文本）
+- [x] **COVL-02**: overlay 保存前必须通过 JSON 校验（root 必须为 object）；不合法时给出错误提示且拒绝保存
 - [x] **COVL-03**: overlay 持久化文件优先写入 iCloud（可同步），iCloud 不可用时降级写入本地目录（功能可用但不同步）
 - [x] **COVL-04**: 用户在 UI 中可以明确感知 overlay 当前存放位置（iCloud / 本地降级），并知道是否会跨设备同步
 
@@ -19,7 +19,7 @@ Requirements for milestone v2.5 Claude 全局配置 Overlay。
 - [ ] **COVL-05**: overlay 应用到 `~/.claude/settings.json` 时采用深度合并：object 递归合并、array 整体替换、scalar 覆盖
 - [ ] **COVL-06**: overlay 支持以 null 删除字段（例如 `{ "permissions": null }` 删除 settings.json 中对应 key）
 - [ ] **COVL-07**: overlay 不得覆盖 Provider/Proxy 管理的保护字段：`env.ANTHROPIC_AUTH_TOKEN`、`env.ANTHROPIC_BASE_URL`（这些字段最终值必须由 Provider/Proxy 写回并保持优先级）
-- [ ] **COVL-08**: overlay 中若包含保护字段，系统忽略这些字段且在 UI 侧提示“该字段由 Provider/Proxy 管理，不可覆盖”（提示形式可为说明文案或保存后 toast）
+- [x] **COVL-08**: overlay 中若包含保护字段，系统忽略这些字段且在 UI 侧提示“该字段由 Provider/Proxy 管理，不可覆盖”（提示形式可为说明文案或保存后 toast）
 
 ### 应用触发点（自动对齐）
 
@@ -56,14 +56,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| COVL-01 | Phase 24 | Pending |
-| COVL-02 | Phase 24 | Pending |
+| COVL-01 | Phase 24 | Complete |
+| COVL-02 | Phase 24 | Complete |
 | COVL-03 | Phase 24 | Complete |
 | COVL-04 | Phase 24 | Complete |
 | COVL-05 | Phase 24 | Pending |
 | COVL-06 | Phase 24 | Pending |
 | COVL-07 | Phase 24 | Pending |
-| COVL-08 | Phase 24 | Pending |
+| COVL-08 | Phase 24 | Complete |
 | COVL-09 | Phase 24 | Pending |
 | COVL-10 | Phase 24 | Pending |
 | COVL-11 | Phase 24 | Pending |

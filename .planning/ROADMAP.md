@@ -143,7 +143,7 @@ Plans:
 | 21. 微动效与 Header 提升 | v2.3 | 1/1 | Complete | 2026-03-15 |
 | 22. 应用图标 | v2.3 | 2/2 | Complete | 2026-03-15 |
 | 23. Anthropic 模型映射 | v2.4 | 2/2 | Complete | 2026-03-15 |
-| 24. Claude settings overlay end-to-end | 1/4 | In Progress|  | - |
+| 24. Claude settings overlay end-to-end | 2/4 | In Progress|  | - |
 | 25. 测试覆盖 | v2.5 | 0/0 | Not started | - |
 
 ---
