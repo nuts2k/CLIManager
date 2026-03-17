@@ -76,3 +76,26 @@ export async function proxySetGlobal(enabled: boolean): Promise<void> {
 export async function proxyGetModeStatus(): Promise<ProxyModeStatus> {
   return invoke("proxy_get_mode_status");
 }
+
+// Claude Settings Overlay 类型与 invoke 封装
+
+export type ClaudeSettingsOverlayStorage = {
+  location: "icloud" | "local_fallback";
+  file_path: string;
+  sync_enabled: boolean;
+};
+
+export type ClaudeSettingsOverlayState = {
+  overlay_json: string | null;
+  storage: ClaudeSettingsOverlayStorage;
+};
+
+export async function getClaudeSettingsOverlay(): Promise<ClaudeSettingsOverlayState> {
+  return invoke("get_claude_settings_overlay");
+}
+
+export async function setClaudeSettingsOverlay(
+  overlayJson: string,
+): Promise<{ storage: ClaudeSettingsOverlayStorage }> {
+  return invoke("set_claude_settings_overlay", { overlayJson });
+}
