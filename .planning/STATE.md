@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planning
-stopped_at: Phase 25 context gathered
-last_updated: "2026-03-17T03:35:36.177Z"
-last_activity: 2026-03-17 — 24-03 json_merge 深度合并引擎 + ClaudeAdapter overlay 集成完成
+status: complete
+stopped_at: Completed 25-01-PLAN.md
+last_updated: "2026-03-17T03:50:00.000Z"
+last_activity: 2026-03-17 — 25-01 补充 overlay 边界测试，全量 405 个测试通过
 progress:
   total_phases: 2
-  completed_phases: 1
-  total_plans: 4
-  completed_plans: 4
-  percent: 0
+  completed_phases: 2
+  total_plans: 5
+  completed_plans: 5
+  percent: 100
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 
 ## Current Position
 
-Phase: **24 — 「Claude settings overlay end-to-end」** (ready)
-Plan: —
-Status: Ready to plan
-Last activity: 2026-03-17 — 24-03 json_merge 深度合并引擎 + ClaudeAdapter overlay 集成完成
+Phase: **25 — 「测试覆盖」** (complete)
+Plan: 25-01 (complete)
+Status: Phase 25 全部完成
+Last activity: 2026-03-17 — 25-01 补充 overlay 边界测试，全量 405 个测试通过
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██████████] 100%
 
 > 注：v2.5 从 Phase 24 开始继续编号。
 
@@ -72,6 +72,8 @@ v2.5 路线（Phase 24-25，最大化同 Phase 并行）：
 - [Phase 24-03]: patch_claude_json 末尾始终强制回写保护字段，保证 provider 优先级无法被 overlay 绕过
 - [Phase 24-claude-settings-overlay-end-to-end]: startup apply 结果写入缓存队列（ClaudeOverlayStartupNotificationQueue），前端 useSyncListener 挂载后 take/replay，彻底解决 setup 时序问题
 - [Phase 24-claude-settings-overlay-end-to-end]: set_claude_settings_overlay 保存后立即 apply（强一致 COVL-09）：apply 失败则 set 整体返回 Err；overlay 通知统一模型 ClaudeOverlayApplyNotification（kind/source/settings_path/error/paths）
+- [Phase 25-01]: 新增边界测试均直接通过（GREEN），现有 merge_with_null_delete 实现已正确处理空 overlay 和嵌套 null 删除场景，无需修改生产代码
+- [Phase 25-01]: clear() 语义确认：只清除保护字段（ANTHROPIC_AUTH_TOKEN/ANTHROPIC_BASE_URL），overlay 注入的自定义字段不受影响
 
 ### Pending Todos
 
@@ -83,6 +85,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-17T03:35:36.169Z
-Stopped at: Phase 25 context gathered
-Resume file: .planning/phases/25-test-coverage/25-CONTEXT.md
+Last session: 2026-03-17T03:50:00.000Z
+Stopped at: Completed 25-01-PLAN.md
+Resume file: .planning/phases/25-test-coverage/25-01-SUMMARY.md

@@ -34,9 +34,9 @@ Requirements for milestone v2.5 Claude 全局配置 Overlay。
 
 ### 测试
 
-- [ ] **COVL-14**: Rust 单元测试覆盖深度合并规则（递归合并/数组替换/标量覆盖/null 删除）
-- [ ] **COVL-15**: Rust 测试覆盖保护字段永远优先（overlay 尝试覆盖 token/base_url 不得生效）
-- [ ] **COVL-16**: 集成测试覆盖 ClaudeAdapter patch + overlay 注入（overlay 添加额外 env 字段不影响 surgical patch 行为）
+- [x] **COVL-14**: Rust 单元测试覆盖深度合并规则（递归合并/数组替换/标量覆盖/null 删除）
+- [x] **COVL-15**: Rust 测试覆盖保护字段永远优先（overlay 尝试覆盖 token/base_url 不得生效）
+- [x] **COVL-16**: 集成测试覆盖 ClaudeAdapter patch + overlay 注入（overlay 添加额外 env 字段不影响 surgical patch 行为）
 
 ## Future Requirements
 
@@ -69,9 +69,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | COVL-11 | Phase 24 | Complete |
 | COVL-12 | Phase 24 | Complete |
 | COVL-13 | Phase 24 | Complete |
-| COVL-14 | Phase 25 | Pending |
-| COVL-15 | Phase 25 | Pending |
-| COVL-16 | Phase 25 | Pending |
+| COVL-14 | Phase 25 | Complete |
+| COVL-15 | Phase 25 | Complete |
+| COVL-16 | Phase 25 | Complete |
 
 **Coverage:**
 - v2.5 requirements: 16 total
