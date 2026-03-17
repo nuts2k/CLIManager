@@ -336,6 +336,33 @@ mod tests {
     }
 
     #[test]
+    fn test_merge_empty_overlay_no_side_effects() {
+        let mut base = json!({
+            "permissions": {"allow": ["Bash"]},
+            "env": {"TOKEN": "val"},
+            "scalar": 42
+        });
+        let original = base.clone();
+        let overlay = json!({});
+
+        merge_with_null_delete(&mut base, &overlay).unwrap();
+
+        assert_eq!(base, original);
+    }
+
+    #[test]
+    fn test_merge_nested_null_deletes_deep_key() {
+        let mut base = json!({"a": {"b": "val", "c": "keep"}, "top": true});
+        let overlay = json!({"a": {"b": null}});
+
+        merge_with_null_delete(&mut base, &overlay).unwrap();
+
+        assert!(base["a"].as_object().unwrap().get("b").is_none());
+        assert_eq!(base["a"]["c"], "keep");
+        assert_eq!(base["top"], true);
+    }
+
+    #[test]
     fn test_merge_combined_rules() {
         // 综合测试：多种规则同时生效
         let mut base = json!({
