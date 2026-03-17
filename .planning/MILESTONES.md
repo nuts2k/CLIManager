@@ -1,5 +1,25 @@
 # Milestones
 
+## v2.5 Claude 全局配置 Overlay (Shipped: 2026-03-17)
+
+**Phases completed:** 2 phases, 5 plans
+**Delivered:** Claude Code settings.json overlay 端到端可用：编辑/校验/保存（iCloud 同步优先，本地降级）+ 深度合并引擎（null 删除/保护字段优先）+ 三类自动 apply 触发（保存/启动/watcher）+ 全覆盖自动化测试
+
+**Key accomplishments:**
+- overlay 存储层（iCloud 优先/本地降级，StorageLocation enum + UI 感知同步位置）
+- Settings → Advanced → Claude 小节完整 UI（JSON 编辑/校验/保存/位置显示/保护字段提示，中英双语）
+- json_merge 深度合并引擎（merge_with_null_delete + strip_protected_fields 纯函数模块）+ ClaudeAdapter overlay 集成
+- 三类自动应用触发（保存即 apply + 启动 best-effort apply + iCloud watcher 自动 apply）+ startup 缓存回放 + 统一错误可见性通知
+- 自动化测试全覆盖（深度合并边界/保护字段优先级/ClaudeAdapter overlay 注入，412 tests passing）
+
+**Stats:**
+- 29 commits, 34 files changed, +4,633/-97 lines
+- Timeline: 2 days (2026-03-16 -> 2026-03-17)
+- Tests: 412 passing (45 new overlay-specific tests)
+- Audit: 16/16 requirements, 16/16 integration, 3/3 E2E flows
+
+---
+
 ## v2.4 Anthropic 模型映射 (Shipped: 2026-03-15)
 
 **Phases completed:** 1 phase, 2 plans

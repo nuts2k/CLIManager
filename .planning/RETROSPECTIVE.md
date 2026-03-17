@@ -271,6 +271,53 @@
 
 ---
 
+## Milestone: v2.5 — Claude 全局配置 Overlay
+
+**Shipped:** 2026-03-17
+**Phases:** 2 | **Plans:** 5 | **Commits:** 29
+
+### What Was Built
+- overlay 存储层（iCloud 优先/本地降级，StorageLocation enum + OverlayStorageInfo + UI 感知同步位置）
+- Settings → Advanced → Claude 小节完整 UI（JSON 编辑/校验/保存/位置显示/保护字段提示，中英双语）
+- json_merge 深度合并引擎（merge_with_null_delete + strip_protected_fields 纯函数模块）
+- ClaudeAdapter patch 强制集成 overlay 存储读取 + 深度合并 + 末尾保护字段回写
+- 三类自动应用触发：保存即 apply + 启动 best-effort apply + iCloud watcher 自动 apply
+- startup 缓存回放机制（ClaudeOverlayStartupNotificationQueue take 语义）解决 setup 时序问题
+- 自动化测试全覆盖：45 个 overlay 相关测试，全量 412 tests passing
+
+### What Worked
+- 单 Phase 端到端（Phase 24）4 个 Plan 递进式依赖链清晰：存储 → UI → 合并引擎 → 触发点
+- overlay_path_override 注入模式：生产代码走全局存储，测试注入 TempDir 路径，零生产代码改动
+- patch_claude_json 末尾强制回写保护字段：无论 overlay 如何设置，Provider/Proxy 凭据优先级无条件保障
+- startup 缓存队列（take 语义）彻底解决 Tauri setup 阶段 emit 事件 vs 前端就绪的时序竞态
+- Phase 25 测试补充直接 GREEN：现有实现已正确处理所有边界场景，未发现回归
+
+### What Was Inefficient
+- VERIFICATION.md 未更新：Phase 24 字段名 bug 已修复，但 VERIFICATION 仍记录 gaps_found 状态
+- Nyquist VALIDATION.md 两个 Phase 均未创建
+- 审计发现的 3 项技术债务（人工验证待执行）未在里程碑内闭环
+
+### Patterns Established
+- `overlay_path_override: Option<PathBuf>` 注入模式：adapter 层可选路径覆盖，测试与生产路径分离
+- `ClaudeOverlayStartupNotificationQueue`：Tauri State + Mutex<Vec<T>> + take 语义 — setup 时序问题的标准解法
+- `apply_claude_settings_overlay(source: ApplySource)` 枚举区分 Save/Startup/Watcher 三类来源
+- `ClaudeOverlayApplyNotification` 统一通知模型：kind/source/settings_path/error/paths，前端 useSyncListener 统一处理
+- `merge_with_null_delete` + `strip_protected_fields` 纯函数组合：合并与安全性正交分离
+
+### Key Lessons
+1. 保护字段应在最终写入前强制回写而非在合并阶段过滤 — 末尾回写保证任何代码路径都不会遗漏
+2. startup 阶段 emit 事件不可靠 — 必须用缓存队列 + take 语义保证前端挂载后可回放
+3. 测试注入模式（path_override）优于 mock 全局存储 — 代码侵入性最小且测试真实
+4. 端到端 Phase（单 Phase 多 Plan）适合功能边界清晰的特性 — 避免跨 Phase 集成风险
+5. 空 overlay 应跳过校验直接保存 — 用户清空 overlay 是合法操作
+
+### Cost Observations
+- Model mix: balanced profile (sonnet-based agents, opus orchestration)
+- Total execution: ~2 days for 5 plans
+- Notable: 16 个需求 2 phases 交付，纯函数测试直接 GREEN 说明实现质量高
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -284,6 +331,7 @@
 | v2.2 | 44 | 3 | Protocol translation — pure function TDD + max parallelism |
 | v2.3 | ~27 | 6 | Frontend polish — design tokens first + UI/UX refinement |
 | v2.4 | ~8 | 1 | Anthropic model mapping — reuse existing infra + parallel plans |
+| v2.5 | 29 | 2 | Claude overlay — E2E feature + test coverage, startup cache queue |
 
 ### Cumulative Quality
 
@@ -296,6 +344,7 @@
 | v2.2 | ~18,000 | 29 modified | 6min |
 | v2.3 | ~19,000 | 82 modified | — |
 | v2.4 | ~19,600 | 2 modified | 7.5min |
+| v2.5 | ~24,000 | 34 modified | — |
 
 ### Top Lessons (Verified Across Milestones)
 
@@ -309,3 +358,5 @@
 8. 设计 token 先行是前端美化类里程碑的正确起手 — 后续全部复用变量 (verified v2.3)
 9. ROADMAP plan 复选框更新是持续性问题 — 执行器应自动化 (observed v1.0-v2.4)
 10. 反向映射需在请求阶段记录原始值 — 响应模式变体携带上下文比全局状态更干净 (verified v2.4)
+11. startup 阶段事件发送不可靠 — 缓存队列 + take 语义是 Tauri setup vs 前端就绪时序问题的标准解法 (verified v2.5)
+12. 测试注入模式（path_override）优于 mock 全局存储 — 代码侵入性最小且测试真实路径 (verified v2.5)
