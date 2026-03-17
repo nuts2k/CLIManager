@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v2.6
 milestone_name: 流量监控
-status: Defining requirements
+status: Ready to plan
 stopped_at: null
 last_updated: "2026-03-17"
-last_activity: 2026-03-17 — Milestone v2.6 started
+last_activity: 2026-03-17 — Roadmap created, 5 phases (26-30) defined
 progress:
-  total_phases: 0
+  total_phases: 5
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -21,14 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-17)
 
 **Core value:** 切换 Provider 时只做 surgical patch（精确修改凭据和模型字段），绝不重写配置文件的其他内容
-**Current focus:** v2.6 流量监控 — 定义需求
+**Current focus:** v2.6 流量监控 — Phase 26: SQLite 基础设施
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-03-17 — Milestone v2.6 started
+Phase: 26 of 30 (SQLite 基础设施)
+Plan: — (not yet planned)
+Status: Ready to plan
+Last activity: 2026-03-17 — Roadmap created, 5 phases defined (26-30)
+
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -47,7 +49,12 @@ Last activity: 2026-03-17 — Milestone v2.6 started
 
 ### Decisions
 
-（v2.5 决策已归档至 .planning/milestones/v2.5-ROADMAP.md）
+v2.6 关键决策（来自研究阶段）：
+- SQLite 路径: app_local_data_dir()（非 iCloud），WAL + busy_timeout PRAGMA
+- 连接模型: Arc<std::sync::Mutex<Connection>> 单连接（< 10 req/s 场景够用）
+- 写入模式: mpsc channel 非阻塞 fire-and-forget，后台 task 写入不阻塞代理延迟
+- 流式 token: 等 stream EOF 后统一解析，不在中途提取
+- 前端数据加载: 双轨（command 初始拉取 + event 增量追加），事件不作 source of truth
 
 ### Pending Todos
 
@@ -56,9 +63,10 @@ None.
 ### Blockers/Concerns
 
 - UX-01 端口冲突检测依赖脆弱的中文子串匹配（v2.0 遗留，低优先级）
+- Phase 28 规划前需读取 src-tauri/src/proxy/translate/responses_stream.rs 确认 Responses API 流式 token 字段位置
 
 ## Session Continuity
 
 Last session: 2026-03-17
-Stopped at: Defining requirements for v2.6
-Resume: Continue requirements definition
+Stopped at: Roadmap created for v2.6, ready to plan Phase 26
+Resume: `/gsd:plan-phase 26`

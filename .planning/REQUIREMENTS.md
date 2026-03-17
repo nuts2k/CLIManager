@@ -63,27 +63,27 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| STORE-01 | — | Pending |
-| STORE-02 | — | Pending |
-| STORE-03 | — | Pending |
-| STORE-04 | — | Pending |
-| COLLECT-01 | — | Pending |
-| COLLECT-02 | — | Pending |
-| COLLECT-03 | — | Pending |
-| COLLECT-04 | — | Pending |
-| LOG-01 | — | Pending |
-| LOG-02 | — | Pending |
-| LOG-03 | — | Pending |
-| STAT-01 | — | Pending |
-| STAT-02 | — | Pending |
-| STAT-03 | — | Pending |
-| STAT-04 | — | Pending |
+| STORE-01 | Phase 26 | Pending |
+| STORE-02 | Phase 26 | Pending |
+| STORE-03 | Phase 27 | Pending |
+| STORE-04 | Phase 30 | Pending |
+| COLLECT-01 | Phase 27 | Pending |
+| COLLECT-02 | Phase 27 | Pending |
+| COLLECT-03 | Phase 28 | Pending |
+| COLLECT-04 | Phase 27 | Pending |
+| LOG-01 | Phase 27 | Pending |
+| LOG-02 | Phase 29 | Pending |
+| LOG-03 | Phase 29 | Pending |
+| STAT-01 | Phase 29 | Pending |
+| STAT-02 | Phase 30 | Pending |
+| STAT-03 | Phase 30 | Pending |
+| STAT-04 | Phase 30 | Pending |
 
 **Coverage:**
 - v2.6 requirements: 15 total
-- Mapped to phases: 0
-- Unmapped: 15
+- Mapped to phases: 15
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-17*
-*Last updated: 2026-03-17 after initial definition*
+*Last updated: 2026-03-17 — traceability filled after roadmap creation*
