@@ -65,7 +65,7 @@ impl ClaudeAdapter {
                 path: path.display().to_string(),
                 source: e,
             })?;
-            Ok(Some(content))
+            Ok(crate::storage::icloud::normalize_overlay_text(content))
         } else {
             let (content, _info) = crate::storage::icloud::read_claude_settings_overlay()?;
             Ok(content)
@@ -931,3 +931,33 @@ mod tests {
         assert_eq!(cleared["other_setting"], true);
     }
 }
+    #[test]
+    fn test_patch_with_blank_overlay_file_behaves_like_no_overlay() {
+        // overlay 文件为空白时，视为“已清空”，行为应等同于无 overlay
+        let tmp = TempDir::new().unwrap();
+        let config_dir = tmp.path().join("config");
+        let backup_dir = tmp.path().join("backups");
+        fs::create_dir_all(&config_dir).unwrap();
+
+        let original = r#"{"permissions": {"allow": ["Bash"]}, "env": {"ANTHROPIC_AUTH_TOKEN": "old", "CUSTOM": "keep"}}"#;
+        fs::write(config_dir.join("settings.json"), original).unwrap();
+
+        let overlay_path = write_overlay(&config_dir, " \n\t ");
+
+        let adapter =
+            ClaudeAdapter::new_with_paths_and_overlay(config_dir.clone(), backup_dir, overlay_path);
+        adapter.patch(&test_provider()).unwrap();
+
+        let patched: Value =
+            serde_json::from_str(&fs::read_to_string(config_dir.join("settings.json")).unwrap())
+                .unwrap();
+
+        assert_eq!(patched["env"]["ANTHROPIC_AUTH_TOKEN"], "sk-ant-new-key-123");
+        assert_eq!(
+            patched["env"]["ANTHROPIC_BASE_URL"],
+            "https://proxy.example.com"
+        );
+        assert_eq!(patched["env"]["CUSTOM"], "keep");
+        assert!(patched["permissions"]["allow"].is_array());
+    }
+
