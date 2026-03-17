@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.5
-milestone_name: Claude 全局配置 Overlay
+milestone: v1.0
+milestone_name: milestone
 status: planning
-stopped_at: —
-last_updated: "2026-03-16T00:00:00.000Z"
+stopped_at: Completed 24-01-PLAN.md
+last_updated: "2026-03-17T00:21:08.489Z"
 last_activity: 2026-03-16 — Milestone v2.5 roadmap revised (Phase 24-25)
 progress:
   total_phases: 2
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 4
+  completed_plans: 1
   percent: 0
 ---
 
@@ -64,6 +64,8 @@ Progress: [░░░░░░░░░░] 0%
 v2.5 路线（Phase 24-25，最大化同 Phase 并行）：
 - Phase 24: 「Claude settings overlay end-to-end」（UI + 存储 + 深度合并 + 保护字段 + apply 触发 + watcher + 错误可见性）
 - Phase 25: 「测试覆盖」（合并规则/保护字段优先级/adapter 注入）
+- [Phase 24-01]: overlay 存储与 providers 存储分离：config 目录独立于 providers 目录
+- [Phase 24-01]: set_claude_settings_overlay 仅写入不 apply：apply 逻辑留后续 plan 实现
 
 ### Pending Todos
 
@@ -75,6 +77,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-16T00:00:00.000Z
-Stopped at: Roadmap ready — Phase 24
-Resume file: Run /gsd:plan-phase 24
+Last session: 2026-03-17T00:21:08.486Z
+Stopped at: Completed 24-01-PLAN.md
+Resume file: None

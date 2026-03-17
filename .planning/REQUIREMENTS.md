@@ -11,8 +11,8 @@ Requirements for milestone v2.5 Claude 全局配置 Overlay。
 
 - [ ] **COVL-01**: 用户可以在 Settings → Advanced → Claude 小节编辑一段 JSON overlay（多行文本）
 - [ ] **COVL-02**: overlay 保存前必须通过 JSON 校验（root 必须为 object）；不合法时给出错误提示且拒绝保存
-- [ ] **COVL-03**: overlay 持久化文件优先写入 iCloud（可同步），iCloud 不可用时降级写入本地目录（功能可用但不同步）
-- [ ] **COVL-04**: 用户在 UI 中可以明确感知 overlay 当前存放位置（iCloud / 本地降级），并知道是否会跨设备同步
+- [x] **COVL-03**: overlay 持久化文件优先写入 iCloud（可同步），iCloud 不可用时降级写入本地目录（功能可用但不同步）
+- [x] **COVL-04**: 用户在 UI 中可以明确感知 overlay 当前存放位置（iCloud / 本地降级），并知道是否会跨设备同步
 
 ### Overlay 合并与保护字段
 
@@ -58,8 +58,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | COVL-01 | Phase 24 | Pending |
 | COVL-02 | Phase 24 | Pending |
-| COVL-03 | Phase 24 | Pending |
-| COVL-04 | Phase 24 | Pending |
+| COVL-03 | Phase 24 | Complete |
+| COVL-04 | Phase 24 | Complete |
 | COVL-05 | Phase 24 | Pending |
 | COVL-06 | Phase 24 | Pending |
 | COVL-07 | Phase 24 | Pending |
