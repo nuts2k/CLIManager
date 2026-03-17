@@ -5,6 +5,33 @@ use super::atomic_write;
 use crate::error::AppError;
 use crate::provider::{suggested_test_model, Provider};
 
+// ============================================================
+// Claude settings overlay 存储位置类型
+// ============================================================
+
+/// overlay 文件实际存储的位置（用于 UI 感知是否同步）
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StorageLocation {
+    /// 存储在 iCloud Drive，跨设备自动同步
+    ICloud,
+    /// iCloud 不可用，降级至本地 ~/.cli-manager/config
+    LocalFallback,
+}
+
+/// overlay 文件的存储元信息（供前端感知"是否在同步"）
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct OverlayStorageInfo {
+    /// 存储位置类型
+    pub location: StorageLocation,
+    /// config 目录路径
+    pub dir: PathBuf,
+    /// overlay 文件完整路径
+    pub file_path: PathBuf,
+    /// 是否启用了 iCloud 同步
+    pub sync_enabled: bool,
+}
+
 /// Resolve the iCloud providers directory.
 /// Falls back to ~/.cli-manager/providers/ if iCloud Drive is unavailable.
 pub fn get_icloud_providers_dir() -> Result<PathBuf, AppError> {
@@ -214,6 +241,88 @@ pub fn delete_provider_in(dir: &Path, id: &str) -> Result<(), AppError> {
         })?;
     }
     Ok(())
+}
+
+// ============================================================
+// Claude settings overlay config 目录与文件读写
+// ============================================================
+
+const OVERLAY_FILE_NAME: &str = "claude-settings-overlay.json";
+
+/// 解析 Claude overlay 专用的 config 目录。
+/// iCloud 可用时返回 iCloud config 目录，否则自动降级到本地。
+pub fn get_icloud_config_dir() -> Result<(PathBuf, StorageLocation), AppError> {
+    let home = dirs::home_dir().ok_or(AppError::ICloudUnavailable)?;
+    let mobile_docs = home.join("Library/Mobile Documents");
+
+    let (config_dir, location) = if mobile_docs.exists() {
+        (
+            home.join("Library/Mobile Documents/com~apple~CloudDocs/CLIManager/config"),
+            StorageLocation::ICloud,
+        )
+    } else {
+        log::warn!("iCloud Drive not available, falling back to ~/.cli-manager/config");
+        (home.join(".cli-manager/config"), StorageLocation::LocalFallback)
+    };
+
+    if !config_dir.exists() {
+        fs::create_dir_all(&config_dir).map_err(|e| AppError::Io {
+            path: config_dir.display().to_string(),
+            source: e,
+        })?;
+    }
+
+    Ok((config_dir, location))
+}
+
+/// 解析 Claude overlay 文件的完整路径与存储位置。
+pub fn get_claude_overlay_path() -> Result<(PathBuf, StorageLocation), AppError> {
+    let (config_dir, location) = get_icloud_config_dir()?;
+    let file_path = config_dir.join(OVERLAY_FILE_NAME);
+    Ok((file_path, location))
+}
+
+/// 读取 Claude settings overlay 文件内容。
+/// 文件不存在时返回 Ok((None, info))，视为空 overlay（noop）。
+/// 文件存在时返回原始文本内容，不做 JSON 校验（校验由 command/apply 执行）。
+pub fn read_claude_settings_overlay() -> Result<(Option<String>, OverlayStorageInfo), AppError> {
+    let (file_path, location) = get_claude_overlay_path()?;
+    let (config_dir, _) = get_icloud_config_dir()?;
+    let sync_enabled = location == StorageLocation::ICloud;
+
+    let info = OverlayStorageInfo {
+        sync_enabled,
+        dir: config_dir,
+        file_path: file_path.clone(),
+        location,
+    };
+
+    if !file_path.exists() {
+        return Ok((None, info));
+    }
+
+    let content = fs::read_to_string(&file_path).map_err(|e| AppError::Io {
+        path: file_path.display().to_string(),
+        source: e,
+    })?;
+
+    Ok((Some(content), info))
+}
+
+/// 将 overlay 内容原子写入 overlay 文件，返回存储元信息。
+pub fn write_claude_settings_overlay(content: &str) -> Result<OverlayStorageInfo, AppError> {
+    let (file_path, location) = get_claude_overlay_path()?;
+    let (config_dir, _) = get_icloud_config_dir()?;
+    let sync_enabled = location == StorageLocation::ICloud;
+
+    atomic_write(&file_path, content.as_bytes())?;
+
+    Ok(OverlayStorageInfo {
+        sync_enabled,
+        dir: config_dir,
+        file_path,
+        location,
+    })
 }
 
 #[cfg(test)]
