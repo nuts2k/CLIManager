@@ -100,6 +100,30 @@ pub struct SetClaudeSettingsOverlayResponse {
     pub storage: OverlayStorageInfo,
 }
 
+fn resolve_claude_apply_provider(
+    local_settings: &crate::storage::local::LocalSettings,
+    real_provider: crate::provider::Provider,
+) -> Result<crate::provider::Provider, AppError> {
+    let in_proxy_takeover = local_settings
+        .proxy_takeover
+        .as_ref()
+        .is_some_and(|takeover| takeover.cli_ids.iter().any(|cli_id| cli_id == "claude"));
+
+    if !in_proxy_takeover {
+        return Ok(real_provider);
+    }
+
+    let port = crate::proxy::proxy_port_for_cli("claude").ok_or_else(|| {
+        AppError::Validation("Claude 代理端口未配置，无法保留代理接管配置".to_string())
+    })?;
+
+    Ok(crate::commands::proxy::make_proxy_provider(
+        "claude",
+        port,
+        &real_provider,
+    ))
+}
+
 // ============================================================
 // apply 核心实现
 // ============================================================
@@ -125,10 +149,8 @@ pub fn apply_claude_settings_overlay(
     };
 
     // 2. 校验 overlay：必须是合法 JSON 且 root 为 object
-    let overlay_val: serde_json::Value =
-        serde_json::from_str(&overlay_text).map_err(|e| {
-            AppError::Validation(format!("overlay JSON 不合法: {}", e))
-        })?;
+    let overlay_val: serde_json::Value = serde_json::from_str(&overlay_text)
+        .map_err(|e| AppError::Validation(format!("overlay JSON 不合法: {}", e)))?;
     if !overlay_val.is_object() {
         return Err(AppError::Validation(
             "overlay JSON root 必须是 object".to_string(),
@@ -161,6 +183,7 @@ pub fn apply_claude_settings_overlay(
         let providers_dir = crate::storage::icloud::get_icloud_providers_dir()?;
         match crate::storage::icloud::get_provider_in(&providers_dir, provider_id) {
             Ok(provider) => {
+                let provider = resolve_claude_apply_provider(&local_settings, provider)?;
                 let adapter = crate::adapter::claude::ClaudeAdapter::new();
                 adapter.patch(&provider)
             }
@@ -201,7 +224,9 @@ pub fn apply_claude_settings_overlay(
 }
 
 /// 无活跃 Provider 时：直接将 overlay 合并到 settings.json，但 strip 保护字段。
-fn apply_overlay_without_provider(overlay_text: &str) -> Result<crate::adapter::PatchResult, AppError> {
+fn apply_overlay_without_provider(
+    overlay_text: &str,
+) -> Result<crate::adapter::PatchResult, AppError> {
     use crate::adapter::json_merge::{merge_with_null_delete, strip_protected_fields};
     use crate::storage::atomic_write;
     use std::fs;
@@ -217,10 +242,7 @@ fn apply_overlay_without_provider(overlay_text: &str) -> Result<crate::adapter::
             source: e,
         })?;
         serde_json::from_str::<serde_json::Value>(&content).map_err(|_| {
-            AppError::Validation(format!(
-                "现有 {} 不是合法 JSON",
-                settings_path.display()
-            ))
+            AppError::Validation(format!("现有 {} 不是合法 JSON", settings_path.display()))
         })?;
         content
     } else {
@@ -228,15 +250,13 @@ fn apply_overlay_without_provider(overlay_text: &str) -> Result<crate::adapter::
     };
 
     // 解析 overlay 并 strip 保护字段
-    let overlay_val: serde_json::Value = serde_json::from_str(overlay_text).map_err(|e| {
-        AppError::Validation(format!("overlay JSON 不合法: {}", e))
-    })?;
+    let overlay_val: serde_json::Value = serde_json::from_str(overlay_text)
+        .map_err(|e| AppError::Validation(format!("overlay JSON 不合法: {}", e)))?;
     let strip_result = strip_protected_fields(&overlay_val)?;
 
     // 深度合并
-    let mut base: serde_json::Value = serde_json::from_str(&existing).map_err(|_| {
-        AppError::Validation("解析 settings JSON 失败".to_string())
-    })?;
+    let mut base: serde_json::Value = serde_json::from_str(&existing)
+        .map_err(|_| AppError::Validation("解析 settings JSON 失败".to_string()))?;
     merge_with_null_delete(&mut base, &strip_result.overlay)?;
 
     // 写入
@@ -297,8 +317,7 @@ fn deliver_notification(
 /// 读取 Claude settings overlay 文件内容及存储信息。
 /// 文件不存在时 content 为 null，不报错。
 #[tauri::command]
-pub fn get_claude_settings_overlay(
-) -> Result<GetClaudeSettingsOverlayResponse, AppError> {
+pub fn get_claude_settings_overlay() -> Result<GetClaudeSettingsOverlayResponse, AppError> {
     let (content, storage) = read_claude_settings_overlay()?;
     Ok(GetClaudeSettingsOverlayResponse { content, storage })
 }
@@ -313,9 +332,8 @@ pub fn set_claude_settings_overlay(
 ) -> Result<SetClaudeSettingsOverlayResponse, AppError> {
     // 1. JSON 校验：必须是合法 JSON 且 root 为 object（空字符串允许清空）
     if !overlay_json.trim().is_empty() {
-        let value: serde_json::Value = serde_json::from_str(&overlay_json).map_err(|e| {
-            AppError::Validation(format!("overlay_json 不是合法 JSON: {}", e))
-        })?;
+        let value: serde_json::Value = serde_json::from_str(&overlay_json)
+            .map_err(|e| AppError::Validation(format!("overlay_json 不是合法 JSON: {}", e)))?;
         if !value.is_object() {
             return Err(AppError::Validation(
                 "overlay_json 的 root 必须是 JSON object".to_string(),
@@ -355,9 +373,7 @@ pub fn set_claude_settings_overlay(
 /// 前端一般不直接调用此命令（保存时由 set_claude_settings_overlay 内部触发）。
 /// 此命令主要供调试或特殊场景使用。
 #[tauri::command]
-pub fn apply_claude_settings_overlay_cmd(
-    app_handle: tauri::AppHandle,
-) -> Result<(), AppError> {
+pub fn apply_claude_settings_overlay_cmd(app_handle: tauri::AppHandle) -> Result<(), AppError> {
     apply_claude_settings_overlay(&app_handle, ApplySource::Save)
 }
 
@@ -369,4 +385,56 @@ pub fn take_claude_overlay_startup_notifications(
 ) -> Result<Vec<ClaudeOverlayApplyNotification>, AppError> {
     let queue = app_handle.state::<ClaudeOverlayStartupNotificationQueue>();
     Ok(queue.take_all())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_claude_apply_provider;
+    use crate::provider::{ProtocolType, Provider};
+    use crate::storage::local::{LocalSettings, ProxyTakeover};
+
+    fn test_provider() -> Provider {
+        Provider {
+            id: "p1".to_string(),
+            cli_id: "claude".to_string(),
+            name: "Test Provider".to_string(),
+            protocol_type: ProtocolType::Anthropic,
+            api_key: "sk-real-key".to_string(),
+            base_url: "https://api.anthropic.com".to_string(),
+            model: "claude-sonnet-4-20250514".to_string(),
+            model_config: None,
+            notes: None,
+            test_model: None,
+            upstream_model: None,
+            upstream_model_map: None,
+            created_at: 0,
+            updated_at: 0,
+            schema_version: 1,
+        }
+    }
+
+    #[test]
+    fn test_resolve_claude_apply_provider_uses_real_provider_in_direct_mode() {
+        let settings = LocalSettings::default();
+
+        let resolved = resolve_claude_apply_provider(&settings, test_provider()).unwrap();
+
+        assert_eq!(resolved.api_key, "sk-real-key");
+        assert_eq!(resolved.base_url, "https://api.anthropic.com");
+    }
+
+    #[test]
+    fn test_resolve_claude_apply_provider_preserves_proxy_takeover_credentials() {
+        let mut settings = LocalSettings::default();
+        settings.proxy_takeover = Some(ProxyTakeover {
+            cli_ids: vec!["claude".to_string()],
+        });
+
+        let resolved = resolve_claude_apply_provider(&settings, test_provider()).unwrap();
+
+        assert_eq!(resolved.api_key, "PROXY_MANAGED");
+        assert_eq!(resolved.base_url, "http://127.0.0.1:15800");
+        assert_eq!(resolved.model, "claude-sonnet-4-20250514");
+        assert!(matches!(resolved.protocol_type, ProtocolType::Anthropic));
+    }
 }

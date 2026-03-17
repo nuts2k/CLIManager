@@ -229,7 +229,7 @@ fn get_adapter_for_cli(
 }
 
 /// 构造代理专用 Provider（临时，不保存到 iCloud）
-fn make_proxy_provider(cli_id: &str, port: u16, real_provider: &Provider) -> Provider {
+pub(crate) fn make_proxy_provider(cli_id: &str, port: u16, real_provider: &Provider) -> Provider {
     let (protocol_type, base_url) = match cli_id {
         "codex" => (
             ProtocolType::OpenAiChatCompletions,
