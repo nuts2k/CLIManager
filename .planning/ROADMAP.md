@@ -95,7 +95,7 @@
 **Success Criteria** (what must be TRUE):
   1. 用户在 Settings → Advanced → Claude 小节能编辑多行 JSON overlay，并在保存时获得 JSON 校验：非法 JSON 或 root 非 object 会给出明确错误提示且拒绝保存。
   2. 用户保存 overlay 后会立即 apply 到 `~/.claude/settings.json`，并按深度合并规则生效：object 递归合并、array 整体替换、scalar 覆盖；overlay 中将 key 设为 null 时会删除目标文件中的对应 key。
-  3. 无论 overlay 如何设置，`env.ANTHROPIC_AUTH_TOKEN` 与 `env.ANTHROPIC_BASE_URL` 的最终值始终以 Provider/Proxy 写入为准；当 overlay 包含这些保护字段时会被忽略，且用户能在 UI 中看到“该字段由 Provider/Proxy 管理，不可覆盖”的提示。
+  3. 无论 overlay 如何设置，`env.ANTHROPIC_AUTH_TOKEN` 与 `env.ANTHROPIC_BASE_URL` 的最终值始终以 Provider/Proxy 写入为准；当 overlay 包含这些保护字段时会被忽略，且用户能在 UI 中看到"该字段由 Provider/Proxy 管理，不可覆盖"的提示。
   4. overlay 会被可靠持久化：iCloud 可用时写入可同步位置，不可用时自动降级写入本地目录；用户在 UI 中可以清楚看到当前存放位置（iCloud / 本地降级）以及是否跨设备同步。
   5. 自动对齐机制可观察且安全：应用启动时若 overlay 存在会 best-effort apply（失败不阻断启动但可通过日志/通知获知）；iCloud 同步导致 overlay 变更时 watcher 会自动触发 apply；当 overlay 文件或 `~/.claude/settings.json` 非法时会返回可见错误且不会静默覆盖/写坏原文件。
 **Plans**: 4 plans
@@ -114,7 +114,10 @@ Plans:
   1. 开发者运行 `cargo test` 时，单元测试覆盖深度合并规则（递归合并/数组替换/标量覆盖/null 删除）并全部通过。
   2. 开发者运行 `cargo test` 时，测试能证明保护字段永远优先：overlay 尝试覆盖 `env.ANTHROPIC_AUTH_TOKEN` / `env.ANTHROPIC_BASE_URL` 不得生效，并全部通过。
   3. 开发者运行集成测试时，能证明 ClaudeAdapter 的 surgical patch 行为仍然成立，同时 overlay 注入的额外 env 字段能被写入且不影响凭据/模型字段 patch。
-**Plans**: TBD
+**Plans**: 1 plans
+
+Plans:
+- [ ] 25-01-PLAN.md — 审计并补充 overlay 测试边界用例（深度合并/保护字段/集成）
 
 ## Progress
 
@@ -144,8 +147,8 @@ Plans:
 | 22. 应用图标 | v2.3 | 2/2 | Complete | 2026-03-15 |
 | 23. Anthropic 模型映射 | v2.4 | 2/2 | Complete | 2026-03-15 |
 | 24. Claude settings overlay end-to-end | 4/4 | Complete   | 2026-03-17 | - |
-| 25. 测试覆盖 | v2.5 | 0/0 | Not started | - |
+| 25. 测试覆盖 | v2.5 | 0/1 | Not started | - |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*
-*Last updated: 2026-03-16 — v2.5 roadmap revised (Phase 24-25)*
+*Last updated: 2026-03-17 — Phase 25 plan created*
