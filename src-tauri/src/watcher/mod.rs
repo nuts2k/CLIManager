@@ -14,47 +14,134 @@ pub struct ProvidersChangedPayload {
     pub repatched: bool,
 }
 
-/// Start the file watcher on the iCloud providers directory.
+/// overlay 文件名（不含目录）
+const OVERLAY_FILE_NAME: &str = "claude-settings-overlay.json";
+
+/// Start the file watcher on the iCloud providers directory and config directory.
 /// This watches for .json file changes and emits Tauri events.
 pub fn start_file_watcher(app_handle: AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let providers_dir = crate::storage::icloud::get_icloud_providers_dir()?;
+    let (config_dir, _) = crate::storage::icloud::get_icloud_config_dir()?;
 
     let handle = app_handle.clone();
-    let watch_path = providers_dir.clone();
 
     let mut debouncer = notify_debouncer_mini::new_debouncer(
         std::time::Duration::from_millis(500),
         move |result: Result<Vec<DebouncedEvent>, notify::Error>| match result {
-            Ok(events) => process_events(events, &handle),
+            Ok(events) => process_events(events, &handle, &providers_dir, &config_dir),
             Err(e) => log::error!("File watcher error: {:?}", e),
         },
     )?;
 
-    // Watch directory (non-recursive, providers are flat files)
+    // 获取路径（用于 watch 注册，debouncer 回调中的引用已被 move）
+    let providers_dir_watch = crate::storage::icloud::get_icloud_providers_dir()?;
+    let (config_dir_watch, _) = crate::storage::icloud::get_icloud_config_dir()?;
+
+    // Watch providers 目录（非递归，flat files）
     debouncer
         .watcher()
-        .watch(&watch_path, notify::RecursiveMode::NonRecursive)?;
+        .watch(&providers_dir_watch, notify::RecursiveMode::NonRecursive)?;
+
+    // Watch config 目录（非递归，仅监听 overlay 文件）
+    if config_dir_watch != providers_dir_watch {
+        debouncer
+            .watcher()
+            .watch(&config_dir_watch, notify::RecursiveMode::NonRecursive)?;
+    }
 
     // Keep the debouncer alive for the app lifetime
     std::mem::forget(debouncer);
 
-    log::info!("File watcher started on {:?}", providers_dir);
+    log::info!(
+        "File watcher started on providers={:?}, config={:?}",
+        providers_dir_watch,
+        config_dir_watch
+    );
     Ok(())
 }
 
-/// Process debounced file events: filter, deduplicate, and emit Tauri event.
-fn process_events(events: Vec<DebouncedEvent>, app_handle: &AppHandle) {
+/// Process debounced file events: dispatch to provider or overlay handler.
+fn process_events(
+    events: Vec<DebouncedEvent>,
+    app_handle: &AppHandle,
+    providers_dir: &PathBuf,
+    config_dir: &PathBuf,
+) {
     let tracker = app_handle.state::<SelfWriteTracker>();
-    let changed_files = filter_and_dedup_events(&events, |path| tracker.is_self_write(path));
 
-    if changed_files.is_empty() {
-        return;
+    // 分别收集 providers 变更 与 overlay 变更
+    let mut provider_changed_files: Vec<String> = Vec::new();
+    let mut overlay_changed = false;
+    let mut seen_providers = HashSet::new();
+
+    for event in &events {
+        let path = &event.path;
+
+        // 只处理 .json 文件
+        if !path.extension().is_some_and(|ext| ext == "json") {
+            continue;
+        }
+
+        // 跳过自写事件
+        if tracker.is_self_write(path) {
+            continue;
+        }
+
+        // 判断文件来源目录
+        let is_in_config = path.parent().map_or(false, |p| p == config_dir.as_path());
+        let is_in_providers = path.parent().map_or(false, |p| p == providers_dir.as_path());
+
+        if is_in_config {
+            // config 目录：只处理 overlay 文件名
+            if path.file_name().and_then(|n| n.to_str()) == Some(OVERLAY_FILE_NAME) {
+                overlay_changed = true;
+            }
+        } else if is_in_providers {
+            // providers 目录：按 stem 去重
+            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                if seen_providers.insert(stem.to_string()) {
+                    provider_changed_files.push(stem.to_string());
+                }
+            }
+        }
+        // 若 providers_dir == config_dir（降级场景），再做文件名区分
+        if providers_dir == config_dir {
+            if path.file_name().and_then(|n| n.to_str()) == Some(OVERLAY_FILE_NAME) {
+                overlay_changed = true;
+                // 从 provider 变更列表中移除 overlay 文件 stem（避免把 overlay 当 provider 处理）
+                provider_changed_files.retain(|s| s != "claude-settings-overlay");
+                seen_providers.remove("claude-settings-overlay");
+            }
+        }
     }
 
-    let handle = app_handle.clone();
-    tauri::async_runtime::spawn(async move {
-        process_provider_changes(handle, changed_files).await;
-    });
+    // 处理 providers 变更
+    if !provider_changed_files.is_empty() {
+        let handle = app_handle.clone();
+        let files = provider_changed_files.clone();
+        tauri::async_runtime::spawn(async move {
+            process_provider_changes(handle, files).await;
+        });
+    }
+
+    // 处理 overlay 变更
+    if overlay_changed {
+        let handle = app_handle.clone();
+        tauri::async_runtime::spawn(async move {
+            process_overlay_change(handle).await;
+        });
+    }
+}
+
+/// watcher 检测到 overlay 文件变更，触发 apply（best-effort）
+async fn process_overlay_change(app_handle: AppHandle) {
+    log::info!("Overlay 文件变更，触发 watcher apply");
+    if let Err(e) = crate::commands::claude_settings::apply_claude_settings_overlay(
+        &app_handle,
+        crate::commands::claude_settings::ApplySource::Watcher,
+    ) {
+        log::error!("watcher overlay apply 失败: {}", e);
+    }
 }
 
 async fn process_provider_changes(app_handle: AppHandle, changed_files: Vec<String>) {

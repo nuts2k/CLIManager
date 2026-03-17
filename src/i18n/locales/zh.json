@@ -130,6 +130,16 @@
     "repatchFailed": "\u540c\u6b65\u540e\u81ea\u52a8\u66f4\u65b0 CLI \u914d\u7f6e\u5931\u8d25",
     "repatchSuccess": "CLI \u914d\u7f6e\u5df2\u81ea\u52a8\u66f4\u65b0"
   },
+  "claudeOverlayApply": {
+    "sourceLabel": {
+      "save": "保存",
+      "startup": "启动",
+      "watcher": "同步"
+    },
+    "success": "Overlay 已应用（{{source}}）",
+    "failed": "Overlay 应用失败（{{source}}）：{{error}}",
+    "protectedFieldsIgnored": "以下保护字段已被忽略（{{source}}）：{{paths}}"
+  },
   "import": {
     "title": "\u5bfc\u5165\u73b0\u6709\u914d\u7f6e",
     "importSelected": "\u5bfc\u5165\u5df2\u9009\u9879",

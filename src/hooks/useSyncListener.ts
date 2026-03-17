@@ -2,6 +2,11 @@ import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import {
+  takeClaudeOverlayStartupNotifications,
+  type ClaudeOverlayApplyNotification,
+  type ClaudeOverlayApplySource,
+} from "@/lib/tauri";
 
 interface ProvidersChangedPayload {
   changed_files: string[];
@@ -21,6 +26,76 @@ export function useSyncListener(
   const { t } = useTranslation();
 
   useEffect(() => {
+    // ============================================================
+    // 共享 overlay 通知处理 helper（供实时事件与 startup replay 共用）
+    // ============================================================
+    const sourceLabel = (source: ClaudeOverlayApplySource): string =>
+      t(`claudeOverlayApply.sourceLabel.${source}`);
+
+    const showClaudeOverlayNotification = (
+      notification: ClaudeOverlayApplyNotification,
+    ) => {
+      const src = sourceLabel(notification.source);
+
+      switch (notification.kind) {
+        case "success":
+          toast.success(t("claudeOverlayApply.success", { source: src }), {
+            duration: 3000,
+          });
+          // apply 成功后刷新 settings（settings.json 已变）
+          refreshSettings();
+          break;
+
+        case "failed":
+          toast.error(
+            t("claudeOverlayApply.failed", {
+              source: src,
+              error: notification.error ?? "unknown error",
+            }),
+            { duration: 6000 },
+          );
+          console.error("Claude overlay apply failed:", notification);
+          break;
+
+        case "protected_fields_ignored":
+          toast.warning(
+            t("claudeOverlayApply.protectedFieldsIgnored", {
+              source: src,
+              paths: (notification.paths ?? []).join(", "),
+            }),
+            { duration: 5000 },
+          );
+          break;
+      }
+    };
+
+    // ============================================================
+    // 实时事件监听：save / watcher 触发的通知
+    // ============================================================
+    const unlistenOverlaySuccess = listen<ClaudeOverlayApplyNotification>(
+      "claude-overlay-apply-success",
+      (event) => {
+        showClaudeOverlayNotification(event.payload);
+      },
+    );
+
+    const unlistenOverlayFailed = listen<ClaudeOverlayApplyNotification>(
+      "claude-overlay-apply-failed",
+      (event) => {
+        showClaudeOverlayNotification(event.payload);
+      },
+    );
+
+    const unlistenOverlayProtected = listen<ClaudeOverlayApplyNotification>(
+      "claude-overlay-protected-fields-ignored",
+      (event) => {
+        showClaudeOverlayNotification(event.payload);
+      },
+    );
+
+    // ============================================================
+    // providers / sync 事件监听（现有逻辑）
+    // ============================================================
     const unlistenProviders = listen<ProvidersChangedPayload>(
       "providers-changed",
       async (event) => {
@@ -62,10 +137,27 @@ export function useSyncListener(
       },
     );
 
+    // ============================================================
+    // startup 缓存通知 take/replay：三个实时 listener 注册完成后拉取
+    // ============================================================
+    // 因为后端 take 具备清空语义，effect 因语言切换重跑时不会重复弹旧 toast。
+    takeClaudeOverlayStartupNotifications()
+      .then((notifications) => {
+        for (const notification of notifications) {
+          showClaudeOverlayNotification(notification);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to take startup overlay notifications:", err);
+      });
+
     return () => {
       unlistenProviders.then((fn) => fn());
       unlistenActiveProvider.then((fn) => fn());
       unlistenRepatchFail.then((fn) => fn());
+      unlistenOverlaySuccess.then((fn) => fn());
+      unlistenOverlayFailed.then((fn) => fn());
+      unlistenOverlayProtected.then((fn) => fn());
     };
   }, [refreshProviders, refreshSettings, t]);
 }

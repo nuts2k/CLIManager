@@ -99,3 +99,28 @@ export async function setClaudeSettingsOverlay(
 ): Promise<{ storage: ClaudeSettingsOverlayStorage }> {
   return invoke("set_claude_settings_overlay", { overlayJson });
 }
+
+// ============================================================
+// Overlay apply 通知类型（与后端 ClaudeOverlayApplyNotification 对应）
+// ============================================================
+
+export type ClaudeOverlayApplyNotificationKind =
+  | "success"
+  | "failed"
+  | "protected_fields_ignored";
+
+export type ClaudeOverlayApplySource = "save" | "startup" | "watcher";
+
+export type ClaudeOverlayApplyNotification = {
+  kind: ClaudeOverlayApplyNotificationKind;
+  source: ClaudeOverlayApplySource;
+  settings_path?: string;
+  error?: string;
+  paths?: string[];
+};
+
+/// 一次性拉取并清空 startup 期间积累的 overlay apply 通知（take 语义）。
+/// useSyncListener 挂载完成后调用，保证 startup 结果不因时序丢失。
+export async function takeClaudeOverlayStartupNotifications(): Promise<ClaudeOverlayApplyNotification[]> {
+  return invoke("take_claude_overlay_startup_notifications");
+}

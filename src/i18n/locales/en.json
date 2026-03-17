@@ -130,6 +130,16 @@
     "repatchFailed": "Failed to update CLI config after sync",
     "repatchSuccess": "CLI config auto-updated"
   },
+  "claudeOverlayApply": {
+    "sourceLabel": {
+      "save": "save",
+      "startup": "startup",
+      "watcher": "sync"
+    },
+    "success": "Overlay applied ({{source}})",
+    "failed": "Overlay apply failed ({{source}}): {{error}}",
+    "protectedFieldsIgnored": "Protected fields ignored ({{source}}): {{paths}}"
+  },
   "import": {
     "title": "Import Existing Configs",
     "importSelected": "Import Selected",
