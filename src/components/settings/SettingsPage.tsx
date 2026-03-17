@@ -167,7 +167,7 @@ export function SettingsPage({ onBack, onShowImport }: SettingsPageProps) {
       try {
         const state = await getClaudeSettingsOverlay();
         if (!cancelled) {
-          setOverlayJson(state.overlay_json ?? "");
+          setOverlayJson(state.content ?? "");
           setOverlayStorageInfo(state.storage);
         }
       } catch (err) {
@@ -210,7 +210,7 @@ export function SettingsPage({ onBack, onShowImport }: SettingsPageProps) {
       await setClaudeSettingsOverlay(overlayJson);
       // 保存成功后刷新状态
       const state = await getClaudeSettingsOverlay();
-      setOverlayJson(state.overlay_json ?? "");
+      setOverlayJson(state.content ?? "");
       setOverlayStorageInfo(state.storage);
       toast.success(t("settings.claudeOverlay.saveSuccess"));
     } catch (err) {

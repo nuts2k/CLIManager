@@ -86,7 +86,7 @@ export type ClaudeSettingsOverlayStorage = {
 };
 
 export type ClaudeSettingsOverlayState = {
-  overlay_json: string | null;
+  content: string | null;
   storage: ClaudeSettingsOverlayStorage;
 };
 
