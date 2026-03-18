@@ -219,6 +219,26 @@
       "title": "No traffic records",
       "description": "Enable proxy and send requests to see traffic logs here"
     },
-    "statsBasis": "Based on current cache"
+    "statsBasis": "Based on current cache",
+    "tabLogs": "Live Logs",
+    "tabStats": "Analytics",
+    "analysis": {
+      "range24h": "24h",
+      "range7d": "7d",
+      "providerLeaderboard": "Provider Ranking",
+      "cacheLeaderboard": "Cache Hit Rate Ranking",
+      "colProvider": "Provider",
+      "colRequests": "Requests",
+      "colTokens": "Tokens",
+      "colSuccessRate": "Success Rate",
+      "colAvgTtfb": "Avg TTFB",
+      "colAvgTps": "Avg TPS",
+      "colCacheTriggered": "Cache Triggered",
+      "colCacheHitRate": "Hit Rate",
+      "colCacheReadTokens": "Cache Read Tokens",
+      "colTotalTokens": "Total Tokens",
+      "noData": "No analytics data yet",
+      "noDataDesc": "Analytics will appear here once traffic logs are recorded"
+    }
   }
 }

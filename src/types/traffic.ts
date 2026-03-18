@@ -1,6 +1,32 @@
 // TrafficLog 接口 — 与后端 TrafficLogPayload 字段一一对应（含 type 字段）
 // 后端来源：src-tauri/src/traffic/log.rs:38-60
 
+/** 按 Provider 聚合统计（对应后端 rollup.rs 的 ProviderStat） */
+export interface ProviderStat {
+  provider_name: string;
+  request_count: number;
+  success_count: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  cache_triggered_count: number;
+  cache_hit_count: number;
+  total_cache_read_tokens: number;
+  sum_ttfb_ms: number;
+  sum_duration_ms: number;
+}
+
+/** 按时间聚合趋势点（对应后端 rollup.rs 的 TimeStat） */
+export interface TimeStat {
+  /** "HH:00" 或 "YYYY-MM-DD" */
+  label: string;
+  request_count: number;
+  /** input + output 合计 */
+  total_tokens: number;
+}
+
+/** 统计时间范围类型 */
+export type TimeRange = "24h" | "7d";
+
 export interface TrafficLog {
   /** 事件类型：新增 / 更新 / 历史 */
   type: "new" | "update" | "history";
