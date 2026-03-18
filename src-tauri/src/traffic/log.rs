@@ -359,6 +359,124 @@ mod tests {
         assert!(log.error_message.is_none(), "error_message 应为 None");
     }
 
+    /// Test: insert 流式记录（token=None），update_streaming_log 填充后 query 验证字段正确
+    #[test]
+    fn test_update_streaming_log_fills_tokens() {
+        let db = make_test_db();
+
+        // 插入一条流式记录（token 字段全为 None）
+        let entry = LogEntry {
+            created_at: 1_700_000_000_000,
+            provider_name: "test-provider".to_string(),
+            cli_id: "claude".to_string(),
+            method: "POST".to_string(),
+            path: "/v1/messages".to_string(),
+            status_code: Some(200),
+            is_streaming: 1,
+            request_model: Some("claude-3-5-sonnet".to_string()),
+            upstream_model: None,
+            protocol_type: "anthropic".to_string(),
+            input_tokens: None,
+            output_tokens: None,
+            cache_creation_tokens: None,
+            cache_read_tokens: None,
+            ttfb_ms: None,
+            duration_ms: None,
+            stop_reason: None,
+            error_message: None,
+        };
+        let id = db.insert_request_log(&entry).unwrap();
+
+        // UPDATE 填充 token/ttfb/duration/stop_reason
+        let data = StreamTokenData {
+            input_tokens: Some(100),
+            output_tokens: Some(50),
+            cache_creation_tokens: Some(10),
+            cache_read_tokens: Some(5),
+            stop_reason: Some("end_turn".to_string()),
+        };
+        db.update_streaming_log(id, &data, Some(120), Some(500))
+            .unwrap();
+
+        // query 验证字段正确
+        let logs = db.query_recent_logs(10).unwrap();
+        assert_eq!(logs.len(), 1);
+        let log = &logs[0];
+        assert_eq!(log.input_tokens, Some(100));
+        assert_eq!(log.output_tokens, Some(50));
+        assert_eq!(log.cache_creation_tokens, Some(10));
+        assert_eq!(log.cache_read_tokens, Some(5));
+        assert_eq!(log.stop_reason, Some("end_turn".to_string()));
+        assert_eq!(log.ttfb_ms, Some(120));
+        assert_eq!(log.duration_ms, Some(500));
+    }
+
+    /// Test: UPDATE 不存在的 id 不 panic，返回 Ok（affected rows = 0）
+    #[test]
+    fn test_update_streaming_log_nonexistent_id() {
+        let db = make_test_db();
+
+        // 对不存在的 id=999 执行 UPDATE，应返回 Ok（0 行受影响）
+        let data = StreamTokenData {
+            input_tokens: Some(10),
+            output_tokens: Some(5),
+            cache_creation_tokens: None,
+            cache_read_tokens: None,
+            stop_reason: Some("end_turn".to_string()),
+        };
+        let result = db.update_streaming_log(999, &data, None, None);
+        assert!(result.is_ok(), "UPDATE 不存在的 id 应返回 Ok，实际: {:?}", result);
+    }
+
+    /// Test: UPDATE 部分字段为 None，验证字段按预期写入（None 字段写为 SQL NULL）
+    #[test]
+    fn test_update_streaming_log_partial_none() {
+        let db = make_test_db();
+
+        let entry = LogEntry {
+            created_at: 1_700_000_000_000,
+            provider_name: "test-provider".to_string(),
+            cli_id: "claude".to_string(),
+            method: "POST".to_string(),
+            path: "/v1/messages".to_string(),
+            status_code: Some(200),
+            is_streaming: 1,
+            request_model: None,
+            upstream_model: None,
+            protocol_type: "anthropic".to_string(),
+            input_tokens: None,
+            output_tokens: None,
+            cache_creation_tokens: None,
+            cache_read_tokens: None,
+            ttfb_ms: None,
+            duration_ms: None,
+            stop_reason: None,
+            error_message: None,
+        };
+        let id = db.insert_request_log(&entry).unwrap();
+
+        // cache_creation_tokens 和 cache_read_tokens 为 None
+        let data = StreamTokenData {
+            input_tokens: Some(50),
+            output_tokens: Some(20),
+            cache_creation_tokens: None,
+            cache_read_tokens: None,
+            stop_reason: Some("max_tokens".to_string()),
+        };
+        db.update_streaming_log(id, &data, Some(80), None).unwrap();
+
+        let logs = db.query_recent_logs(10).unwrap();
+        assert_eq!(logs.len(), 1);
+        let log = &logs[0];
+        assert_eq!(log.input_tokens, Some(50));
+        assert_eq!(log.output_tokens, Some(20));
+        assert!(log.cache_creation_tokens.is_none(), "cache_creation_tokens 应为 None");
+        assert!(log.cache_read_tokens.is_none(), "cache_read_tokens 应为 None");
+        assert_eq!(log.stop_reason, Some("max_tokens".to_string()));
+        assert_eq!(log.ttfb_ms, Some(80));
+        assert!(log.duration_ms.is_none(), "duration_ms 应为 None");
+    }
+
     /// Test: TrafficLogPayload 能从 LogEntry + id + type 构建，derive Serialize 正确
     #[test]
     fn test_traffic_log_payload_from_entry() {
