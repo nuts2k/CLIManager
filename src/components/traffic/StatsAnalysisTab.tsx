@@ -1,11 +1,13 @@
 import { useTranslation } from "react-i18next";
 import { BarChart2 } from "lucide-react";
 import { useTrafficStats } from "@/hooks/useTrafficStats";
+import { ProviderLeaderboard } from "./ProviderLeaderboard";
+import { CacheLeaderboard } from "./CacheLeaderboard";
 import type { TimeRange } from "@/types/traffic";
 
 /**
  * 统计分析 Tab 主面板。
- * - 顶部：24h / 7d Segment 按钮组
+ * - 顶部：24h / 7d Segment 按钮组（联动更新下方所有数据）
  * - 中区：供应商排行榜 + 缓存命中率排行榜（并排）
  * - 下区：趋势图占位（Plan 03 实现）
  */
@@ -59,17 +61,8 @@ export function StatsAnalysisTab() {
         <>
           {/* 排行榜区域：左右并排 */}
           <div className="grid grid-cols-2 gap-4">
-            {/* 占位：将在 Task 2b 替换为实际组件 */}
-            <div className="rounded-md border border-border p-3">
-              <div className="text-sm font-medium mb-2">
-                {t("traffic.analysis.providerLeaderboard")}
-              </div>
-            </div>
-            <div className="rounded-md border border-border p-3">
-              <div className="text-sm font-medium mb-2">
-                {t("traffic.analysis.cacheLeaderboard")}
-              </div>
-            </div>
+            <ProviderLeaderboard data={providerStats} />
+            <CacheLeaderboard data={providerStats} />
           </div>
 
           {/* 趋势图占位（Plan 03 实现） */}
