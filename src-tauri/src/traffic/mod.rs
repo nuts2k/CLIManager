@@ -1,5 +1,6 @@
 pub mod db;
 pub mod log;
+pub mod rollup;
 pub mod schema;
 
 use std::sync::Mutex;
