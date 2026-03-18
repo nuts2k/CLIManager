@@ -9,8 +9,8 @@ Requirements for v2.6 流量监控。Each maps to roadmap phases.
 
 ### 存储基础设施
 
-- [ ] **STORE-01**: 应用启动时自动初始化 SQLite 数据库（WAL 模式，路径在 app_data_dir，非 iCloud）
-- [ ] **STORE-02**: schema 迁移机制确保未来加字段安全（rusqlite_migration）
+- [x] **STORE-01**: 应用启动时自动初始化 SQLite 数据库（WAL 模式，路径在 app_data_dir，非 iCloud）
+- [x] **STORE-02**: schema 迁移机制确保未来加字段安全（rusqlite_migration）
 - [ ] **STORE-03**: 代理请求完成后通过 mpsc channel 非阻塞发送日志，后台 task 写入 SQLite 并 emit 到前端
 - [ ] **STORE-04**: 定时清理任务聚合超过 24h 的明细为每日统计，删除超过 7d 的统计数据
 
@@ -63,8 +63,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| STORE-01 | Phase 26 | Pending |
-| STORE-02 | Phase 26 | Pending |
+| STORE-01 | Phase 26 | Complete |
+| STORE-02 | Phase 26 | Complete |
 | STORE-03 | Phase 27 | Pending |
 | STORE-04 | Phase 30 | Pending |
 | COLLECT-01 | Phase 27 | Pending |

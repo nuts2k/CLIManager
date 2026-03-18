@@ -91,7 +91,7 @@
 
 **Milestone Goal:** 为代理模式增加请求日志记录、实时流量展示和统计分析能力
 
-- [ ] **Phase 26: SQLite 基础设施** — 初始化 traffic.db，建立两张表 schema 和连接管理
+- [x] **Phase 26: SQLite 基础设施** — 初始化 traffic.db，建立两张表 schema 和连接管理 (completed 2026-03-18)
 - [ ] **Phase 27: 日志写入管道** — handler 采集元数据经 mpsc channel 写入 SQLite 并 emit 到前端
 - [ ] **Phase 28: 流式 SSE Token 提取** — 三协议 SSE 流完全结束后提取完整 token 用量
 - [ ] **Phase 29: 前端流量监控页面** — 独立 TrafficPage，实时日志表格 + Provider 筛选 + 统计摘要卡片
@@ -107,7 +107,7 @@
   1. 应用启动后 `~/Library/Application Support/` 下出现 `traffic.db` 文件，路径不含 iCloud/Mobile Documents
   2. traffic.db 以 WAL 模式运行，`request_logs` 和 `daily_rollups` 两张表及索引均已创建
   3. schema 版本通过 rusqlite_migration user_version pragma 追踪，重复启动不会报错或重建表
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
 - [ ] 26-01-PLAN.md — SQLite 基础设施（依赖安装 + traffic 模块 + schema + 连接管理 + lib.rs 集成）
 
@@ -187,7 +187,7 @@ Plans:
 | 23. Anthropic 模型映射 | v2.4 | 2/2 | Complete | 2026-03-15 |
 | 24. Claude settings overlay end-to-end | v2.5 | 4/4 | Complete | 2026-03-17 |
 | 25. 测试覆盖 | v2.5 | 1/1 | Complete | 2026-03-17 |
-| 26. SQLite 基础设施 | v2.6 | 0/1 | Not started | - |
+| 26. SQLite 基础设施 | 1/1 | Complete   | 2026-03-18 | - |
 | 27. 日志写入管道 | v2.6 | 0/TBD | Not started | - |
 | 28. 流式 SSE Token 提取 | v2.6 | 0/TBD | Not started | - |
 | 29. 前端流量监控页面 | v2.6 | 0/TBD | Not started | - |
