@@ -150,7 +150,10 @@ Plans:
   3. 新请求完成时，日志条目无需刷新自动追加到表格顶部
   4. Provider 筛选下拉框可选择单个 Provider，表格即时过滤只显示该 Provider 的日志
   5. 页面顶部统计摘要卡片展示：总请求数、总 input token、总 output token、成功率
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 29-01-PLAN.md — 基础设施（类型定义 + Tauri 封装 + useTrafficLogs hook + 导航层扩展 + i18n key）
+- [ ] 29-02-PLAN.md — UI 组件（格式化工具 + 统计卡片 + Provider 筛选 + 日志表格 + 空状态 + 整合）
 
 ### Phase 30: 统计聚合与数据保留
 **Goal**: 历史统计数据按 Provider 和时间维度聚合可查，超期明细自动清理不占用磁盘，趋势图表可视化流量变化
@@ -195,10 +198,10 @@ Plans:
 | 25. 测试覆盖 | v2.5 | 1/1 | Complete | 2026-03-17 |
 | 26. SQLite 基础设施 | v2.6 | 1/1 | Complete | 2026-03-18 |
 | 27. 日志写入管道 | v2.6 | 2/2 | Complete | 2026-03-18 |
-| 28. 流式 SSE Token 提取 | 2/2 | Complete    | 2026-03-18 | - |
-| 29. 前端流量监控页面 | v2.6 | 0/TBD | Not started | - |
+| 28. 流式 SSE Token 提取 | v2.6 | 2/2 | Complete | 2026-03-18 |
+| 29. 前端流量监控页面 | v2.6 | 0/2 | Not started | - |
 | 30. 统计聚合与数据保留 | v2.6 | 0/TBD | Not started | - |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*
-*Last updated: 2026-03-18 — Phase 28 planned (2 plans)*
+*Last updated: 2026-03-18 — Phase 29 planned (2 plans)*
