@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.6
 milestone_name: 流量监控
-status: in-progress
-stopped_at: "Phase 30, Plan 01 complete"
-last_updated: "2026-03-18T13:51:00Z"
-last_activity: 2026-03-18 — Phase 30 Plan 01 executed (rollup_and_prune + 聚合查询)
+status: Phase 30 Plan 01 executed
+stopped_at: Completed 30-02-PLAN.md
+last_updated: "2026-03-18T14:00:58.324Z"
+last_activity: 2026-03-18 — Phase 30 Plan 02 complete (TrafficPage Tab 重构 + 排行榜组件)
 progress:
   total_phases: 5
   completed_phases: 4
-  total_plans: 8
-  completed_plans: 8
+  total_plans: 10
+  completed_plans: 9
   percent: 100
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 ## Current Position
 
 Phase: 30 of 30 (统计聚合与数据保留)
-Plan: 01 complete
-Status: Phase 30 Plan 01 executed
-Last activity: 2026-03-18 — Phase 30 Plan 01 complete (rollup_and_prune + 聚合查询接口)
+Plan: 02 complete
+Status: Phase 30 Plan 02 executed
+Last activity: 2026-03-18 — Phase 30 Plan 02 complete (TrafficPage Tab 重构 + 排行榜组件)
 
-Progress: [██████████] 100%
+Progress: [█████████░] 90%
 
 ## Performance Metrics
 
@@ -72,6 +72,7 @@ v2.6 关键决策（来自研究阶段）：
 - [Phase 30-01]: rollup_and_prune 使用 ON CONFLICT DO UPDATE SET 增量 upsert（非 INSERT OR REPLACE），防止多次 rollup 丢失历史累积数据
 - [Phase 30-01]: loop + tokio::time::sleep 定时任务模式（首次立即执行），比 tokio::interval 首次 tick 更清晰
 - [Phase 30-01]: query_provider_stats / query_time_trend 支持 24h（from request_logs）和 7d（from daily_rollups）两个数据源
+- [Phase 30-stats-rollup]: [Phase 30-02]: TrafficPage Tab 默认 logs（实时日志优先），5 张统计卡片仅在实时日志 Tab 显示；useTrafficStats hook 使用 cancelled flag 防止 timeRange 切换时 race condition
 
 ### Pending Todos
 
@@ -84,6 +85,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-18T13:51:00Z
-Stopped at: Phase 30 Plan 01 complete (30-01-PLAN.md)
+Last session: 2026-03-18T14:00:58.322Z
+Stopped at: Completed 30-02-PLAN.md
 Resume: `/gsd:execute-phase 30-stats-rollup` (if more plans) or milestone complete
