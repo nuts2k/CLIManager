@@ -92,7 +92,7 @@
 **Milestone Goal:** 为代理模式增加请求日志记录、实时流量展示和统计分析能力
 
 - [x] **Phase 26: SQLite 基础设施** — 初始化 traffic.db，建立两张表 schema 和连接管理 (completed 2026-03-18)
-- [ ] **Phase 27: 日志写入管道** — handler 采集元数据经 mpsc channel 写入 SQLite 并 emit 到前端
+- [x] **Phase 27: 日志写入管道** — handler 采集元数据经 mpsc channel 写入 SQLite 并 emit 到前端 (completed 2026-03-18)
 - [ ] **Phase 28: 流式 SSE Token 提取** — 三协议 SSE 流完全结束后提取完整 token 用量
 - [ ] **Phase 29: 前端流量监控页面** — 独立 TrafficPage，实时日志表格 + Provider 筛选 + 统计摘要卡片
 - [ ] **Phase 30: 统计聚合与数据保留** — rollup_and_prune 定时任务，按 Provider/时间聚合表格，趋势图表
@@ -121,7 +121,7 @@ Plans:
   3. 请求失败时日志记录含 error_message 字段；请求成功时含 stop_reason 字段
   4. SQLite 写入通过 mpsc channel 在后台 task 执行，不增加代理请求响应延迟
   5. 写入完成后前端可通过 `traffic-log` Tauri 事件接收到该日志条目
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [ ] 27-01-PLAN.md — 数据结构 + 写入管道 + 状态扩展（LogEntry、log_worker、mpsc channel、UpstreamTarget/ProxyState 扩展）
 - [ ] 27-02-PLAN.md — handler 埋点 + 非流式 token 提取（三协议 token 提取、计时、日志发送）
@@ -191,7 +191,7 @@ Plans:
 | 24. Claude settings overlay end-to-end | v2.5 | 4/4 | Complete | 2026-03-17 |
 | 25. 测试覆盖 | v2.5 | 1/1 | Complete | 2026-03-17 |
 | 26. SQLite 基础设施 | v2.6 | 1/1 | Complete | 2026-03-18 |
-| 27. 日志写入管道 | 1/2 | In Progress|  | - |
+| 27. 日志写入管道 | 2/2 | Complete   | 2026-03-18 | - |
 | 28. 流式 SSE Token 提取 | v2.6 | 0/TBD | Not started | - |
 | 29. 前端流量监控页面 | v2.6 | 0/TBD | Not started | - |
 | 30. 统计聚合与数据保留 | v2.6 | 0/TBD | Not started | - |

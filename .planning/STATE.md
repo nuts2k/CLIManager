@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.6
 milestone_name: 流量监控
 status: planning
-stopped_at: Completed 27-01-PLAN.md
-last_updated: "2026-03-18T04:36:17.312Z"
+stopped_at: Completed 27-02-PLAN.md
+last_updated: "2026-03-18T04:43:52.425Z"
 last_activity: 2026-03-17 — Roadmap created, 5 phases defined (26-30)
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 3
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -58,6 +58,8 @@ v2.6 关键决策（来自研究阶段）：
 - [Phase 26-sqlite]: dirs::data_local_dir() 用于 traffic.db 路径（非 iCloud），std::sync::Mutex<Connection> 单连接模型，TrafficDb 通过 Tauri manage() 注入，init_traffic_db 失败时降级运行
 - [Phase 27-01]: log_worker 使用 tauri::Manager trait（use tauri::{Emitter, Manager}）访问 try_state
 - [Phase 27-01]: ProxyState.log_tx 直接持有 Option<Sender<LogEntry>>（无需 Arc<RwLock>）；ProxyService.log_tx 使用 std::sync::RwLock
+- [Phase 27]: token 提取在 resp_value move 之前完成（直接调用协议专用函数）
+- [Phase 27]: method.clone() 传给 reqwest builder，保留 method 用于错误日志
 
 ### Pending Todos
 
@@ -70,6 +72,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-18T04:36:17.310Z
-Stopped at: Completed 27-01-PLAN.md
+Last session: 2026-03-18T04:43:52.423Z
+Stopped at: Completed 27-02-PLAN.md
 Resume: `/gsd:plan-phase 26`
