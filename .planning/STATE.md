@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.6
 milestone_name: 流量监控
-status: Phase 30 Plan 01 executed
-stopped_at: Completed 30-02-PLAN.md
-last_updated: "2026-03-18T14:00:58.324Z"
-last_activity: 2026-03-18 — Phase 30 Plan 02 complete (TrafficPage Tab 重构 + 排行榜组件)
+status: Phase 30 Plan 03 executed — v2.6 流量监控里程碑完成
+stopped_at: Completed 30-03-PLAN.md
+last_updated: "2026-03-18T14:08:00.000Z"
+last_activity: 2026-03-18 — Phase 30 Plan 03 complete (recharts 趋势图 + Phase 30 视觉验收通过)
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 10
-  completed_plans: 9
+  completed_plans: 10
   percent: 100
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-17)
 
 **Core value:** 切换 Provider 时只做 surgical patch（精确修改凭据和模型字段），绝不重写配置文件的其他内容
-**Current focus:** v2.6 流量监控 — Phase 30: 统计聚合与数据保留
+**Current focus:** v2.6 流量监控 — 已完成，Phase 30 全部 3 个 Plan 执行完毕
 
 ## Current Position
 
 Phase: 30 of 30 (统计聚合与数据保留)
-Plan: 02 complete
-Status: Phase 30 Plan 02 executed
-Last activity: 2026-03-18 — Phase 30 Plan 02 complete (TrafficPage Tab 重构 + 排行榜组件)
+Plan: 03 complete (Phase 30 全部 Plan 已完成)
+Status: Phase 30 Plan 03 executed — v2.6 流量监控里程碑完成
+Last activity: 2026-03-18 — Phase 30 Plan 03 complete (recharts 趋势图 + Phase 30 视觉验收通过)
 
-Progress: [█████████░] 90%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -73,6 +73,8 @@ v2.6 关键决策（来自研究阶段）：
 - [Phase 30-01]: loop + tokio::time::sleep 定时任务模式（首次立即执行），比 tokio::interval 首次 tick 更清晰
 - [Phase 30-01]: query_provider_stats / query_time_trend 支持 24h（from request_logs）和 7d（from daily_rollups）两个数据源
 - [Phase 30-stats-rollup]: [Phase 30-02]: TrafficPage Tab 默认 logs（实时日志优先），5 张统计卡片仅在实时日志 Tab 显示；useTrafficStats hook 使用 cancelled flag 防止 timeRange 切换时 race condition
+- [Phase 30-03]: recharts 双轴图：Bar 绑定左轴请求数，Line 绑定右轴 Token，ComposedChart 实现
+- [Phase 30-03]: 缺失时间点前端填充：buildHourlyData/buildDailyData 生成完整时间序列，后端数据覆盖对应项，缺失补0
 
 ### Pending Todos
 
@@ -85,6 +87,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-18T14:00:58.322Z
-Stopped at: Completed 30-02-PLAN.md
+Last session: 2026-03-18T14:07:08.086Z
+Stopped at: Completed 30-03-PLAN.md
 Resume: `/gsd:execute-phase 30-stats-rollup` (if more plans) or milestone complete
