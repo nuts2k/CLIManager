@@ -107,7 +107,9 @@
   1. 应用启动后 `~/Library/Application Support/` 下出现 `traffic.db` 文件，路径不含 iCloud/Mobile Documents
   2. traffic.db 以 WAL 模式运行，`request_logs` 和 `daily_rollups` 两张表及索引均已创建
   3. schema 版本通过 rusqlite_migration user_version pragma 追踪，重复启动不会报错或重建表
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 26-01-PLAN.md — SQLite 基础设施（依赖安装 + traffic 模块 + schema + 连接管理 + lib.rs 集成）
 
 ### Phase 27: 日志写入管道
 **Goal**: 每个代理请求完成后，非阻塞地将元数据（含非流式 token 用量、错误信息）写入 SQLite 并实时推送到前端
@@ -185,7 +187,7 @@
 | 23. Anthropic 模型映射 | v2.4 | 2/2 | Complete | 2026-03-15 |
 | 24. Claude settings overlay end-to-end | v2.5 | 4/4 | Complete | 2026-03-17 |
 | 25. 测试覆盖 | v2.5 | 1/1 | Complete | 2026-03-17 |
-| 26. SQLite 基础设施 | v2.6 | 0/TBD | Not started | - |
+| 26. SQLite 基础设施 | v2.6 | 0/1 | Not started | - |
 | 27. 日志写入管道 | v2.6 | 0/TBD | Not started | - |
 | 28. 流式 SSE Token 提取 | v2.6 | 0/TBD | Not started | - |
 | 29. 前端流量监控页面 | v2.6 | 0/TBD | Not started | - |
@@ -193,4 +195,4 @@
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*
-*Last updated: 2026-03-17 — v2.6 roadmap created*
+*Last updated: 2026-03-18 — Phase 26 planned (1 plan)*
