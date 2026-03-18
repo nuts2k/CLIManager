@@ -2292,4 +2292,124 @@ mod tests {
         assert!(forwarded.contains(&"content-type".to_string()));
         assert!(forwarded.contains(&"x-custom-header".to_string()));
     }
+
+    // ── Task 2：token 提取函数单元测试 ──
+
+    /// 验证 extract_anthropic_tokens 从完整 Anthropic 响应中正确提取所有字段
+    #[test]
+    fn test_extract_anthropic_tokens_full() {
+        let v = json!({
+            "id": "msg_test",
+            "type": "message",
+            "stop_reason": "end_turn",
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 42,
+                "cache_creation_input_tokens": 30,
+                "cache_read_input_tokens": 20
+            }
+        });
+        let (input, output, cc, cr, sr) = extract_anthropic_tokens(&v);
+        assert_eq!(input, Some(100));
+        assert_eq!(output, Some(42));
+        assert_eq!(cc, Some(30));
+        assert_eq!(cr, Some(20));
+        assert_eq!(sr, Some("end_turn".to_string()));
+    }
+
+    /// 验证 extract_anthropic_tokens 对缺少 usage 的 JSON 返回全 None
+    #[test]
+    fn test_extract_anthropic_tokens_no_usage() {
+        let v = json!({"id": "msg_test", "type": "message"});
+        let (input, output, cc, cr, sr) = extract_anthropic_tokens(&v);
+        assert_eq!(input, None);
+        assert_eq!(output, None);
+        assert_eq!(cc, None);
+        assert_eq!(cr, None);
+        assert_eq!(sr, None);
+    }
+
+    /// 验证 extract_openai_chat_tokens 从完整 OpenAI Chat Completions 响应中正确提取所有字段
+    #[test]
+    fn test_extract_openai_chat_tokens_full() {
+        let v = json!({
+            "id": "chatcmpl-test",
+            "object": "chat.completion",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "Hello"},
+                "finish_reason": "stop"
+            }],
+            "usage": {
+                "prompt_tokens": 50,
+                "completion_tokens": 25,
+                "total_tokens": 75,
+                "prompt_tokens_details": {
+                    "cached_tokens": 10
+                }
+            }
+        });
+        let (input, output, cc, cr, sr) = extract_openai_chat_tokens(&v);
+        assert_eq!(input, Some(50));
+        assert_eq!(output, Some(25));
+        assert_eq!(cc, None); // Chat Completions 无 cache_creation
+        assert_eq!(cr, Some(10));
+        assert_eq!(sr, Some("stop".to_string()));
+    }
+
+    /// 验证 extract_openai_chat_tokens 在缺少 prompt_tokens_details 时 cache_read 返回 None
+    #[test]
+    fn test_extract_openai_chat_tokens_no_cache() {
+        let v = json!({
+            "choices": [{
+                "finish_reason": "length"
+            }],
+            "usage": {
+                "prompt_tokens": 30,
+                "completion_tokens": 15
+            }
+        });
+        let (input, output, cc, cr, sr) = extract_openai_chat_tokens(&v);
+        assert_eq!(input, Some(30));
+        assert_eq!(output, Some(15));
+        assert_eq!(cc, None);
+        assert_eq!(cr, None); // 无 prompt_tokens_details
+        assert_eq!(sr, Some("length".to_string()));
+    }
+
+    /// 验证 extract_responses_tokens 正确提取 input/output，cache 字段为 None
+    #[test]
+    fn test_extract_responses_tokens() {
+        let v = json!({
+            "id": "resp_test",
+            "object": "response",
+            "usage": {
+                "input_tokens": 80,
+                "output_tokens": 35
+            }
+        });
+        let (input, output, cc, cr, sr) = extract_responses_tokens(&v);
+        assert_eq!(input, Some(80));
+        assert_eq!(output, Some(35));
+        assert_eq!(cc, None); // Phase 27 留 null
+        assert_eq!(cr, None); // Phase 27 留 null
+        assert_eq!(sr, None); // Responses API 无统一 stop_reason 字段
+    }
+
+    /// 验证 protocol_type_str 对三种 ProtocolType 返回正确的小写字符串
+    #[test]
+    fn test_protocol_type_str() {
+        assert_eq!(
+            protocol_type_str(&ProtocolType::Anthropic),
+            "anthropic"
+        );
+        assert_eq!(
+            protocol_type_str(&ProtocolType::OpenAiChatCompletions),
+            "open_ai_chat_completions"
+        );
+        assert_eq!(
+            protocol_type_str(&ProtocolType::OpenAiResponses),
+            "open_ai_responses"
+        );
+    }
 }
