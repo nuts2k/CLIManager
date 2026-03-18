@@ -23,6 +23,16 @@ pub struct LogEntry {
     pub error_message: Option<String>,
 }
 
+/// 流式请求 EOF 后回传的 token 数据
+#[derive(Debug, Clone)]
+pub struct StreamTokenData {
+    pub input_tokens: Option<i64>,
+    pub output_tokens: Option<i64>,
+    pub cache_creation_tokens: Option<i64>,
+    pub cache_read_tokens: Option<i64>,
+    pub stop_reason: Option<String>,
+}
+
 /// 流量日志事件 Payload：用于 Tauri emit，含 id + type + 19 列
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct TrafficLogPayload {
@@ -115,6 +125,42 @@ impl super::TrafficDb {
             ],
         )?;
         Ok(conn.last_insert_rowid())
+    }
+
+    /// 流式请求 stream 结束后更新 token/ttfb/duration 字段
+    ///
+    /// 按 rowid 定位行（insert_request_log 返回的 id），
+    /// 直接覆盖所有 7 个字段（流式请求初次 INSERT 时这些字段全为 None，UPDATE 时统一设置）。
+    pub fn update_streaming_log(
+        &self,
+        id: i64,
+        data: &StreamTokenData,
+        ttfb_ms: Option<i64>,
+        duration_ms: Option<i64>,
+    ) -> rusqlite::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE request_logs SET
+                input_tokens = ?1,
+                output_tokens = ?2,
+                cache_creation_tokens = ?3,
+                cache_read_tokens = ?4,
+                stop_reason = ?5,
+                ttfb_ms = ?6,
+                duration_ms = ?7
+             WHERE id = ?8",
+            rusqlite::params![
+                data.input_tokens,
+                data.output_tokens,
+                data.cache_creation_tokens,
+                data.cache_read_tokens,
+                data.stop_reason,
+                ttfb_ms,
+                duration_ms,
+                id,
+            ],
+        )?;
+        Ok(())
     }
 
     /// 查询最近 N 条日志，按 created_at 降序（最新在前）
