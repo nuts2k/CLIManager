@@ -62,11 +62,7 @@ fn is_sse_response(headers: &reqwest::header::HeaderMap) -> bool {
 /// - 退回默认：无精确匹配但存在 upstream_model 时使用 upstream_model
 /// - 保留原名：两者均为 None 时不修改 model 字段
 fn apply_upstream_model_mapping(mut body: Value, upstream: &UpstreamTarget) -> Value {
-    let original_model = body
-        .get("model")
-        .and_then(|m| m.as_str())
-        .unwrap_or("")
-        .to_string();
+    let original_model = extract_model_from_json_value(&body).unwrap_or_default();
 
     let mapped_model = if let Some(model_map) = &upstream.upstream_model_map {
         // 优先精确匹配
@@ -85,6 +81,18 @@ fn apply_upstream_model_mapping(mut body: Value, upstream: &UpstreamTarget) -> V
     }
 
     body
+}
+
+fn extract_model_from_json_value(body: &Value) -> Option<String> {
+    body.get("model")
+        .and_then(|m| m.as_str())
+        .map(|s| s.to_string())
+}
+
+fn extract_model_from_json_bytes(body_bytes: &[u8]) -> Option<String> {
+    serde_json::from_slice::<Value>(body_bytes)
+        .ok()
+        .and_then(|v| extract_model_from_json_value(&v))
 }
 
 /// 非流式 Anthropic 响应中将 model 字段替换回原始请求模型名
@@ -391,6 +399,7 @@ fn send_error_log(
     method: &axum::http::Method,
     path: &str,
     request_model: &Option<String>,
+    upstream_model: &Option<String>,
     is_streaming: bool,
     error: &ProxyError,
 ) {
@@ -404,7 +413,7 @@ fn send_error_log(
             status_code: None,
             is_streaming: if is_streaming { 1 } else { 0 },
             request_model: request_model.clone(),
-            upstream_model: upstream.upstream_model.clone(),
+            upstream_model: upstream_model.clone(),
             protocol_type: protocol_type_str(&upstream.protocol_type).to_string(),
             input_tokens: None,
             output_tokens: None,
@@ -456,13 +465,7 @@ pub async fn proxy_handler(
         .map_err(|e| ProxyError::Internal(format!("读取请求体失败: {}", e)))?;
 
     // 在 body_bytes 被 move 之前提取 request_model（用于日志）
-    let log_request_model: Option<String> = serde_json::from_slice::<Value>(&body_bytes)
-        .ok()
-        .and_then(|v| {
-            v.get("model")
-                .and_then(|m| m.as_str())
-                .map(|s| s.to_string())
-        });
+    let log_request_model = extract_model_from_json_bytes(&body_bytes);
 
     // 步骤 C 之后：协议路由分支
     let (upstream_url, final_body_bytes, response_mode) = match upstream.protocol_type {
@@ -560,6 +563,7 @@ pub async fn proxy_handler(
             (url, body_bytes, ResponseTranslationMode::Passthrough)
         }
     };
+    let log_upstream_model = extract_model_from_json_bytes(&final_body_bytes);
 
     // 步骤 E & F：构建 reqwest 请求，透传 headers（跳过 hop-by-hop + 替换凭据）
     let mut req_builder = state.http_client.request(method.clone(), &upstream_url);
@@ -617,6 +621,7 @@ pub async fn proxy_handler(
                 &method,
                 &path,
                 &log_request_model,
+                &log_upstream_model,
                 false,
                 &err,
             );
@@ -780,7 +785,7 @@ pub async fn proxy_handler(
         status_code: Some(status.as_u16() as i64),
         is_streaming: if upstream_is_sse { 1 } else { 0 },
         request_model: log_request_model,
-        upstream_model: upstream.upstream_model.clone(),
+        upstream_model: log_upstream_model,
         protocol_type: protocol_type_str(&upstream.protocol_type).to_string(),
         input_tokens: log_input_tokens,
         output_tokens: log_output_tokens,
@@ -1629,6 +1634,41 @@ mod tests {
         let body = json!({"model": "claude-3-5-sonnet-20241022", "messages": []});
         let result = apply_upstream_model_mapping(body, &upstream);
         assert_eq!(result["model"], "claude-3-5-sonnet-20241022");
+    }
+
+    #[test]
+    fn test_extract_model_from_json_bytes_returns_actual_mapped_model() {
+        let mut model_map = HashMap::new();
+        model_map.insert(
+            "claude-3-5-sonnet-20241022".to_string(),
+            "gpt-4o".to_string(),
+        );
+        let upstream = UpstreamTarget {
+            api_key: "key".to_string(),
+            base_url: "http://example.com".to_string(),
+            protocol_type: ProtocolType::OpenAiChatCompletions,
+            upstream_model: Some("gpt-4o-mini".to_string()),
+            upstream_model_map: Some(model_map),
+            provider_name: "test".to_string(),
+        };
+        let body = json!({"model": "claude-3-5-sonnet-20241022", "messages": []});
+        let mapped = apply_upstream_model_mapping(body, &upstream);
+        let mapped_bytes = serde_json::to_vec(&mapped).unwrap();
+
+        assert_eq!(
+            extract_model_from_json_bytes(&mapped_bytes),
+            Some("gpt-4o".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_model_from_json_bytes_preserves_passthrough_model() {
+        let body = br#"{"model":"claude-3-5-sonnet-20241022","messages":[]}"#;
+
+        assert_eq!(
+            extract_model_from_json_bytes(body),
+            Some("claude-3-5-sonnet-20241022".to_string())
+        );
     }
 
     #[tokio::test]

@@ -93,3 +93,26 @@ export function statusCodeClass(code: number | null): string {
   if (code >= 500 && code < 600) return "text-destructive";
   return "text-foreground";
 }
+
+/**
+ * 生成流量表中的模型展示文本。
+ * - request_model 与 upstream_model 不同时，显示 "a -> b"
+ * - 否则优先显示实际 upstream_model，再退回 request_model
+ * - 两者都为空时显示 "--"
+ */
+export function formatModelDisplay(
+  requestModel: string | null,
+  upstreamModel: string | null
+): string {
+  if (
+    requestModel &&
+    upstreamModel &&
+    requestModel.trim() !== "" &&
+    upstreamModel.trim() !== "" &&
+    requestModel !== upstreamModel
+  ) {
+    return `${requestModel} -> ${upstreamModel}`;
+  }
+
+  return upstreamModel ?? requestModel ?? "--";
+}

@@ -7,6 +7,7 @@ import {
   calcTps,
   statusCodeClass,
   formatTokenCount,
+  formatModelDisplay,
 } from "./formatters";
 
 interface TrafficTableProps {
@@ -136,7 +137,7 @@ export function TrafficTable({ logs }: TrafficTableProps) {
                 onClick={() => setExpandedId(isExpanded ? null : log.id)}
               >
                 <span className="text-sm truncate text-muted-foreground">
-                  {log.request_model ?? "--"}
+                  {formatModelDisplay(log.request_model, log.upstream_model)}
                 </span>
               </div>
 
