@@ -177,6 +177,13 @@ fn create_anthropic_reverse_model_stream(
 ) -> impl futures::stream::Stream<Item = Result<bytes::Bytes, std::io::Error>> + Send {
     async_stream::stream! {
         let mut token_tx = Some(token_tx);
+        // 分两阶段积累 token 数据：
+        // - message_start 事件提供 input_tokens + cache 字段
+        // - message_delta 事件提供 output_tokens + stop_reason
+        // 最终合并为一条 StreamTokenData 回传
+        let mut partial_input_tokens: Option<i64> = None;
+        let mut partial_cache_creation: Option<i64> = None;
+        let mut partial_cache_read: Option<i64> = None;
         let mut collected_token_data: Option<crate::traffic::log::StreamTokenData> = None;
         let mut buffer = Vec::new();
         futures::pin_mut!(upstream);
@@ -197,19 +204,35 @@ fn create_anthropic_reverse_model_stream(
                         let processed =
                             reverse_model_in_sse_line_bytes(&line_bytes, &original_model);
 
-                        // 检测 message_delta 事件中的 usage（Anthropic 原始格式）
+                        // 从 SSE data 行提取 token 数据
                         if let Ok(line_str) = std::str::from_utf8(&line_bytes) {
                             if let Some(json_str) = line_str.strip_prefix("data: ") {
                                 if let Ok(val) = serde_json::from_str::<serde_json::Value>(json_str) {
-                                    if val.get("type").and_then(|t| t.as_str()) == Some("message_delta") {
-                                        let usage = val.get("usage");
-                                        collected_token_data = Some(crate::traffic::log::StreamTokenData {
-                                            input_tokens: usage.and_then(|u| u.get("input_tokens")).and_then(|v| v.as_i64()),
-                                            output_tokens: usage.and_then(|u| u.get("output_tokens")).and_then(|v| v.as_i64()),
-                                            cache_creation_tokens: usage.and_then(|u| u.get("cache_creation_input_tokens")).and_then(|v| v.as_i64()),
-                                            cache_read_tokens: usage.and_then(|u| u.get("cache_read_input_tokens")).and_then(|v| v.as_i64()),
-                                            stop_reason: val.get("delta").and_then(|d| d.get("stop_reason")).and_then(|s| s.as_str()).map(|s| s.to_string()),
-                                        });
+                                    match val.get("type").and_then(|t| t.as_str()) {
+                                        Some("message_start") => {
+                                            // message_start 包含 input_tokens 和 cache 字段
+                                            // 路径：message.usage.{input_tokens, cache_creation_input_tokens, cache_read_input_tokens}
+                                            let usage = val.get("message").and_then(|m| m.get("usage"));
+                                            partial_input_tokens = usage.and_then(|u| u.get("input_tokens")).and_then(|v| v.as_i64());
+                                            partial_cache_creation = usage.and_then(|u| u.get("cache_creation_input_tokens")).and_then(|v| v.as_i64());
+                                            partial_cache_read = usage.and_then(|u| u.get("cache_read_input_tokens")).and_then(|v| v.as_i64());
+                                        }
+                                        Some("message_delta") => {
+                                            // message_delta 包含 output_tokens 和 stop_reason
+                                            // 路径：usage.output_tokens, delta.stop_reason
+                                            let usage = val.get("usage");
+                                            let output_tokens = usage.and_then(|u| u.get("output_tokens")).and_then(|v| v.as_i64());
+                                            let stop_reason = val.get("delta").and_then(|d| d.get("stop_reason")).and_then(|s| s.as_str()).map(|s| s.to_string());
+                                            // 合并 message_start 中积累的 input/cache 数据
+                                            collected_token_data = Some(crate::traffic::log::StreamTokenData {
+                                                input_tokens: partial_input_tokens,
+                                                output_tokens,
+                                                cache_creation_tokens: partial_cache_creation,
+                                                cache_read_tokens: partial_cache_read,
+                                                stop_reason,
+                                            });
+                                        }
+                                        _ => {}
                                     }
                                 }
                             }
@@ -506,32 +529,29 @@ pub async fn proxy_handler(
             )
         }
         ProtocolType::Anthropic if path == "/v1/messages" => {
-            // Anthropic 协议 + /v1/messages：执行模型映射（若有配置）
+            // Anthropic 协议 + /v1/messages：统一走 AnthropicPassthrough 以支持 token 提取
+            // 从 body 中提取 model 名（GET 请求或空 body 时优雅降级，不中断请求）
+            let request_model: String = serde_json::from_slice::<Value>(&body_bytes)
+                .ok()
+                .and_then(|v| v.get("model").and_then(|m| m.as_str()).map(|s| s.to_string()))
+                .unwrap_or_else(|| "unknown".to_string());
             let has_mapping = has_effective_upstream_model_mapping(&upstream);
+            let url = translate::request::build_upstream_url(&upstream.base_url, &path, &query);
             if has_mapping {
-                // 解析请求体
+                // 有映射时解析请求体、替换模型名、重新序列化
                 let body_value: Value = serde_json::from_slice(&body_bytes)
                     .map_err(|e| ProxyError::TranslateError(format!("无法解析请求体: {}", e)))?;
-                // 记录原始模型名（用于响应反向映射）
-                let request_model = body_value
-                    .get("model")
-                    .and_then(|m| m.as_str())
-                    .unwrap_or("unknown")
-                    .to_string();
-                // 复用现有三级优先级映射函数
-                let body_value = apply_upstream_model_mapping(body_value, &upstream);
-                let new_bytes = serde_json::to_vec(&body_value)
+                let mapped = apply_upstream_model_mapping(body_value, &upstream);
+                let new_bytes = serde_json::to_vec(&mapped)
                     .map_err(|e| ProxyError::Internal(e.to_string()))?;
-                let url = translate::request::build_upstream_url(&upstream.base_url, &path, &query);
                 (
                     url,
                     Bytes::from(new_bytes),
                     ResponseTranslationMode::AnthropicPassthrough { request_model },
                 )
             } else {
-                // 无映射配置 — 纯透传（保持原有行为）
-                let url = translate::request::build_upstream_url(&upstream.base_url, &path, &query);
-                (url, body_bytes, ResponseTranslationMode::Passthrough)
+                // 无映射时原样透传 body bytes（避免重新序列化损失格式）
+                (url, body_bytes, ResponseTranslationMode::AnthropicPassthrough { request_model })
             }
         }
         _ => {
