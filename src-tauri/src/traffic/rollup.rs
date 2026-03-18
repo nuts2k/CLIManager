@@ -95,7 +95,7 @@ impl super::TrafficDb {
     ///
     /// range:
     /// - "24h"：从 request_logs 查询最近 24h 数据，按 provider_name 分组
-    /// - "7d"：从 daily_rollups 查询最近 7d 数据，合并同 provider 多天数据
+    /// - "7d"：合并 daily_rollups 历史聚合 + 最近 24h request_logs 明细，按 provider 汇总
     pub fn query_provider_stats(&self, range: &str) -> Result<Vec<ProviderStat>> {
         let conn = self.conn.lock().unwrap();
 
@@ -136,6 +136,7 @@ impl super::TrafficDb {
                 rows.collect()
             }
             "7d" => {
+                let recent_threshold_ms = (chrono::Utc::now().timestamp() - 86400) * 1000;
                 let threshold_date = (chrono::Utc::now() - chrono::Duration::days(7))
                     .format("%Y-%m-%d")
                     .to_string();
@@ -151,12 +152,42 @@ impl super::TrafficDb {
                         SUM(cache_hit_count) AS cache_hit_count,
                         SUM(sum_ttfb_ms) AS sum_ttfb_ms,
                         SUM(sum_duration_ms) AS sum_duration_ms
-                    FROM daily_rollups
-                    WHERE rollup_date >= ?1
+                    FROM (
+                        SELECT
+                            provider_name,
+                            request_count,
+                            success_count,
+                            total_input_tokens,
+                            total_output_tokens,
+                            total_cache_read_tokens,
+                            cache_triggered_count,
+                            cache_hit_count,
+                            sum_ttfb_ms,
+                            sum_duration_ms
+                        FROM daily_rollups
+                        WHERE rollup_date >= ?1
+
+                        UNION ALL
+
+                        SELECT
+                            provider_name,
+                            COUNT(*) AS request_count,
+                            SUM(CASE WHEN status_code >= 200 AND status_code < 300 THEN 1 ELSE 0 END) AS success_count,
+                            COALESCE(SUM(input_tokens), 0) AS total_input_tokens,
+                            COALESCE(SUM(output_tokens), 0) AS total_output_tokens,
+                            COALESCE(SUM(cache_read_tokens), 0) AS total_cache_read_tokens,
+                            SUM(CASE WHEN cache_creation_tokens > 0 OR cache_read_tokens > 0 THEN 1 ELSE 0 END) AS cache_triggered_count,
+                            SUM(CASE WHEN cache_read_tokens > 0 THEN 1 ELSE 0 END) AS cache_hit_count,
+                            COALESCE(SUM(ttfb_ms), 0) AS sum_ttfb_ms,
+                            COALESCE(SUM(duration_ms), 0) AS sum_duration_ms
+                        FROM request_logs
+                        WHERE created_at >= ?2
+                        GROUP BY provider_name
+                    )
                     GROUP BY provider_name
                     ORDER BY request_count DESC",
                 )?;
-                let rows = stmt.query_map(rusqlite::params![threshold_date], |row| {
+                let rows = stmt.query_map(rusqlite::params![threshold_date, recent_threshold_ms], |row| {
                     Ok(ProviderStat {
                         provider_name: row.get(0)?,
                         request_count: row.get(1)?,
@@ -180,7 +211,7 @@ impl super::TrafficDb {
     ///
     /// range:
     /// - "24h"：从 request_logs 按小时分组（HH:00）
-    /// - "7d"：从 daily_rollups 按天分组（YYYY-MM-DD）
+    /// - "7d"：合并 daily_rollups 历史聚合 + 最近 24h request_logs 明细，按天分组（YYYY-MM-DD）
     pub fn query_time_trend(&self, range: &str) -> Result<Vec<TimeStat>> {
         let conn = self.conn.lock().unwrap();
 
@@ -207,20 +238,38 @@ impl super::TrafficDb {
                 rows.collect()
             }
             "7d" => {
+                let recent_threshold_ms = (chrono::Utc::now().timestamp() - 86400) * 1000;
                 let threshold_date = (chrono::Utc::now() - chrono::Duration::days(7))
                     .format("%Y-%m-%d")
                     .to_string();
                 let mut stmt = conn.prepare(
                     "SELECT
-                        rollup_date AS day_label,
+                        day_label,
                         SUM(request_count) AS request_count,
-                        SUM(total_input_tokens) + SUM(total_output_tokens) AS total_tokens
-                    FROM daily_rollups
-                    WHERE rollup_date >= ?1
-                    GROUP BY rollup_date
-                    ORDER BY rollup_date ASC",
+                        SUM(total_tokens) AS total_tokens
+                    FROM (
+                        SELECT
+                            rollup_date AS day_label,
+                            SUM(request_count) AS request_count,
+                            SUM(total_input_tokens) + SUM(total_output_tokens) AS total_tokens
+                        FROM daily_rollups
+                        WHERE rollup_date >= ?1
+                        GROUP BY rollup_date
+
+                        UNION ALL
+
+                        SELECT
+                            strftime('%Y-%m-%d', created_at / 1000, 'unixepoch') AS day_label,
+                            COUNT(*) AS request_count,
+                            COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0) AS total_tokens
+                        FROM request_logs
+                        WHERE created_at >= ?2
+                        GROUP BY strftime('%Y-%m-%d', created_at / 1000, 'unixepoch')
+                    )
+                    GROUP BY day_label
+                    ORDER BY day_label ASC",
                 )?;
-                let rows = stmt.query_map(rusqlite::params![threshold_date], |row| {
+                let rows = stmt.query_map(rusqlite::params![threshold_date, recent_threshold_ms], |row| {
                     Ok(TimeStat {
                         label: row.get(0)?,
                         request_count: row.get(1)?,
@@ -284,6 +333,11 @@ mod tests {
     /// 最近 1h 内的时间戳（epoch 毫秒）
     fn recent_ts() -> i64 {
         (chrono::Utc::now().timestamp() - 1800) * 1000
+    }
+
+    /// 最近 N 小时前的时间戳（epoch 毫秒）
+    fn hours_ago_ts(hours: i64) -> i64 {
+        (chrono::Utc::now().timestamp() - hours * 3600) * 1000
     }
 
     // ====================================================================
@@ -459,10 +513,11 @@ mod tests {
         assert_eq!(stats[1].success_count, 0, "status 500 不算成功");
     }
 
-    /// Test: query_provider_stats("7d") 从 daily_rollups 按 provider 分组返回正确聚合值
+    /// Test: query_provider_stats("7d") 合并 daily_rollups 与最近 24h request_logs 后返回正确聚合值
     #[test]
     fn test_query_provider_stats_7d() {
         let db = make_test_db();
+        let recent = recent_ts();
 
         // 直接插入 daily_rollups 行（模拟已 rollup 的历史数据）
         let d1 = (chrono::Utc::now() - chrono::Duration::days(2))
@@ -502,15 +557,22 @@ mod tests {
             ).unwrap();
         }
 
-        let stats = db.query_provider_stats("7d").unwrap();
-        assert_eq!(stats.len(), 2, "应有 2 个 provider");
+        // 最近 24h 明细不会进入 daily_rollups，7d 查询应把它们一起算进去
+        insert_log(&db, "provider-a", recent, 200, 120, 30);
+        insert_log(&db, "provider-c", recent, 200, 60, 40);
 
-        // provider-a 合并两天：request_count = 15，排第一
+        let stats = db.query_provider_stats("7d").unwrap();
+        assert_eq!(stats.len(), 3, "应有 3 个 provider（含最近 24h 明细）");
+
+        // provider-a 合并两天 rollup + 最近 24h 明细：request_count = 16，排第一
         assert_eq!(stats[0].provider_name, "provider-a");
-        assert_eq!(stats[0].request_count, 15, "provider-a 两天合计 request_count = 15");
-        assert_eq!(stats[0].success_count, 14, "provider-a 两天合计 success_count = 14");
-        assert_eq!(stats[0].total_input_tokens, 1500, "provider-a input 合计 1500");
-        assert_eq!(stats[0].total_output_tokens, 700, "provider-a output 合计 700");
+        assert_eq!(stats[0].request_count, 16, "provider-a 应包含最近 24h 的 1 条明细");
+        assert_eq!(stats[0].success_count, 15, "provider-a success_count 应补上最近 24h 成功请求");
+        assert_eq!(stats[0].total_input_tokens, 1620, "provider-a input 应补上最近 24h 的 120");
+        assert_eq!(stats[0].total_output_tokens, 730, "provider-a output 应补上最近 24h 的 30");
+
+        assert_eq!(stats[2].provider_name, "provider-c");
+        assert_eq!(stats[2].request_count, 1, "provider-c 仅来自最近 24h 明细");
     }
 
     // ====================================================================
@@ -547,10 +609,12 @@ mod tests {
         }
     }
 
-    /// Test: query_time_trend("7d") 返回按天分组的请求数和 token 总量
+    /// Test: query_time_trend("7d") 合并 daily_rollups 与最近 24h request_logs 后返回按天分组结果
     #[test]
     fn test_query_time_trend_7d() {
         let db = make_test_db();
+        let yesterday_recent = hours_ago_ts(23);
+        let today_recent = recent_ts();
 
         let d1 = (chrono::Utc::now() - chrono::Duration::days(2))
             .format("%Y-%m-%d")
@@ -587,18 +651,28 @@ mod tests {
             ).unwrap();
         }
 
+        // 最近 24h 明细应补到昨天和今天的天维度趋势里
+        insert_log(&db, "provider-c", yesterday_recent, 200, 100, 20);
+        insert_log(&db, "provider-a", today_recent, 200, 50, 10);
+
         let trend = db.query_time_trend("7d").unwrap();
-        // d1: provider-a + provider-b 同一天，汇总；d2: provider-a 一天 → 共 2 个时间点
-        assert_eq!(trend.len(), 2, "应有 2 个天点（d1 和 d2）");
+        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        // d1: 历史 rollup；d2: 历史 rollup + 最近 24h；today: 最近 24h → 共 3 个时间点
+        assert_eq!(trend.len(), 3, "应有 3 个天点（d1、d2 和 today）");
 
         // d1 排在前（ASC 排序），total_tokens = 1000+500+500+200 = 2200
         assert_eq!(trend[0].label, d1, "第一个时间点应为 d1");
         assert_eq!(trend[0].request_count, 15, "d1 合并两 provider: 10+5=15");
         assert_eq!(trend[0].total_tokens, 2200, "d1 total_tokens = 1000+500+500+200 = 2200");
 
-        // d2: provider-a only, total_tokens = 700+300 = 1000
+        // d2: 历史 rollup + 最近 24h 一条，total_tokens = 700+300+100+20 = 1120
         assert_eq!(trend[1].label, d2, "第二个时间点应为 d2");
-        assert_eq!(trend[1].request_count, 7, "d2: 7");
-        assert_eq!(trend[1].total_tokens, 1000, "d2 total_tokens = 700+300 = 1000");
+        assert_eq!(trend[1].request_count, 8, "d2 应补上最近 24h 的 1 条请求");
+        assert_eq!(trend[1].total_tokens, 1120, "d2 total_tokens 应补上最近 24h 的 120");
+
+        // today: 仅来自最近 24h 明细
+        assert_eq!(trend[2].label, today, "第三个时间点应为 today");
+        assert_eq!(trend[2].request_count, 1, "today 应为最近 24h 的 1 条请求");
+        assert_eq!(trend[2].total_tokens, 60, "today total_tokens = 50+10 = 60");
     }
 }
