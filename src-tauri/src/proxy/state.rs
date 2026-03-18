@@ -3,6 +3,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::provider::ProtocolType;
+use crate::traffic::log::LogEntry;
 
 /// 上游目标：包含代理转发所需的全部信息
 #[derive(Debug, Clone)]
@@ -14,20 +15,32 @@ pub struct UpstreamTarget {
     pub upstream_model: Option<String>,
     /// 客户端模型名到上游模型名的映射表
     pub upstream_model_map: Option<HashMap<String, String>>,
+    /// Provider 名称（用于日志记录）—— Phase 27 新增
+    pub provider_name: String,
 }
 
-/// 代理共享状态：持有当前上游目标和 HTTP 客户端
+/// 代理共享状态：持有当前上游目标、HTTP 客户端、日志 sender 和 CLI 标识
 #[derive(Clone)]
 pub struct ProxyState {
     upstream: Arc<RwLock<Option<UpstreamTarget>>>,
     pub http_client: reqwest::Client,
+    /// mpsc sender，用于非阻塞地将日志条目发送到后台写入 worker —— Phase 27 新增
+    log_tx: Option<tokio::sync::mpsc::Sender<LogEntry>>,
+    /// CLI 标识（如 "claude"、"codex"）—— Phase 27 新增
+    cli_id: String,
 }
 
 impl ProxyState {
-    pub fn new(client: reqwest::Client) -> Self {
+    pub fn new(
+        client: reqwest::Client,
+        cli_id: String,
+        log_tx: Option<tokio::sync::mpsc::Sender<LogEntry>>,
+    ) -> Self {
         Self {
             upstream: Arc::new(RwLock::new(None)),
             http_client: client,
+            log_tx,
+            cli_id,
         }
     }
 
@@ -45,6 +58,16 @@ impl ProxyState {
     pub async fn clear_upstream(&self) {
         *self.upstream.write().await = None;
     }
+
+    /// 获取日志 sender 引用
+    pub fn log_sender(&self) -> Option<&tokio::sync::mpsc::Sender<LogEntry>> {
+        self.log_tx.as_ref()
+    }
+
+    /// 获取 CLI 标识
+    pub fn cli_id(&self) -> &str {
+        &self.cli_id
+    }
 }
 
 #[cfg(test)]
@@ -58,18 +81,19 @@ mod tests {
             protocol_type: ProtocolType::Anthropic,
             upstream_model: None,
             upstream_model_map: None,
+            provider_name: "test".to_string(),
         }
     }
 
     #[tokio::test]
     async fn test_new_state_has_no_upstream() {
-        let state = ProxyState::new(reqwest::Client::new());
+        let state = ProxyState::new(reqwest::Client::new(), "claude".to_string(), None);
         assert!(state.get_upstream().await.is_none());
     }
 
     #[tokio::test]
     async fn test_update_upstream() {
-        let state = ProxyState::new(reqwest::Client::new());
+        let state = ProxyState::new(reqwest::Client::new(), "claude".to_string(), None);
         let target = make_target();
 
         state.update_upstream(target.clone()).await;
@@ -82,7 +106,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_clear_upstream() {
-        let state = ProxyState::new(reqwest::Client::new());
+        let state = ProxyState::new(reqwest::Client::new(), "claude".to_string(), None);
         state.update_upstream(make_target()).await;
         assert!(state.get_upstream().await.is_some());
 
@@ -92,7 +116,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_upstream_replaces_previous() {
-        let state = ProxyState::new(reqwest::Client::new());
+        let state = ProxyState::new(reqwest::Client::new(), "claude".to_string(), None);
         state.update_upstream(make_target()).await;
 
         let new_target = UpstreamTarget {
@@ -101,6 +125,7 @@ mod tests {
             protocol_type: ProtocolType::OpenAiChatCompletions,
             upstream_model: None,
             upstream_model_map: None,
+            provider_name: "test".to_string(),
         };
         state.update_upstream(new_target).await;
 
@@ -117,6 +142,7 @@ mod tests {
             protocol_type: ProtocolType::OpenAiChatCompletions,
             upstream_model: None,
             upstream_model_map: None,
+            provider_name: "test".to_string(),
         };
         assert_eq!(target.api_key, "key-123");
         assert_eq!(target.base_url, "https://example.com");
@@ -124,5 +150,13 @@ mod tests {
             target.protocol_type,
             ProtocolType::OpenAiChatCompletions
         ));
+    }
+
+    #[tokio::test]
+    async fn test_log_sender_and_cli_id() {
+        let (tx, _rx) = tokio::sync::mpsc::channel::<LogEntry>(10);
+        let state = ProxyState::new(reqwest::Client::new(), "claude".to_string(), Some(tx));
+        assert!(state.log_sender().is_some());
+        assert_eq!(state.cli_id(), "claude");
     }
 }

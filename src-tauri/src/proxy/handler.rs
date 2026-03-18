@@ -526,6 +526,7 @@ mod tests {
             protocol_type: crate::provider::ProtocolType::OpenAiResponses,
             upstream_model: None,
             upstream_model_map: None,
+            provider_name: "test".to_string(),
         }
     }
 
@@ -536,6 +537,7 @@ mod tests {
             protocol_type: crate::provider::ProtocolType::OpenAiChatCompletions,
             upstream_model: None,
             upstream_model_map: None,
+            provider_name: "test".to_string(),
         }
     }
 
@@ -592,6 +594,7 @@ mod tests {
             protocol_type,
             upstream_model: None,
             upstream_model_map: None,
+            provider_name: "test".to_string(),
         };
 
         let service = crate::proxy::ProxyService::new();
@@ -884,6 +887,7 @@ mod tests {
             protocol_type: crate::provider::ProtocolType::OpenAiResponses,
             upstream_model: None,
             upstream_model_map: Some(model_map),
+            provider_name: "test".to_string(),
         };
 
         let service = crate::proxy::ProxyService::new();
@@ -979,6 +983,7 @@ mod tests {
             protocol_type: ProtocolType::OpenAiChatCompletions,
             upstream_model: None,
             upstream_model_map: None,
+            provider_name: "test".to_string(),
         };
 
         let service = crate::proxy::ProxyService::new();
@@ -1217,6 +1222,7 @@ mod tests {
             protocol_type: ProtocolType::OpenAiChatCompletions,
             upstream_model: Some("gpt-3.5-turbo".to_string()), // 默认值，应被精确匹配覆盖
             upstream_model_map: Some(model_map),
+            provider_name: "test".to_string(),
         };
         let body = json!({"model": "claude-3-5-sonnet-20241022", "messages": []});
         let result = apply_upstream_model_mapping(body, &upstream);
@@ -1234,6 +1240,7 @@ mod tests {
             protocol_type: ProtocolType::OpenAiChatCompletions,
             upstream_model: Some("gpt-4o-mini".to_string()),
             upstream_model_map: Some(model_map),
+            provider_name: "test".to_string(),
         };
         // 请求的模型名不在 map 中
         let body = json!({"model": "claude-3-5-sonnet-20241022", "messages": []});
@@ -1250,6 +1257,7 @@ mod tests {
             protocol_type: ProtocolType::OpenAiChatCompletions,
             upstream_model: None,
             upstream_model_map: None,
+            provider_name: "test".to_string(),
         };
         let body = json!({"model": "claude-3-5-sonnet-20241022", "messages": []});
         let result = apply_upstream_model_mapping(body, &upstream);
@@ -1274,6 +1282,7 @@ mod tests {
             protocol_type: crate::provider::ProtocolType::Anthropic,
             upstream_model: None,
             upstream_model_map: None,
+            provider_name: "test".to_string(),
         }
     }
 
@@ -1328,6 +1337,7 @@ mod tests {
             protocol_type: crate::provider::ProtocolType::Anthropic,
             upstream_model: None,
             upstream_model_map: Some(model_map),
+            provider_name: "test".to_string(),
         };
 
         let service = crate::proxy::ProxyService::new();
@@ -1414,6 +1424,7 @@ mod tests {
             protocol_type: crate::provider::ProtocolType::Anthropic,
             upstream_model: Some("default-upstream-model".to_string()),
             upstream_model_map: None,
+            provider_name: "test".to_string(),
         };
 
         let service = crate::proxy::ProxyService::new();
@@ -1583,6 +1594,7 @@ mod tests {
             protocol_type: crate::provider::ProtocolType::Anthropic,
             upstream_model: None,
             upstream_model_map: Some(model_map),
+            provider_name: "test".to_string(),
         };
 
         let service = crate::proxy::ProxyService::new();
@@ -1675,6 +1687,7 @@ mod tests {
             protocol_type: crate::provider::ProtocolType::Anthropic,
             upstream_model: None,
             upstream_model_map: Some(model_map),
+            provider_name: "test".to_string(),
         };
 
         let service = crate::proxy::ProxyService::new();
@@ -1885,6 +1898,7 @@ mod tests {
             protocol_type: crate::provider::ProtocolType::Anthropic,
             upstream_model: None,
             upstream_model_map: Some(HashMap::new()),
+            provider_name: "test".to_string(),
         };
 
         assert!(
@@ -1906,6 +1920,7 @@ mod tests {
             protocol_type: crate::provider::ProtocolType::Anthropic,
             upstream_model: None,
             upstream_model_map: Some(model_map),
+            provider_name: "test".to_string(),
         };
 
         assert!(has_effective_upstream_model_mapping(&upstream));

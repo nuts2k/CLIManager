@@ -9,6 +9,7 @@ use tokio::task::JoinHandle;
 use super::error::ProxyError;
 use super::handler::{health_handler, proxy_handler};
 use super::state::ProxyState;
+use crate::traffic::log::LogEntry;
 
 #[cfg(not(test))]
 const STOP_TIMEOUT: Duration = Duration::from_secs(5);
@@ -35,11 +36,16 @@ pub struct ProxyServer {
 
 impl ProxyServer {
     /// 创建新的代理服务器实例
-    pub fn new(port: u16, client: reqwest::Client) -> Self {
+    pub fn new(
+        port: u16,
+        client: reqwest::Client,
+        cli_id: String,
+        log_tx: Option<tokio::sync::mpsc::Sender<LogEntry>>,
+    ) -> Self {
         Self {
             shutdown_tx: None,
             server_handle: None,
-            state: ProxyState::new(client),
+            state: ProxyState::new(client, cli_id, log_tx),
             port,
         }
     }
@@ -226,7 +232,7 @@ mod tests {
     #[tokio::test]
     async fn test_server_start_stop() {
         let port = get_free_port().await;
-        let mut server = ProxyServer::new(port, test_client());
+        let mut server = ProxyServer::new(port, test_client(), "test".to_string(), None);
 
         // 启动
         server.start().await.unwrap();
@@ -259,7 +265,7 @@ mod tests {
 
         // 启动代理
         let proxy_port = get_free_port().await;
-        let mut server = ProxyServer::new(proxy_port, test_client());
+        let mut server = ProxyServer::new(proxy_port, test_client(), "test".to_string(), None);
         server
             .state()
             .update_upstream(UpstreamTarget {
@@ -268,6 +274,7 @@ mod tests {
                 protocol_type: ProtocolType::Anthropic,
                 upstream_model: None,
                 upstream_model_map: None,
+                provider_name: "test".to_string(),
             })
             .await;
         server.start().await.unwrap();
@@ -309,7 +316,7 @@ mod tests {
 
         // 启动代理
         let proxy_port = get_free_port().await;
-        let mut server = ProxyServer::new(proxy_port, test_client());
+        let mut server = ProxyServer::new(proxy_port, test_client(), "test".to_string(), None);
         server
             .state()
             .update_upstream(UpstreamTarget {
@@ -318,6 +325,7 @@ mod tests {
                 protocol_type: ProtocolType::Anthropic,
                 upstream_model: None,
                 upstream_model_map: None,
+                provider_name: "test".to_string(),
             })
             .await;
         server.start().await.unwrap();
@@ -372,7 +380,7 @@ mod tests {
 
         // 启动代理
         let proxy_port = get_free_port().await;
-        let mut server = ProxyServer::new(proxy_port, test_client());
+        let mut server = ProxyServer::new(proxy_port, test_client(), "test".to_string(), None);
         server
             .state()
             .update_upstream(UpstreamTarget {
@@ -381,6 +389,7 @@ mod tests {
                 protocol_type: ProtocolType::Anthropic,
                 upstream_model: None,
                 upstream_model_map: None,
+                provider_name: "test".to_string(),
             })
             .await;
         server.start().await.unwrap();
@@ -422,7 +431,7 @@ mod tests {
 
         // 启动代理，指向一个不存在的上游地址
         let proxy_port = get_free_port().await;
-        let mut server = ProxyServer::new(proxy_port, test_client());
+        let mut server = ProxyServer::new(proxy_port, test_client(), "test".to_string(), None);
         server
             .state()
             .update_upstream(UpstreamTarget {
@@ -431,6 +440,7 @@ mod tests {
                 protocol_type: ProtocolType::Anthropic,
                 upstream_model: None,
                 upstream_model_map: None,
+                provider_name: "test".to_string(),
             })
             .await;
         server.start().await.unwrap();
@@ -460,7 +470,7 @@ mod tests {
         let port = listener.local_addr().unwrap().port();
 
         // 尝试绑定已占用端口
-        let mut server = ProxyServer::new(port, test_client());
+        let mut server = ProxyServer::new(port, test_client(), "test".to_string(), None);
         let result = server.start().await;
 
         assert!(result.is_err());
@@ -477,7 +487,7 @@ mod tests {
     #[tokio::test]
     async fn test_double_start() {
         let port = get_free_port().await;
-        let mut server = ProxyServer::new(port, test_client());
+        let mut server = ProxyServer::new(port, test_client(), "test".to_string(), None);
 
         // 第一次启动成功
         server.start().await.unwrap();

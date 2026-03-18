@@ -48,6 +48,7 @@ pub fn run() {
             commands::claude_settings::set_claude_settings_overlay,
             commands::claude_settings::apply_claude_settings_overlay_cmd,
             commands::claude_settings::take_claude_overlay_startup_notifications,
+            commands::traffic::get_recent_logs,
         ]);
 
     #[cfg(desktop)]
@@ -74,6 +75,20 @@ pub fn run() {
             } else {
                 log::warn!("traffic.db 不可用，代理将正常工作但不记录流量");
             }
+
+            // 创建 mpsc channel 用于流量日志写入（buffer 1024，fire-and-forget 不阻塞代理）
+            let (log_tx, log_rx) =
+                tokio::sync::mpsc::channel::<crate::traffic::log::LogEntry>(1024);
+
+            // 注入 log sender 到 ProxyService
+            let proxy_service = app.state::<proxy::ProxyService>();
+            proxy_service.set_log_sender(log_tx);
+
+            // 启动后台日志写入 worker
+            let app_handle_for_log = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                crate::traffic::log::log_worker(log_rx, app_handle_for_log).await;
+            });
 
             // Startup overlay apply（COVL-10：best-effort，不阻断启动）
             // 因为 setup 早于 WebView 事件监听，startup 结果写入缓存队列

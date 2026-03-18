@@ -289,6 +289,7 @@ fn update_proxy_upstream_if_needed(app_handle: &AppHandle, changed_files: &[Stri
             protocol_type: provider.protocol_type.clone(),
             upstream_model: provider.upstream_model.clone(),
             upstream_model_map: provider.upstream_model_map.clone(),
+            provider_name: provider.name.clone(),
         };
 
         let cli_id_owned = cli_id.clone();
