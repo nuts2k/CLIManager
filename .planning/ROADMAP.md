@@ -165,7 +165,11 @@ Plans:
   3. 趋势图表以折线图或柱状图可视化时间维度的请求量和 token 变化
   4. 超过 24 小时的明细记录被聚合入 daily_rollups 后从 request_logs 删除，磁盘不无限增长
   5. 应用启动时及每小时自动触发一次 rollup_and_prune，无需用户手动操作
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 30-01-PLAN.md — 后端 rollup_and_prune + 聚合查询 + Tauri commands + 定时任务
+- [ ] 30-02-PLAN.md — 前端 Tab 重构 + 排行榜表格 + 聚合数据 hook + i18n
+- [ ] 30-03-PLAN.md — recharts 趋势图 + 视觉验收
 
 ## Progress
 
@@ -199,9 +203,9 @@ Plans:
 | 26. SQLite 基础设施 | v2.6 | 1/1 | Complete | 2026-03-18 |
 | 27. 日志写入管道 | v2.6 | 2/2 | Complete | 2026-03-18 |
 | 28. 流式 SSE Token 提取 | v2.6 | 2/2 | Complete | 2026-03-18 |
-| 29. 前端流量监控页面 | 2/2 | Complete    | 2026-03-18 | - |
-| 30. 统计聚合与数据保留 | v2.6 | 0/TBD | Not started | - |
+| 29. 前端流量监控页面 | v2.6 | 2/2 | Complete | 2026-03-18 |
+| 30. 统计聚合与数据保留 | v2.6 | 0/3 | Not started | - |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*
-*Last updated: 2026-03-18 — Phase 29 planned (2 plans)*
+*Last updated: 2026-03-18 — Phase 30 planned (3 plans)*
