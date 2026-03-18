@@ -180,5 +180,45 @@
     "checkUpdate": "Check for Updates",
     "updateAvailable": "Update to v{{version}}",
     "viewReleases": "View Releases"
+  },
+  "traffic": {
+    "title": "Traffic Monitor",
+    "stats": {
+      "totalRequests": "Requests",
+      "inputTokens": "Input Tokens",
+      "outputTokens": "Output Tokens",
+      "successRate": "Success Rate",
+      "cacheHitRate": "Cache Hit Rate"
+    },
+    "filter": {
+      "allProviders": "All Providers",
+      "provider": "Provider"
+    },
+    "table": {
+      "time": "Time",
+      "provider": "Provider",
+      "model": "Model",
+      "statusCode": "Status",
+      "tokens": "Tokens",
+      "duration": "Duration",
+      "secondsAgo": "{{count}}s ago",
+      "minutesAgo": "{{count}}m ago",
+      "cacheRead": "cache read",
+      "ttfb": "TTFB",
+      "tps": "t/s",
+      "streaming": "Streaming",
+      "nonStreaming": "Non-streaming",
+      "protocol": "Protocol",
+      "upstreamModel": "Upstream Model",
+      "cli": "CLI",
+      "stopReason": "Stop Reason",
+      "errorMessage": "Error",
+      "placeholder": "--"
+    },
+    "empty": {
+      "title": "No traffic records",
+      "description": "Enable proxy and send requests to see traffic logs here"
+    },
+    "statsBasis": "Based on current cache"
   }
 }

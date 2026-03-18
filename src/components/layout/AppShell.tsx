@@ -3,6 +3,7 @@ import { Header } from "@/components/layout/Header";
 import { ProviderTabs } from "@/components/provider/ProviderTabs";
 import { ImportDialog } from "@/components/provider/ImportDialog";
 import { SettingsPage } from "@/components/settings/SettingsPage";
+import { TrafficPage } from "@/components/traffic/TrafficPage";
 import { UpdateDialog } from "@/components/updater/UpdateDialog";
 import { useUpdater } from "@/components/updater/useUpdater";
 import { getLocalSettings, listProviders, scanCliConfigs, syncActiveProviders } from "@/lib/tauri";
@@ -11,7 +12,7 @@ import { useSyncListener } from "@/hooks/useSyncListener";
 import i18n from "@/i18n";
 import type { DetectedCliConfig } from "@/types/provider";
 
-type AppView = "main" | "settings";
+type AppView = "main" | "traffic" | "settings";
 
 const VIEW_TRANSITION_MS = 150;
 
@@ -148,11 +149,12 @@ export function AppShell() {
   }, [view]);
 
   const showMainView = view === "main" || exitingView === "main";
+  const showTrafficView = view === "traffic" || exitingView === "traffic";
   const showSettingsView = view === "settings" || exitingView === "settings";
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <Header onNavigate={handleNavigate} />
+      <Header onNavigate={handleNavigate} currentView={view} />
       <main className="relative flex-1 overflow-hidden">
         {showMainView ? (
           <div
@@ -163,6 +165,17 @@ export function AppShell() {
             }`}
           >
             <ProviderTabs refreshTrigger={syncKey} />
+          </div>
+        ) : null}
+        {showTrafficView ? (
+          <div
+            inert={view !== "traffic"}
+            aria-hidden={view !== "traffic"}
+            className={`absolute inset-0 transition-opacity duration-150 ease-out ${
+              view === "traffic" ? "opacity-100" : "opacity-0 pointer-events-none"
+            }`}
+          >
+            <TrafficPage />
           </div>
         ) : null}
         {showSettingsView ? (

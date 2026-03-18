@@ -1,11 +1,12 @@
-import { Settings } from "lucide-react";
+import { Activity, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface HeaderProps {
-  onNavigate: (view: "main" | "settings") => void;
+  currentView: "main" | "traffic" | "settings";
+  onNavigate: (view: "main" | "traffic" | "settings") => void;
 }
 
-export function Header({ onNavigate }: HeaderProps) {
+export function Header({ currentView, onNavigate }: HeaderProps) {
   return (
     <header className="flex h-12 items-center justify-between border-b border-border bg-header-bg px-4">
       <div className="flex items-center gap-2">
@@ -15,13 +16,22 @@ export function Header({ onNavigate }: HeaderProps) {
           <span>Manager</span>
         </h1>
       </div>
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={() => onNavigate("settings")}
-      >
-        <Settings className="size-4" />
-      </Button>
+      <div className="flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => onNavigate(currentView === "traffic" ? "main" : "traffic")}
+        >
+          <Activity className="size-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => onNavigate(currentView === "settings" ? "main" : "settings")}
+        >
+          <Settings className="size-4" />
+        </Button>
+      </div>
     </header>
   );
 }
