@@ -49,6 +49,8 @@ pub fn run() {
             commands::claude_settings::apply_claude_settings_overlay_cmd,
             commands::claude_settings::take_claude_overlay_startup_notifications,
             commands::traffic::get_recent_logs,
+            commands::traffic::get_provider_stats,
+            commands::traffic::get_time_trend,
         ]);
 
     #[cfg(desktop)]
@@ -91,6 +93,23 @@ pub fn run() {
             let app_handle_for_log = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 crate::traffic::log::log_worker(log_rx, app_handle_for_log).await;
+            });
+
+            // 启动 rollup_and_prune 定时任务（每小时执行一次，首次立即执行）
+            // 使用 tauri::async_runtime::spawn（非 tokio::spawn），Tauri 2 中安全做法
+            // rollup_and_prune 使用 std::sync::Mutex，持锁时间短，在 async 内调用安全
+            let app_handle_for_rollup = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                use tauri::Manager;
+                loop {
+                    if let Some(db) = app_handle_for_rollup.try_state::<crate::traffic::TrafficDb>() {
+                        match db.rollup_and_prune() {
+                            Ok(_) => log::info!("rollup_and_prune 执行完成"),
+                            Err(e) => log::warn!("rollup_and_prune 执行失败: {}", e),
+                        }
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+                }
             });
 
             // Startup overlay apply（COVL-10：best-effort，不阻断启动）
