@@ -84,6 +84,9 @@ pub fn run() {
             let proxy_service = app.state::<proxy::ProxyService>();
             proxy_service.set_log_sender(log_tx);
 
+            // 注入 AppHandle 到 ProxyService（Phase 28 新增，供后台 task emit 使用）
+            proxy_service.set_app_handle(app.handle().clone());
+
             // 启动后台日志写入 worker
             let app_handle_for_log = app.handle().clone();
             tauri::async_runtime::spawn(async move {

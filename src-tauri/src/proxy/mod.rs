@@ -54,6 +54,8 @@ pub struct ProxyService {
     http_client: reqwest::Client,
     /// 日志写入 channel sender（用 std::sync::RwLock，start 时读取即可）—— Phase 27 新增
     log_tx: std::sync::RwLock<Option<tokio::sync::mpsc::Sender<LogEntry>>>,
+    /// Tauri AppHandle（Phase 28 新增）
+    app_handle: std::sync::RwLock<Option<tauri::AppHandle>>,
 }
 
 impl ProxyService {
@@ -70,12 +72,18 @@ impl ProxyService {
             servers: Mutex::new(HashMap::new()),
             http_client,
             log_tx: std::sync::RwLock::new(None),
+            app_handle: std::sync::RwLock::new(None),
         }
     }
 
     /// 注入日志 sender（在 lib.rs setup 中调用）
     pub fn set_log_sender(&self, tx: tokio::sync::mpsc::Sender<LogEntry>) {
         *self.log_tx.write().unwrap() = Some(tx);
+    }
+
+    /// 注入 AppHandle（在 lib.rs setup 中调用）—— Phase 28 新增
+    pub fn set_app_handle(&self, handle: tauri::AppHandle) {
+        *self.app_handle.write().unwrap() = Some(handle);
     }
 
     /// 启动指定 CLI 的代理服务器
@@ -98,8 +106,9 @@ impl ProxyService {
         }
 
         let log_tx = self.log_tx.read().unwrap().clone();
+        let app_handle = self.app_handle.read().unwrap().clone();
         let mut server =
-            ProxyServer::new(port, self.http_client.clone(), cli_id.to_string(), log_tx);
+            ProxyServer::new(port, self.http_client.clone(), cli_id.to_string(), log_tx, app_handle);
         server.state().update_upstream(upstream).await;
         server.start().await?;
 

@@ -28,6 +28,8 @@ pub struct ProxyState {
     log_tx: Option<tokio::sync::mpsc::Sender<LogEntry>>,
     /// CLI 标识（如 "claude"、"codex"）—— Phase 27 新增
     cli_id: String,
+    /// Tauri AppHandle，用于后台 task 中 try_state/emit —— Phase 28 新增
+    app_handle: Option<tauri::AppHandle>,
 }
 
 impl ProxyState {
@@ -35,12 +37,14 @@ impl ProxyState {
         client: reqwest::Client,
         cli_id: String,
         log_tx: Option<tokio::sync::mpsc::Sender<LogEntry>>,
+        app_handle: Option<tauri::AppHandle>,
     ) -> Self {
         Self {
             upstream: Arc::new(RwLock::new(None)),
             http_client: client,
             log_tx,
             cli_id,
+            app_handle,
         }
     }
 
@@ -68,6 +72,11 @@ impl ProxyState {
     pub fn cli_id(&self) -> &str {
         &self.cli_id
     }
+
+    /// 获取 AppHandle 引用（Phase 28 后台 task 使用）
+    pub fn app_handle(&self) -> Option<&tauri::AppHandle> {
+        self.app_handle.as_ref()
+    }
 }
 
 #[cfg(test)]
@@ -87,13 +96,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_new_state_has_no_upstream() {
-        let state = ProxyState::new(reqwest::Client::new(), "claude".to_string(), None);
+        let state = ProxyState::new(reqwest::Client::new(), "claude".to_string(), None, None);
         assert!(state.get_upstream().await.is_none());
     }
 
     #[tokio::test]
     async fn test_update_upstream() {
-        let state = ProxyState::new(reqwest::Client::new(), "claude".to_string(), None);
+        let state = ProxyState::new(reqwest::Client::new(), "claude".to_string(), None, None);
         let target = make_target();
 
         state.update_upstream(target.clone()).await;
@@ -106,7 +115,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_clear_upstream() {
-        let state = ProxyState::new(reqwest::Client::new(), "claude".to_string(), None);
+        let state = ProxyState::new(reqwest::Client::new(), "claude".to_string(), None, None);
         state.update_upstream(make_target()).await;
         assert!(state.get_upstream().await.is_some());
 
@@ -116,7 +125,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_upstream_replaces_previous() {
-        let state = ProxyState::new(reqwest::Client::new(), "claude".to_string(), None);
+        let state = ProxyState::new(reqwest::Client::new(), "claude".to_string(), None, None);
         state.update_upstream(make_target()).await;
 
         let new_target = UpstreamTarget {
@@ -155,7 +164,7 @@ mod tests {
     #[tokio::test]
     async fn test_log_sender_and_cli_id() {
         let (tx, _rx) = tokio::sync::mpsc::channel::<LogEntry>(10);
-        let state = ProxyState::new(reqwest::Client::new(), "claude".to_string(), Some(tx));
+        let state = ProxyState::new(reqwest::Client::new(), "claude".to_string(), Some(tx), None);
         assert!(state.log_sender().is_some());
         assert_eq!(state.cli_id(), "claude");
     }
