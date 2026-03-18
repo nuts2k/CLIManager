@@ -187,7 +187,7 @@ Plans:
 | 23. Anthropic 模型映射 | v2.4 | 2/2 | Complete | 2026-03-15 |
 | 24. Claude settings overlay end-to-end | v2.5 | 4/4 | Complete | 2026-03-17 |
 | 25. 测试覆盖 | v2.5 | 1/1 | Complete | 2026-03-17 |
-| 26. SQLite 基础设施 | 1/1 | Complete   | 2026-03-18 | - |
+| 26. SQLite 基础设施 | 1/1 | Complete    | 2026-03-18 | - |
 | 27. 日志写入管道 | v2.6 | 0/TBD | Not started | - |
 | 28. 流式 SSE Token 提取 | v2.6 | 0/TBD | Not started | - |
 | 29. 前端流量监控页面 | v2.6 | 0/TBD | Not started | - |
