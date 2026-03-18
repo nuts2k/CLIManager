@@ -121,7 +121,10 @@ Plans:
   3. 请求失败时日志记录含 error_message 字段；请求成功时含 stop_reason 字段
   4. SQLite 写入通过 mpsc channel 在后台 task 执行，不增加代理请求响应延迟
   5. 写入完成后前端可通过 `traffic-log` Tauri 事件接收到该日志条目
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 27-01-PLAN.md — 数据结构 + 写入管道 + 状态扩展（LogEntry、log_worker、mpsc channel、UpstreamTarget/ProxyState 扩展）
+- [ ] 27-02-PLAN.md — handler 埋点 + 非流式 token 提取（三协议 token 提取、计时、日志发送）
 
 ### Phase 28: 流式 SSE Token 提取
 **Goal**: 三种协议的流式 SSE 请求在 stream 完全结束后，token 用量被正确提取并写入日志
@@ -187,12 +190,12 @@ Plans:
 | 23. Anthropic 模型映射 | v2.4 | 2/2 | Complete | 2026-03-15 |
 | 24. Claude settings overlay end-to-end | v2.5 | 4/4 | Complete | 2026-03-17 |
 | 25. 测试覆盖 | v2.5 | 1/1 | Complete | 2026-03-17 |
-| 26. SQLite 基础设施 | 1/1 | Complete    | 2026-03-18 | - |
-| 27. 日志写入管道 | v2.6 | 0/TBD | Not started | - |
+| 26. SQLite 基础设施 | v2.6 | 1/1 | Complete | 2026-03-18 |
+| 27. 日志写入管道 | v2.6 | 0/2 | Not started | - |
 | 28. 流式 SSE Token 提取 | v2.6 | 0/TBD | Not started | - |
 | 29. 前端流量监控页面 | v2.6 | 0/TBD | Not started | - |
 | 30. 统计聚合与数据保留 | v2.6 | 0/TBD | Not started | - |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*
-*Last updated: 2026-03-18 — Phase 26 planned (1 plan)*
+*Last updated: 2026-03-18 — Phase 27 planned (2 plans)*
