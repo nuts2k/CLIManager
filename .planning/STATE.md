@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.6
 milestone_name: 流量监控
 status: planning
-stopped_at: Completed 28-sse-token/28-01-PLAN.md
-last_updated: "2026-03-18T07:05:10.780Z"
+stopped_at: Completed 28-sse-token/28-02-PLAN.md
+last_updated: "2026-03-18T07:17:09.693Z"
 last_activity: 2026-03-17 — Roadmap created, 5 phases defined (26-30)
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 5
-  completed_plans: 4
+  completed_plans: 5
   percent: 0
 ---
 
@@ -62,6 +62,9 @@ v2.6 关键决策（来自研究阶段）：
 - [Phase 27]: method.clone() 传给 reqwest builder，保留 method 用于错误日志
 - [Phase 28-01]: StreamTokenData 直接覆盖 7 个字段（非条件更新）：流式初次 INSERT 时这些字段全为 None，UPDATE 统一设置无需 CASE WHEN
 - [Phase 28-01]: app_handle 用 Option<tauri::AppHandle>：保持测试中传 None 的向后兼容性，ProxyService 注入前 start() 也能工作
+- [Phase 28-02]: 流式请求跳过 log_worker 采用方案 C：直接 INSERT 可同步获取 rowid，app_handle=None 时自动跳过不影响测试
+- [Phase 28-02]: TTFB 在 send().await 后立即采样，流式和非流式均填充
+- [Phase 28-02]: Option<Sender> + take() 模式处理 oneshot 单次发送约束
 
 ### Pending Todos
 
@@ -74,6 +77,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-18T07:05:10.778Z
-Stopped at: Completed 28-sse-token/28-01-PLAN.md
+Last session: 2026-03-18T07:17:09.691Z
+Stopped at: Completed 28-sse-token/28-02-PLAN.md
 Resume: `/gsd:plan-phase 26`
