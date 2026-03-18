@@ -29,7 +29,7 @@ Requirements for v2.6 流量监控。Each maps to roadmap phases.
 
 ### 统计分析
 
-- [ ] **STAT-01**: 统计摘要卡片展示总请求数、总 input/output token、成功率
+- [x] **STAT-01**: 统计摘要卡片展示总请求数、总 input/output token、成功率
 - [ ] **STAT-02**: 按 Provider 聚合表格展示各 Provider 的请求数、token 用量、平均耗时
 - [ ] **STAT-03**: 按时间聚合表格展示每小时/每天的请求数、token 量等
 - [ ] **STAT-04**: 趋势图表（recharts）可视化时间维度的流量变化
@@ -74,7 +74,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LOG-01 | Phase 27 | Complete |
 | LOG-02 | Phase 29 | Complete |
 | LOG-03 | Phase 29 | Complete |
-| STAT-01 | Phase 29 | Pending |
+| STAT-01 | Phase 29 | Complete |
 | STAT-02 | Phase 30 | Pending |
 | STAT-03 | Phase 30 | Pending |
 | STAT-04 | Phase 30 | Pending |
