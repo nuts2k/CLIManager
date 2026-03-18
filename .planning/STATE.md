@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.6
 milestone_name: 流量监控
 status: planning
-stopped_at: Phase 29 context gathered
-last_updated: "2026-03-18T11:11:44.942Z"
+stopped_at: Completed 29-01-PLAN.md
+last_updated: "2026-03-18T11:39:39.963Z"
 last_activity: 2026-03-17 — Roadmap created, 5 phases defined (26-30)
 progress:
   total_phases: 5
   completed_phases: 3
-  total_plans: 5
-  completed_plans: 5
+  total_plans: 7
+  completed_plans: 6
   percent: 0
 ---
 
@@ -65,6 +65,7 @@ v2.6 关键决策（来自研究阶段）：
 - [Phase 28-02]: 流式请求跳过 log_worker 采用方案 C：直接 INSERT 可同步获取 rowid，app_handle=None 时自动跳过不影响测试
 - [Phase 28-02]: TTFB 在 send().await 后立即采样，流式和非流式均填充
 - [Phase 28-02]: Option<Sender> + take() 模式处理 oneshot 单次发送约束
+- [Phase 29-01]: useTrafficLogs type=update 找不到同 id 条目时静默忽略，避免竞态问题（Research Pitfall 2）
 
 ### Pending Todos
 
@@ -77,6 +78,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-18T11:11:44.935Z
-Stopped at: Phase 29 context gathered
+Last session: 2026-03-18T11:39:39.960Z
+Stopped at: Completed 29-01-PLAN.md
 Resume: `/gsd:plan-phase 26`

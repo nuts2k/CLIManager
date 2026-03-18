@@ -24,8 +24,8 @@ Requirements for v2.6 流量监控。Each maps to roadmap phases.
 ### 实时日志
 
 - [x] **LOG-01**: 后台写入 SQLite 后通过 Tauri emit 实时推送日志条目到前端
-- [ ] **LOG-02**: 独立流量监控页面展示实时日志表格（时间、Provider、模型、状态码、token、耗时等列）
-- [ ] **LOG-03**: 日志表格支持按 Provider 筛选，缺省显示全部
+- [x] **LOG-02**: 独立流量监控页面展示实时日志表格（时间、Provider、模型、状态码、token、耗时等列）
+- [x] **LOG-03**: 日志表格支持按 Provider 筛选，缺省显示全部
 
 ### 统计分析
 
@@ -72,8 +72,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | COLLECT-03 | Phase 28 | Complete |
 | COLLECT-04 | Phase 27 | Complete |
 | LOG-01 | Phase 27 | Complete |
-| LOG-02 | Phase 29 | Pending |
-| LOG-03 | Phase 29 | Pending |
+| LOG-02 | Phase 29 | Complete |
+| LOG-03 | Phase 29 | Complete |
 | STAT-01 | Phase 29 | Pending |
 | STAT-02 | Phase 30 | Pending |
 | STAT-03 | Phase 30 | Pending |
