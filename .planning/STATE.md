@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.6
 milestone_name: 流量监控
-status: planning
-stopped_at: Phase 30 context gathered
-last_updated: "2026-03-18T12:15:50.968Z"
-last_activity: 2026-03-17 — Roadmap created, 5 phases defined (26-30)
+status: in-progress
+stopped_at: "Phase 30, Plan 01 complete"
+last_updated: "2026-03-18T13:51:00Z"
+last_activity: 2026-03-18 — Phase 30 Plan 01 executed (rollup_and_prune + 聚合查询)
 progress:
   total_phases: 5
   completed_phases: 4
-  total_plans: 7
-  completed_plans: 7
-  percent: 0
+  total_plans: 8
+  completed_plans: 8
+  percent: 100
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-17)
 
 **Core value:** 切换 Provider 时只做 surgical patch（精确修改凭据和模型字段），绝不重写配置文件的其他内容
-**Current focus:** v2.6 流量监控 — Phase 26: SQLite 基础设施
+**Current focus:** v2.6 流量监控 — Phase 30: 统计聚合与数据保留
 
 ## Current Position
 
-Phase: 26 of 30 (SQLite 基础设施)
-Plan: — (not yet planned)
-Status: Ready to plan
-Last activity: 2026-03-17 — Roadmap created, 5 phases defined (26-30)
+Phase: 30 of 30 (统计聚合与数据保留)
+Plan: 01 complete
+Status: Phase 30 Plan 01 executed
+Last activity: 2026-03-18 — Phase 30 Plan 01 complete (rollup_and_prune + 聚合查询接口)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -69,6 +69,9 @@ v2.6 关键决策（来自研究阶段）：
 - [Phase 29]: TrafficTable 使用 div-based grid 布局替代原生 table，避免 tr 内嵌套 div 样式问题
 - [Phase 29]: formatTime 返回结构体（type+count/value）让组件层通过 t() 完成本地化，支持中英文切换
 - [Phase 29]: SVG inline sparkline 轻量实现，避免引入 recharts 等重量级图表库
+- [Phase 30-01]: rollup_and_prune 使用 ON CONFLICT DO UPDATE SET 增量 upsert（非 INSERT OR REPLACE），防止多次 rollup 丢失历史累积数据
+- [Phase 30-01]: loop + tokio::time::sleep 定时任务模式（首次立即执行），比 tokio::interval 首次 tick 更清晰
+- [Phase 30-01]: query_provider_stats / query_time_trend 支持 24h（from request_logs）和 7d（from daily_rollups）两个数据源
 
 ### Pending Todos
 
@@ -81,6 +84,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-18T12:15:50.964Z
-Stopped at: Phase 30 context gathered
-Resume: `/gsd:plan-phase 26`
+Last session: 2026-03-18T13:51:00Z
+Stopped at: Phase 30 Plan 01 complete (30-01-PLAN.md)
+Resume: `/gsd:execute-phase 30-stats-rollup` (if more plans) or milestone complete

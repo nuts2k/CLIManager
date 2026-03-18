@@ -95,7 +95,7 @@
 - [x] **Phase 27: 日志写入管道** — handler 采集元数据经 mpsc channel 写入 SQLite 并 emit 到前端 (completed 2026-03-18)
 - [x] **Phase 28: 流式 SSE Token 提取** — 三协议 SSE 流完全结束后提取完整 token 用量 (completed 2026-03-18)
 - [x] **Phase 29: 前端流量监控页面** — 独立 TrafficPage，实时日志表格 + Provider 筛选 + 统计摘要卡片 (completed 2026-03-18)
-- [ ] **Phase 30: 统计聚合与数据保留** — rollup_and_prune 定时任务，按 Provider/时间聚合表格，趋势图表
+- [x] **Phase 30: 统计聚合与数据保留** — rollup_and_prune 定时任务（Plan 01 完成），按 Provider/时间聚合表格，趋势图表（Plan 02/03 待执行）
 
 ## Phase Details
 
@@ -167,7 +167,7 @@ Plans:
   5. 应用启动时及每小时自动触发一次 rollup_and_prune，无需用户手动操作
 **Plans:** 3 plans
 Plans:
-- [ ] 30-01-PLAN.md — 后端 rollup_and_prune + 聚合查询 + Tauri commands + 定时任务
+- [x] 30-01-PLAN.md — 后端 rollup_and_prune + 聚合查询 + Tauri commands + 定时任务 (completed 2026-03-18)
 - [ ] 30-02-PLAN.md — 前端 Tab 重构 + 排行榜表格 + 聚合数据 hook + i18n
 - [ ] 30-03-PLAN.md — recharts 趋势图 + 视觉验收
 
@@ -204,8 +204,8 @@ Plans:
 | 27. 日志写入管道 | v2.6 | 2/2 | Complete | 2026-03-18 |
 | 28. 流式 SSE Token 提取 | v2.6 | 2/2 | Complete | 2026-03-18 |
 | 29. 前端流量监控页面 | v2.6 | 2/2 | Complete | 2026-03-18 |
-| 30. 统计聚合与数据保留 | v2.6 | 0/3 | Not started | - |
+| 30. 统计聚合与数据保留 | v2.6 | 1/3 | In progress | - |
 
 ---
 *Roadmap created: 2026-03-12 (v1.0)*
-*Last updated: 2026-03-18 — Phase 30 planned (3 plans)*
+*Last updated: 2026-03-18 — Phase 30 Plan 01 complete (rollup_and_prune + 聚合查询接口)*

@@ -12,7 +12,7 @@ Requirements for v2.6 流量监控。Each maps to roadmap phases.
 - [x] **STORE-01**: 应用启动时自动初始化 SQLite 数据库（WAL 模式，路径在 app_data_dir，非 iCloud）
 - [x] **STORE-02**: schema 迁移机制确保未来加字段安全（rusqlite_migration）
 - [x] **STORE-03**: 代理请求完成后通过 mpsc channel 非阻塞发送日志，后台 task 写入 SQLite 并 emit 到前端
-- [ ] **STORE-04**: 定时清理任务聚合超过 24h 的明细为每日统计，删除超过 7d 的统计数据
+- [x] **STORE-04**: 定时清理任务聚合超过 24h 的明细为每日统计，删除超过 7d 的统计数据
 
 ### 数据采集
 
@@ -30,8 +30,8 @@ Requirements for v2.6 流量监控。Each maps to roadmap phases.
 ### 统计分析
 
 - [x] **STAT-01**: 统计摘要卡片展示总请求数、总 input/output token、成功率
-- [ ] **STAT-02**: 按 Provider 聚合表格展示各 Provider 的请求数、token 用量、平均耗时
-- [ ] **STAT-03**: 按时间聚合表格展示每小时/每天的请求数、token 量等
+- [x] **STAT-02**: 按 Provider 聚合表格展示各 Provider 的请求数、token 用量、平均耗时
+- [x] **STAT-03**: 按时间聚合表格展示每小时/每天的请求数、token 量等
 - [ ] **STAT-04**: 趋势图表（recharts）可视化时间维度的流量变化
 
 ## Future Requirements
@@ -66,7 +66,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | STORE-01 | Phase 26 | Complete |
 | STORE-02 | Phase 26 | Complete |
 | STORE-03 | Phase 27 | Complete |
-| STORE-04 | Phase 30 | Pending |
+| STORE-04 | Phase 30 | Complete |
 | COLLECT-01 | Phase 27 | Complete |
 | COLLECT-02 | Phase 27 | Complete |
 | COLLECT-03 | Phase 28 | Complete |
@@ -75,8 +75,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LOG-02 | Phase 29 | Complete |
 | LOG-03 | Phase 29 | Complete |
 | STAT-01 | Phase 29 | Complete |
-| STAT-02 | Phase 30 | Pending |
-| STAT-03 | Phase 30 | Pending |
+| STAT-02 | Phase 30 | Complete |
+| STAT-03 | Phase 30 | Complete |
 | STAT-04 | Phase 30 | Pending |
 
 **Coverage:**
@@ -86,4 +86,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-03-17*
-*Last updated: 2026-03-17 — traceability filled after roadmap creation*
+*Last updated: 2026-03-18 — Phase 30 Plan 01 complete，STORE-04/STAT-02/STAT-03 标记完成*
