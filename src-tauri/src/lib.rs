@@ -66,6 +66,15 @@ pub fn run() {
             let handle = app.handle().clone();
             watcher::start_file_watcher(handle)?;
 
+            // 初始化 traffic DB（降级运行：失败不阻断启动）
+            // 位置：watcher 启动后（文件系统就绪），proxy 恢复前（尽早可用）
+            if let Some(traffic_db) = traffic::init_traffic_db() {
+                app.manage(traffic_db);
+                log::info!("traffic.db 初始化成功");
+            } else {
+                log::warn!("traffic.db 不可用，代理将正常工作但不记录流量");
+            }
+
             // Startup overlay apply（COVL-10：best-effort，不阻断启动）
             // 因为 setup 早于 WebView 事件监听，startup 结果写入缓存队列
             // 由前端 useSyncListener 挂载后主动 take。
