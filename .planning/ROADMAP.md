@@ -94,7 +94,7 @@
 - [x] **Phase 26: SQLite 基础设施** — 初始化 traffic.db，建立两张表 schema 和连接管理 (completed 2026-03-18)
 - [x] **Phase 27: 日志写入管道** — handler 采集元数据经 mpsc channel 写入 SQLite 并 emit 到前端 (completed 2026-03-18)
 - [x] **Phase 28: 流式 SSE Token 提取** — 三协议 SSE 流完全结束后提取完整 token 用量 (completed 2026-03-18)
-- [ ] **Phase 29: 前端流量监控页面** — 独立 TrafficPage，实时日志表格 + Provider 筛选 + 统计摘要卡片
+- [x] **Phase 29: 前端流量监控页面** — 独立 TrafficPage，实时日志表格 + Provider 筛选 + 统计摘要卡片 (completed 2026-03-18)
 - [ ] **Phase 30: 统计聚合与数据保留** — rollup_and_prune 定时任务，按 Provider/时间聚合表格，趋势图表
 
 ## Phase Details
@@ -150,7 +150,7 @@ Plans:
   3. 新请求完成时，日志条目无需刷新自动追加到表格顶部
   4. Provider 筛选下拉框可选择单个 Provider，表格即时过滤只显示该 Provider 的日志
   5. 页面顶部统计摘要卡片展示：总请求数、总 input token、总 output token、成功率
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [ ] 29-01-PLAN.md — 基础设施（类型定义 + Tauri 封装 + useTrafficLogs hook + 导航层扩展 + i18n key）
 - [ ] 29-02-PLAN.md — UI 组件（格式化工具 + 统计卡片 + Provider 筛选 + 日志表格 + 空状态 + 整合）
@@ -199,7 +199,7 @@ Plans:
 | 26. SQLite 基础设施 | v2.6 | 1/1 | Complete | 2026-03-18 |
 | 27. 日志写入管道 | v2.6 | 2/2 | Complete | 2026-03-18 |
 | 28. 流式 SSE Token 提取 | v2.6 | 2/2 | Complete | 2026-03-18 |
-| 29. 前端流量监控页面 | 1/2 | In Progress|  | - |
+| 29. 前端流量监控页面 | 2/2 | Complete   | 2026-03-18 | - |
 | 30. 统计聚合与数据保留 | v2.6 | 0/TBD | Not started | - |
 
 ---

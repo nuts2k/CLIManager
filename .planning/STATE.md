@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.6
 milestone_name: 流量监控
 status: planning
-stopped_at: Completed 29-01-PLAN.md
-last_updated: "2026-03-18T11:39:39.963Z"
+stopped_at: Completed 29-02-PLAN.md
+last_updated: "2026-03-18T11:45:35.368Z"
 last_activity: 2026-03-17 — Roadmap created, 5 phases defined (26-30)
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 7
-  completed_plans: 6
+  completed_plans: 7
   percent: 0
 ---
 
@@ -66,6 +66,9 @@ v2.6 关键决策（来自研究阶段）：
 - [Phase 28-02]: TTFB 在 send().await 后立即采样，流式和非流式均填充
 - [Phase 28-02]: Option<Sender> + take() 模式处理 oneshot 单次发送约束
 - [Phase 29-01]: useTrafficLogs type=update 找不到同 id 条目时静默忽略，避免竞态问题（Research Pitfall 2）
+- [Phase 29]: TrafficTable 使用 div-based grid 布局替代原生 table，避免 tr 内嵌套 div 样式问题
+- [Phase 29]: formatTime 返回结构体（type+count/value）让组件层通过 t() 完成本地化，支持中英文切换
+- [Phase 29]: SVG inline sparkline 轻量实现，避免引入 recharts 等重量级图表库
 
 ### Pending Todos
 
@@ -78,6 +81,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-18T11:39:39.960Z
-Stopped at: Completed 29-01-PLAN.md
+Last session: 2026-03-18T11:45:35.365Z
+Stopped at: Completed 29-02-PLAN.md
 Resume: `/gsd:plan-phase 26`
