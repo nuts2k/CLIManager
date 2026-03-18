@@ -7,6 +7,7 @@ mod error;
 mod provider;
 mod proxy;
 mod storage;
+mod traffic;
 #[cfg(desktop)]
 mod tray;
 mod watcher;
