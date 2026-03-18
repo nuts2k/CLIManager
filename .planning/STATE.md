@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.6
 milestone_name: 流量监控
 status: planning
-stopped_at: Phase 28 planned (2 plans)
-last_updated: "2026-03-18T06:56:02.260Z"
+stopped_at: Completed 28-sse-token/28-01-PLAN.md
+last_updated: "2026-03-18T07:05:10.780Z"
 last_activity: 2026-03-17 — Roadmap created, 5 phases defined (26-30)
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 5
-  completed_plans: 3
+  completed_plans: 4
   percent: 0
 ---
 
@@ -60,6 +60,8 @@ v2.6 关键决策（来自研究阶段）：
 - [Phase 27-01]: ProxyState.log_tx 直接持有 Option<Sender<LogEntry>>（无需 Arc<RwLock>）；ProxyService.log_tx 使用 std::sync::RwLock
 - [Phase 27]: token 提取在 resp_value move 之前完成（直接调用协议专用函数）
 - [Phase 27]: method.clone() 传给 reqwest builder，保留 method 用于错误日志
+- [Phase 28-01]: StreamTokenData 直接覆盖 7 个字段（非条件更新）：流式初次 INSERT 时这些字段全为 None，UPDATE 统一设置无需 CASE WHEN
+- [Phase 28-01]: app_handle 用 Option<tauri::AppHandle>：保持测试中传 None 的向后兼容性，ProxyService 注入前 start() 也能工作
 
 ### Pending Todos
 
@@ -72,6 +74,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-18T06:56:02.252Z
-Stopped at: Phase 28 planned (2 plans)
+Last session: 2026-03-18T07:05:10.778Z
+Stopped at: Completed 28-sse-token/28-01-PLAN.md
 Resume: `/gsd:plan-phase 26`

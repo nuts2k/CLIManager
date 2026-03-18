@@ -18,7 +18,7 @@ Requirements for v2.6 流量监控。Each maps to roadmap phases.
 
 - [x] **COLLECT-01**: 记录每个代理请求的基础元数据（时间戳、CLI、Provider、方法、路径、状态码、总耗时、TTFB、是否流式、请求模型名）
 - [x] **COLLECT-02**: 非流式响应直接从 body 提取 input/output token 用量
-- [ ] **COLLECT-03**: 流式 SSE 响应在 stream 结束后提取 token 用量（支持 Anthropic、OpenAI Chat Completions、OpenAI Responses 三种格式）
+- [x] **COLLECT-03**: 流式 SSE 响应在 stream 结束后提取 token 用量（支持 Anthropic、OpenAI Chat Completions、OpenAI Responses 三种格式）
 - [x] **COLLECT-04**: 请求失败时记录错误信息，成功时记录 stop_reason
 
 ### 实时日志
@@ -69,7 +69,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | STORE-04 | Phase 30 | Pending |
 | COLLECT-01 | Phase 27 | Complete |
 | COLLECT-02 | Phase 27 | Complete |
-| COLLECT-03 | Phase 28 | Pending |
+| COLLECT-03 | Phase 28 | Complete |
 | COLLECT-04 | Phase 27 | Complete |
 | LOG-01 | Phase 27 | Complete |
 | LOG-02 | Phase 29 | Pending |

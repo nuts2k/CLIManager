@@ -135,7 +135,7 @@ Plans:
   2. 发出 OpenAI Chat Completions 协议流式请求后，日志记录中 token 字段有正确数值
   3. 发出 OpenAI Responses API 协议流式请求后，日志记录中 token 字段有正确数值
   4. 流式请求的 token 数值仅在 stream EOF 后写入，中途日志记录不出现部分/错误 token 值
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 Plans:
 - [ ] 28-01-PLAN.md — 基础设施（StreamTokenData + update_streaming_log + ProxyState.app_handle 传递链路）
 - [ ] 28-02-PLAN.md — 三协议流函数 oneshot 回传 + handler 后台 task UPDATE/emit
@@ -195,7 +195,7 @@ Plans:
 | 25. 测试覆盖 | v2.5 | 1/1 | Complete | 2026-03-17 |
 | 26. SQLite 基础设施 | v2.6 | 1/1 | Complete | 2026-03-18 |
 | 27. 日志写入管道 | v2.6 | 2/2 | Complete | 2026-03-18 |
-| 28. 流式 SSE Token 提取 | v2.6 | 0/2 | Not started | - |
+| 28. 流式 SSE Token 提取 | 1/2 | In Progress|  | - |
 | 29. 前端流量监控页面 | v2.6 | 0/TBD | Not started | - |
 | 30. 统计聚合与数据保留 | v2.6 | 0/TBD | Not started | - |
 
