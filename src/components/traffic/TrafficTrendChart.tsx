@@ -38,10 +38,17 @@ export function buildHourlyData(raw: TimeStat[], now = new Date()): TimeStat[] {
   });
 }
 
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 /**
  * 将后端返回的天级 TimeStat 填充为完整 7 天（缺失填 0）。
  * 后端 label 格式：如 "2024-03-18"（YYYY-MM-DD）；
- * 本函数生成从今天往前 6 天的 7 个标签，X 轴显示 "MM-DD" 缩写。
+ * 本函数按本地日期生成从今天往前 6 天的 7 个标签，X 轴显示 "MM-DD" 缩写。
  */
 export function buildDailyData(raw: TimeStat[]): TimeStat[] {
   // 后端 label 是 "YYYY-MM-DD"；建立 full-date → item 的映射
@@ -54,7 +61,7 @@ export function buildDailyData(raw: TimeStat[]): TimeStat[] {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
     d.setDate(d.getDate() - (6 - i)); // 从 6 天前到今天
-    const fullDate = d.toISOString().slice(0, 10); // "YYYY-MM-DD"
+    const fullDate = formatLocalDate(d); // "YYYY-MM-DD"
     const displayLabel = fullDate.slice(5); // "MM-DD"（X 轴展示）
     const raw_item = map.get(fullDate);
     return {
