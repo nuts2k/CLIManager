@@ -238,7 +238,9 @@
       "colCacheReadTokens": "Cache Read Tokens",
       "colTotalTokens": "Total Tokens",
       "noData": "No analytics data yet",
-      "noDataDesc": "Analytics will appear here once traffic logs are recorded"
+      "noDataDesc": "Analytics will appear here once traffic logs are recorded",
+      "chartRequests": "Requests",
+      "chartTokens": "Total Tokens"
     }
   }
 }

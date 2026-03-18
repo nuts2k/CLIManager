@@ -238,7 +238,9 @@
       "colCacheReadTokens": "缓存读取 Token",
       "colTotalTokens": "总 Token",
       "noData": "暂无统计数据",
-      "noDataDesc": "有流量记录后统计数据将在此处展示"
+      "noDataDesc": "有流量记录后统计数据将在此处展示",
+      "chartRequests": "请求数",
+      "chartTokens": "Token 总量"
     }
   }
 }

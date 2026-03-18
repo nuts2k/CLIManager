@@ -3,6 +3,7 @@ import { BarChart2 } from "lucide-react";
 import { useTrafficStats } from "@/hooks/useTrafficStats";
 import { ProviderLeaderboard } from "./ProviderLeaderboard";
 import { CacheLeaderboard } from "./CacheLeaderboard";
+import { TrafficTrendChart } from "./TrafficTrendChart";
 import type { TimeRange } from "@/types/traffic";
 
 /**
@@ -13,7 +14,8 @@ import type { TimeRange } from "@/types/traffic";
  */
 export function StatsAnalysisTab() {
   const { t } = useTranslation();
-  const { timeRange, setTimeRange, providerStats, loading } = useTrafficStats();
+  const { timeRange, setTimeRange, providerStats, timeTrend, loading } =
+    useTrafficStats();
 
   const ranges: TimeRange[] = ["24h", "7d"];
 
@@ -65,10 +67,8 @@ export function StatsAnalysisTab() {
             <CacheLeaderboard data={providerStats} />
           </div>
 
-          {/* 趋势图占位（Plan 03 实现） */}
-          <div className="rounded-md border border-border/50 p-4 text-sm text-muted-foreground text-center">
-            趋势图将在 Plan 03 中实现
-          </div>
+          {/* 趋势图：双轴（请求数柱状 + Token 折线） */}
+          <TrafficTrendChart data={timeTrend} timeRange={timeRange} />
         </>
       )}
     </div>
