@@ -62,16 +62,20 @@ export function formatDuration(ms: number | null): string {
 
 /**
  * 计算 tokens per second（TPS）。
- * - outputTokens 或 durationMs 为 null，或 durationMs === 0 → "--"
+ * 使用 (durationMs - ttfbMs) 作为实际生成时间，TTFB 期间无 token 产出不应计入。
+ * - outputTokens 或 durationMs 为 null，或净生成时间 ≤ 0 → "--"
  * - 否则返回保留一位小数的数值字符串（不含 "t/s" 后缀，后缀在组件层通过 i18n 拼接）
  */
 export function calcTps(
   outputTokens: number | null,
-  durationMs: number | null
+  durationMs: number | null,
+  ttfbMs: number | null = null
 ): string {
   if (outputTokens === null || durationMs === null || durationMs === 0)
     return "--";
-  return (outputTokens / (durationMs / 1000)).toFixed(1);
+  const netMs = durationMs - (ttfbMs ?? 0);
+  if (netMs <= 0) return "--";
+  return (outputTokens / (netMs / 1000)).toFixed(1);
 }
 
 /**

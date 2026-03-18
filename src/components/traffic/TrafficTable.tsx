@@ -187,7 +187,7 @@ export function TrafficTable({ logs }: TrafficTableProps) {
                 </span>
                 {log.output_tokens !== null && log.duration_ms !== null && (
                   <span className="text-xs text-muted-foreground">
-                    {calcTps(log.output_tokens, log.duration_ms)}{" "}
+                    {calcTps(log.output_tokens, log.duration_ms, log.ttfb_ms)}{" "}
                     {t("traffic.table.tps")}
                   </span>
                 )}
