@@ -43,8 +43,10 @@ created: 2026-03-18
 | 30-01-03 | 01 | 0 | STORE-04 | unit | `cargo test -p cli-manager-lib rollup::tests::test_prune_deletes_old_rollups` | ❌ W0 | ⬜ pending |
 | 30-01-04 | 01 | 0 | STORE-04 | unit | `cargo test -p cli-manager-lib rollup::tests::test_rollup_idempotent` | ❌ W0 | ⬜ pending |
 | 30-01-05 | 01 | 0 | STAT-02 | unit | `cargo test -p cli-manager-lib rollup::tests::test_query_provider_stats_24h` | ❌ W0 | ⬜ pending |
-| 30-01-06 | 01 | 0 | STAT-03 | unit | `cargo test -p cli-manager-lib rollup::tests::test_query_hourly_trend` | ❌ W0 | ⬜ pending |
-| 30-02-01 | 02 | 1 | STAT-04 | manual | 目测 recharts 图表双轴正确渲染 | N/A | ⬜ pending |
+| 30-01-06 | 01 | 0 | STAT-02 | unit | `cargo test -p cli-manager-lib rollup::tests::test_query_provider_stats_7d` | ❌ W0 | ⬜ pending |
+| 30-01-07 | 01 | 0 | STAT-03 | unit | `cargo test -p cli-manager-lib rollup::tests::test_query_hourly_trend` | ❌ W0 | ⬜ pending |
+| 30-01-08 | 01 | 0 | STAT-03 | unit | `cargo test -p cli-manager-lib rollup::tests::test_query_time_trend_7d` | ❌ W0 | ⬜ pending |
+| 30-03-01 | 03 | 3 | STAT-04 | manual | 目测 recharts 图表双轴正确渲染 | N/A | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
