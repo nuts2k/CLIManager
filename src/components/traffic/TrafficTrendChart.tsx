@@ -99,7 +99,13 @@ export function TrafficTrendChart({ data, timeRange }: TrafficTrendChartProps) {
     timeRange === "24h" ? buildHourlyData(data) : buildDailyData(data);
 
   return (
-    <div className="rounded-md border border-border/50 p-4">
+    <div className="rounded-lg border border-border/60 overflow-hidden bg-card/30">
+      <div className="px-4 py-2.5 border-b border-border/60 bg-muted/20">
+        <span className="text-sm font-medium tracking-wide">
+          {t("traffic.analysis.trendChart")}
+        </span>
+      </div>
+      <div className="p-4">
       <ResponsiveContainer width="100%" height={240}>
         <ComposedChart
           data={chartData}
@@ -175,6 +181,7 @@ export function TrafficTrendChart({ data, timeRange }: TrafficTrendChartProps) {
           />
         </ComposedChart>
       </ResponsiveContainer>
+      </div>
     </div>
   );
 }

@@ -9,8 +9,8 @@ import type { TimeRange } from "@/types/traffic";
 /**
  * 统计分析 Tab 主面板。
  * - 顶部：24h / 7d Segment 按钮组（联动更新下方所有数据）
- * - 中区：供应商排行榜 + 缓存命中率排行榜（并排）
- * - 下区：趋势图占位（Plan 03 实现）
+ * - 中区：供应商排行榜、缓存命中率排行榜（各占一行）
+ * - 下区：趋势图
  */
 export function StatsAnalysisTab() {
   const { t } = useTranslation();
@@ -20,23 +20,25 @@ export function StatsAnalysisTab() {
   const ranges: TimeRange[] = ["24h", "7d"];
 
   return (
-    <div className="flex flex-col gap-4 pt-2">
+    <div className="flex flex-col gap-5 pt-2">
       {/* 时间范围 Segment 按钮组 */}
-      <div className="flex items-center gap-1">
-        {ranges.map((r) => (
-          <button
-            key={r}
-            onClick={() => setTimeRange(r)}
-            className={[
-              "px-3 py-1 text-sm rounded-md transition-colors",
-              timeRange === r
-                ? "bg-foreground text-background font-medium"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted",
-            ].join(" ")}
-          >
-            {t(`traffic.analysis.range${r === "24h" ? "24h" : "7d"}`)}
-          </button>
-        ))}
+      <div className="flex items-center">
+        <div className="inline-flex rounded-lg bg-muted/50 p-0.5">
+          {ranges.map((r) => (
+            <button
+              key={r}
+              onClick={() => setTimeRange(r)}
+              className={[
+                "px-4 py-1.5 text-sm rounded-md transition-all duration-200",
+                timeRange === r
+                  ? "bg-foreground text-background font-medium shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              ].join(" ")}
+            >
+              {t(`traffic.analysis.range${r === "24h" ? "24h" : "7d"}`)}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* 加载中骨架 */}
@@ -60,16 +62,14 @@ export function StatsAnalysisTab() {
           </div>
         </div>
       ) : (
-        <>
-          {/* 排行榜区域：左右并排 */}
-          <div className="grid grid-cols-2 gap-4">
-            <ProviderLeaderboard data={providerStats} />
-            <CacheLeaderboard data={providerStats} />
-          </div>
+        <div className="flex flex-col gap-5">
+          {/* 排行榜区域：各占一行，充分展示数据 */}
+          <ProviderLeaderboard data={providerStats} />
+          <CacheLeaderboard data={providerStats} />
 
           {/* 趋势图：双轴（请求数柱状 + Token 折线） */}
           <TrafficTrendChart data={timeTrend} timeRange={timeRange} />
-        </>
+        </div>
       )}
     </div>
   );

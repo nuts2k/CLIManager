@@ -71,7 +71,7 @@ export function TrafficPage() {
         </TabsContent>
 
         {/* 统计分析 Tab */}
-        <TabsContent value="stats" className="flex-1 min-h-0 overflow-auto px-6 pb-4">
+        <TabsContent value="stats" className="flex-1 min-h-0 overflow-auto px-6 pb-4 scrollbar-thin">
           <StatsAnalysisTab />
         </TabsContent>
       </Tabs>

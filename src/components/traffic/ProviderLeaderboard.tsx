@@ -107,20 +107,20 @@ export function ProviderLeaderboard({ data }: ProviderLeaderboardProps) {
   ];
 
   return (
-    <div className="rounded-md border border-border overflow-hidden">
+    <div className="rounded-lg border border-border/60 overflow-hidden bg-card/30">
       {/* 表格标题 */}
-      <div className="px-3 py-2 border-b border-border bg-muted/30">
-        <span className="text-sm font-medium">
+      <div className="px-4 py-2.5 border-b border-border/60 bg-muted/20">
+        <span className="text-sm font-medium tracking-wide">
           {t("traffic.analysis.providerLeaderboard")}
         </span>
       </div>
 
-      {/* div-based grid 布局（与 TrafficTable 保持一致） */}
+      {/* div-based grid 布局 */}
       <div
         className="grid"
         style={{
           gridTemplateColumns:
-            "minmax(80px,1.5fr) minmax(60px,1fr) minmax(80px,1fr) minmax(60px,1fr) minmax(70px,1fr) minmax(70px,1fr)",
+            "minmax(100px,1.8fr) minmax(70px,1fr) minmax(90px,1fr) minmax(70px,1fr) minmax(80px,1fr) minmax(80px,1fr)",
         }}
       >
         {/* 表头 */}
@@ -128,7 +128,7 @@ export function ProviderLeaderboard({ data }: ProviderLeaderboardProps) {
           <div
             key={col.key}
             className={[
-              "px-2 py-2 text-xs text-muted-foreground font-medium border-b border-border",
+              "px-3 py-2.5 text-xs text-muted-foreground/80 font-medium border-b border-border/40 bg-muted/10",
               "cursor-pointer select-none hover:text-foreground transition-colors",
               col.align === "right" ? "text-right" : "text-left",
             ].join(" ")}
@@ -140,7 +140,7 @@ export function ProviderLeaderboard({ data }: ProviderLeaderboardProps) {
         ))}
 
         {/* 数据行 */}
-        {sorted.map((stat) => {
+        {sorted.map((stat, idx) => {
           const totalTokens = stat.total_input_tokens + stat.total_output_tokens;
           const successRate =
             stat.request_count > 0
@@ -152,25 +152,27 @@ export function ProviderLeaderboard({ data }: ProviderLeaderboardProps) {
               : "--";
           const tpsVal = calcAvgTps(stat);
           const avgTps = tpsVal > 0 ? tpsVal.toFixed(1) + " t/s" : "--";
+          const isLast = idx === sorted.length - 1;
+          const borderClass = isLast ? "" : "border-b border-border/30";
 
           return (
             <div key={stat.provider_name} className="contents group">
-              <div className="px-2 py-2 text-sm border-b border-border/50 group-hover:bg-muted/40 transition-colors truncate">
+              <div className={`px-3 py-2.5 text-sm ${borderClass} group-hover:bg-muted/30 transition-colors truncate font-medium`}>
                 {stat.provider_name}
               </div>
-              <div className="px-2 py-2 text-sm text-right border-b border-border/50 group-hover:bg-muted/40 transition-colors">
+              <div className={`px-3 py-2.5 text-sm text-right tabular-nums ${borderClass} group-hover:bg-muted/30 transition-colors`}>
                 {stat.request_count}
               </div>
-              <div className="px-2 py-2 text-sm text-right border-b border-border/50 group-hover:bg-muted/40 transition-colors">
+              <div className={`px-3 py-2.5 text-sm text-right tabular-nums ${borderClass} group-hover:bg-muted/30 transition-colors`}>
                 {formatTokenCount(totalTokens)}
               </div>
-              <div className="px-2 py-2 text-sm text-right border-b border-border/50 group-hover:bg-muted/40 transition-colors">
+              <div className={`px-3 py-2.5 text-sm text-right tabular-nums ${borderClass} group-hover:bg-muted/30 transition-colors`}>
                 {successRate}
               </div>
-              <div className="px-2 py-2 text-sm text-right border-b border-border/50 group-hover:bg-muted/40 transition-colors">
+              <div className={`px-3 py-2.5 text-sm text-right tabular-nums ${borderClass} group-hover:bg-muted/30 transition-colors`}>
                 {avgTtfb}
               </div>
-              <div className="px-2 py-2 text-sm text-right border-b border-border/50 group-hover:bg-muted/40 transition-colors">
+              <div className={`px-3 py-2.5 text-sm text-right tabular-nums ${borderClass} group-hover:bg-muted/30 transition-colors`}>
                 {avgTps}
               </div>
             </div>

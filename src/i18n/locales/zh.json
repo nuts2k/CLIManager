@@ -244,7 +244,8 @@
       "noData": "暂无统计数据",
       "noDataDesc": "有流量记录后统计数据将在此处展示",
       "chartRequests": "请求数",
-      "chartTokens": "Token 总量"
+      "chartTokens": "Token 总量",
+      "trendChart": "流量趋势"
     }
   }
 }

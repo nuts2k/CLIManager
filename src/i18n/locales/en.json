@@ -244,7 +244,8 @@
       "noData": "No analytics data yet",
       "noDataDesc": "Analytics will appear here once traffic logs are recorded",
       "chartRequests": "Requests",
-      "chartTokens": "Total Tokens"
+      "chartTokens": "Total Tokens",
+      "trendChart": "Traffic Trend"
     }
   }
 }
