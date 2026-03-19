@@ -63,6 +63,7 @@ struct FunctionCallState {
 /// # 参数
 /// - `upstream`: OpenAI Responses API 格式的 SSE 字节流（reqwest body stream）
 /// - `request_model`: 用于 message_start 事件中的 model 字段（调用方传入的 Anthropic 模型名）
+/// - `token_tx`: stream EOF 时通过 oneshot 回传 StreamTokenData（handler 后台 task 用于 UPDATE DB）
 ///
 /// # Responses API SSE 事件格式
 /// Responses API 使用 `event: type\ndata: json\n\n` 格式，事件名在 event 字段。
@@ -79,8 +80,12 @@ struct FunctionCallState {
 pub fn create_responses_anthropic_sse_stream(
     upstream: impl Stream<Item = Result<Bytes, reqwest::Error>> + Send + 'static,
     request_model: String,
+    token_tx: tokio::sync::oneshot::Sender<crate::traffic::log::StreamTokenData>,
 ) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send {
     async_stream::stream! {
+        // 用 Option 包裹，支持 take()（oneshot 只能 send 一次）
+        let mut token_tx = Some(token_tx);
+
         // 跨 chunk SSE 字节缓冲
         let mut buffer = Vec::new();
 
@@ -319,6 +324,7 @@ pub fn create_responses_anthropic_sse_stream(
                                     let stop_reason = if has_function_call { "tool_use" } else { "end_turn" };
 
                                     // 提取 usage（Responses API 命名与 Anthropic 相同）
+                                    // 注意：unwrap_or(0) 仅用于 SSE 输出事件；token 回传使用独立的 and_then 提取
                                     let input_tokens = data
                                         .pointer("/response/usage/input_tokens")
                                         .and_then(|v| v.as_u64())
@@ -346,6 +352,18 @@ pub fn create_responses_anthropic_sse_stream(
                                     // message_stop
                                     let msg_stop = json!({"type": "message_stop"});
                                     yield Ok(format_sse_event("message_stop", &msg_stop));
+
+                                    // 提取 token 回传数据（None 和 0 语义不同，独立提取）
+                                    let token_data = crate::traffic::log::StreamTokenData {
+                                        input_tokens: data.pointer("/response/usage/input_tokens").and_then(|v| v.as_i64()),
+                                        output_tokens: data.pointer("/response/usage/output_tokens").and_then(|v| v.as_i64()),
+                                        cache_creation_tokens: None, // Responses API 无 cache_creation
+                                        cache_read_tokens: data.pointer("/response/usage/input_token_details/cached_tokens").and_then(|v| v.as_i64()),
+                                        stop_reason: Some(stop_reason.to_string()),
+                                    };
+                                    if let Some(tx) = token_tx.take() {
+                                        let _ = tx.send(token_data);
+                                    }
 
                                     break 'outer;
                                 }
@@ -377,7 +395,8 @@ mod tests {
         upstream: impl futures::Stream<Item = Result<Bytes, reqwest::Error>> + Send + 'static,
         model: &str,
     ) -> Vec<Value> {
-        let out_stream = create_responses_anthropic_sse_stream(upstream, model.to_string());
+        let (token_tx, _token_rx) = tokio::sync::oneshot::channel();
+        let out_stream = create_responses_anthropic_sse_stream(upstream, model.to_string(), token_tx);
         let chunks: Vec<_> = out_stream.collect().await;
         let merged: String = chunks
             .into_iter()
@@ -842,5 +861,63 @@ mod tests {
             .collect();
 
         assert_eq!(text_deltas, vec!["你"]);
+    }
+
+    // ── token 回传：response.completed 后 oneshot 返回正确 StreamTokenData ──
+
+    #[tokio::test]
+    async fn test_token_callback_on_response_completed() {
+        let chunks = vec![
+            make_event(
+                "response.created",
+                r#"{"type":"response.created","response":{"id":"resp_tok","model":"gpt-4o","status":"in_progress"}}"#,
+            ),
+            make_event(
+                "response.output_item.added",
+                r#"{"type":"response.output_item.added","output_index":0,"item":{"id":"item_tok","type":"message","role":"assistant","status":"in_progress","content":[]}}"#,
+            ),
+            make_event(
+                "response.content_part.added",
+                r#"{"type":"response.content_part.added","item_id":"item_tok","output_index":0,"content_index":0,"part":{"type":"output_text","text":""}}"#,
+            ),
+            make_event(
+                "response.output_text.delta",
+                r#"{"type":"response.output_text.delta","item_id":"item_tok","output_index":0,"content_index":0,"delta":"Hi"}"#,
+            ),
+            make_event(
+                "response.output_text.done",
+                r#"{"type":"response.output_text.done","item_id":"item_tok","output_index":0,"content_index":0,"text":"Hi"}"#,
+            ),
+            make_event(
+                "response.output_item.done",
+                r#"{"type":"response.output_item.done","output_index":0,"item":{"id":"item_tok","type":"message","status":"completed"}}"#,
+            ),
+            // response.completed 含 usage + input_token_details.cached_tokens
+            make_event(
+                "response.completed",
+                r#"{"type":"response.completed","response":{"id":"resp_tok","model":"gpt-4o","status":"completed","usage":{"input_tokens":20,"output_tokens":8,"input_token_details":{"cached_tokens":5},"total_tokens":28}}}"#,
+            ),
+        ];
+
+        let (token_tx, token_rx) = tokio::sync::oneshot::channel();
+        let out_stream = create_responses_anthropic_sse_stream(
+            stream::iter(chunks),
+            "claude-3-haiku".to_string(),
+            token_tx,
+        );
+        // 消费流（驱动 stream! 宏执行）
+        let _: Vec<_> = out_stream.collect().await;
+
+        // 验证 oneshot 回传的 token 数据
+        let token_data = token_rx.await.expect("应收到 token 数据");
+        assert_eq!(token_data.input_tokens, Some(20), "input_tokens 应为 20");
+        assert_eq!(token_data.output_tokens, Some(8), "output_tokens 应为 8");
+        assert_eq!(token_data.cache_creation_tokens, None, "Responses API 无 cache_creation");
+        assert_eq!(token_data.cache_read_tokens, Some(5), "cache_read_tokens 应来自 input_token_details.cached_tokens");
+        assert_eq!(
+            token_data.stop_reason.as_deref(),
+            Some("end_turn"),
+            "文本响应 stop_reason 应为 end_turn"
+        );
     }
 }

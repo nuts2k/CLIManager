@@ -1,5 +1,27 @@
 # Milestones
 
+## v2.6 流量监控 (Shipped: 2026-03-19)
+
+**Phases completed:** 6 phases, 12 plans
+**Delivered:** 代理模式完整流量监控能力：SQLite 持久化日志 + 三协议 token 提取（含流式 SSE）+ 独立流量监控页面 + 统计聚合与 recharts 趋势图 + 定时清理
+
+**Key accomplishments:**
+- SQLite WAL 模式 traffic.db 自动初始化 + rusqlite_migration schema 迁移，路径隔离于 iCloud
+- mpsc channel 非阻塞日志写入管道 + 三协议非流式 token 提取（Anthropic/OpenAI Chat/Responses）
+- 流式 SSE Token 提取：oneshot 回传信号 + 后台 task UPDATE/emit，stream EOF 后统一写入
+- 独立 TrafficPage 实时日志表格 + Provider 筛选 + 5 张统计摘要卡片（含 SVG sparkline）
+- rollup_and_prune 定时任务（启动 + 每小时）+ Provider/Cache 排行榜 + recharts 双轴趋势图
+- 技术债务修复：cache_creation_tokens 暴露、DB 安全访问 try_state、WON'T FIX 设计注释
+
+**Stats:**
+- ~126 commits, ~2,950 new LOC (1,652 Rust + 1,298 Frontend)
+- Timeline: 2 days (2026-03-17 -> 2026-03-19)
+- Total project: ~27,721 LOC (Rust + TypeScript/React)
+- Audit: 15/15 requirements, 17/18 integration, 4/4 E2E flows
+- Tech debt: 2 residual (1 low + 1 info)
+
+---
+
 ## v2.5 Claude 全局配置 Overlay (Shipped: 2026-03-17)
 
 **Phases completed:** 2 phases, 5 plans

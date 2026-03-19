@@ -2,35 +2,33 @@
 gsd_state_version: 1.0
 milestone: v2.6
 milestone_name: 流量监控
-status: Ready to plan
-stopped_at: null
-last_updated: "2026-03-17"
-last_activity: 2026-03-17 — Roadmap created, 5 phases (26-30) defined
+status: SHIPPED
+stopped_at: Milestone complete
+last_updated: "2026-03-19"
+last_activity: 2026-03-19 — v2.6 milestone shipped
 progress:
-  total_phases: 5
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_phases: 6
+  completed_phases: 6
+  total_plans: 12
+  completed_plans: 12
+  percent: 100
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-17)
+See: .planning/PROJECT.md (updated 2026-03-19)
 
 **Core value:** 切换 Provider 时只做 surgical patch（精确修改凭据和模型字段），绝不重写配置文件的其他内容
-**Current focus:** v2.6 流量监控 — Phase 26: SQLite 基础设施
+**Current focus:** v2.6 流量监控已发布，待规划下一里程碑
 
 ## Current Position
 
-Phase: 26 of 30 (SQLite 基础设施)
-Plan: — (not yet planned)
-Status: Ready to plan
-Last activity: 2026-03-17 — Roadmap created, 5 phases defined (26-30)
+Milestone: v2.6 流量监控 — SHIPPED 2026-03-19
+Status: All 6 phases, 12 plans complete. Milestone archived.
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -43,18 +41,18 @@ Progress: [░░░░░░░░░░] 0%
 - v2.3: 9 plans, ~1 day total
 - v2.4: 2 plans, ~1 day total
 - v2.5: 5 plans, ~2 days total
-- Combined: 53 plans across 8 milestones
+- v2.6: 12 plans, ~2 days total
+- Combined: 65 plans across 9 milestones
 
 ## Accumulated Context
 
 ### Decisions
 
-v2.6 关键决策（来自研究阶段）：
-- SQLite 路径: app_local_data_dir()（非 iCloud），WAL + busy_timeout PRAGMA
-- 连接模型: Arc<std::sync::Mutex<Connection>> 单连接（< 10 req/s 场景够用）
-- 写入模式: mpsc channel 非阻塞 fire-and-forget，后台 task 写入不阻塞代理延迟
-- 流式 token: 等 stream EOF 后统一解析，不在中途提取
-- 前端数据加载: 双轨（command 初始拉取 + event 增量追加），事件不作 source of truth
+（已归档到 .planning/milestones/v2.6-ROADMAP.md）
+
+### Roadmap Evolution
+
+（已归档）
 
 ### Pending Todos
 
@@ -63,10 +61,9 @@ None.
 ### Blockers/Concerns
 
 - UX-01 端口冲突检测依赖脆弱的中文子串匹配（v2.0 遗留，低优先级）
-- Phase 28 规划前需读取 src-tauri/src/proxy/translate/responses_stream.rs 确认 Responses API 流式 token 字段位置
 
 ## Session Continuity
 
-Last session: 2026-03-17
-Stopped at: Roadmap created for v2.6, ready to plan Phase 26
-Resume: `/gsd:plan-phase 26`
+Last session: 2026-03-19
+Stopped at: v2.6 milestone complete
+Resume: `/gsd:new-milestone` 开始下一个里程碑

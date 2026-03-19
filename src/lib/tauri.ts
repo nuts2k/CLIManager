@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { Provider, CreateProviderInput, DetectedCliConfig, ProtocolType } from "@/types/provider";
 import type { LocalSettings, TestResult, ProxyModeStatus } from "@/types/settings";
+import type { TrafficLog, ProviderStat, TimeStat, TimeRange } from "@/types/traffic";
 
 export async function listProviders(cliId?: string): Promise<Provider[]> {
   return invoke("list_providers", { cliId });
@@ -123,4 +124,23 @@ export type ClaudeOverlayApplyNotification = {
 /// useSyncListener 挂载完成后调用，保证 startup 结果不因时序丢失。
 export async function takeClaudeOverlayStartupNotifications(): Promise<ClaudeOverlayApplyNotification[]> {
   return invoke("take_claude_overlay_startup_notifications");
+}
+
+// ============================================================
+// Traffic 流量日志
+// ============================================================
+
+/// 拉取最近 N 条流量日志（历史数据初始加载）
+export async function getRecentLogs(limit?: number): Promise<TrafficLog[]> {
+  return invoke("get_recent_logs", { limit });
+}
+
+/// 拉取指定时间范围的 Provider 聚合统计
+export async function getProviderStats(range: TimeRange): Promise<ProviderStat[]> {
+  return invoke("get_provider_stats", { range });
+}
+
+/// 拉取指定时间范围的时间趋势数据
+export async function getTimeTrend(range: TimeRange): Promise<TimeStat[]> {
+  return invoke("get_time_trend", { range });
 }

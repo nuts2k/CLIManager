@@ -39,6 +39,7 @@ fn build_upstream_target(
         protocol_type: pt,
         upstream_model: None,
         upstream_model_map: None,
+        provider_name: "unknown".to_string(), // 底层调试 command，provider_name 不可知
     })
 }
 
@@ -49,6 +50,7 @@ fn build_upstream_target_from_provider(provider: &Provider) -> Result<UpstreamTa
         protocol_type: provider.protocol_type.clone(),
         upstream_model: provider.upstream_model.clone(),
         upstream_model_map: provider.upstream_model_map.clone(),
+        provider_name: provider.name.clone(),
     })
 }
 

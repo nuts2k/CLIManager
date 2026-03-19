@@ -10,6 +10,7 @@ use super::error::ProxyError;
 use super::state::{ProxyState, UpstreamTarget};
 use super::translate;
 use crate::provider::ProtocolType;
+use crate::traffic::log::LogEntry;
 
 /// 健康检查端点：GET /health -> {"status": "ok"}
 pub async fn health_handler() -> (StatusCode, Json<Value>) {
@@ -61,11 +62,7 @@ fn is_sse_response(headers: &reqwest::header::HeaderMap) -> bool {
 /// - 退回默认：无精确匹配但存在 upstream_model 时使用 upstream_model
 /// - 保留原名：两者均为 None 时不修改 model 字段
 fn apply_upstream_model_mapping(mut body: Value, upstream: &UpstreamTarget) -> Value {
-    let original_model = body
-        .get("model")
-        .and_then(|m| m.as_str())
-        .unwrap_or("")
-        .to_string();
+    let original_model = extract_model_from_json_value(&body).unwrap_or_default();
 
     let mapped_model = if let Some(model_map) = &upstream.upstream_model_map {
         // 优先精确匹配
@@ -84,6 +81,18 @@ fn apply_upstream_model_mapping(mut body: Value, upstream: &UpstreamTarget) -> V
     }
 
     body
+}
+
+fn extract_model_from_json_value(body: &Value) -> Option<String> {
+    body.get("model")
+        .and_then(|m| m.as_str())
+        .map(|s| s.to_string())
+}
+
+fn extract_model_from_json_bytes(body_bytes: &[u8]) -> Option<String> {
+    serde_json::from_slice::<Value>(body_bytes)
+        .ok()
+        .and_then(|v| extract_model_from_json_value(&v))
 }
 
 /// 非流式 Anthropic 响应中将 model 字段替换回原始请求模型名
@@ -168,11 +177,22 @@ fn reverse_model_in_sse_line_bytes(line_bytes: &[u8], original_model: &str) -> B
 /// 替换顶层 model 字段，其他行原样透传。
 ///
 /// 内部维护行缓冲区，处理跨 chunk 的不完整行。
+/// stream EOF 后通过 token_tx 回传 StreamTokenData。
 fn create_anthropic_reverse_model_stream(
     upstream: impl futures::stream::Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send + 'static,
     original_model: String,
+    token_tx: tokio::sync::oneshot::Sender<crate::traffic::log::StreamTokenData>,
 ) -> impl futures::stream::Stream<Item = Result<bytes::Bytes, std::io::Error>> + Send {
     async_stream::stream! {
+        let mut token_tx = Some(token_tx);
+        // 分两阶段积累 token 数据：
+        // - message_start 事件提供 input_tokens + cache 字段
+        // - message_delta 事件提供 output_tokens + stop_reason
+        // 最终合并为一条 StreamTokenData 回传
+        let mut partial_input_tokens: Option<i64> = None;
+        let mut partial_cache_creation: Option<i64> = None;
+        let mut partial_cache_read: Option<i64> = None;
+        let mut collected_token_data: Option<crate::traffic::log::StreamTokenData> = None;
         let mut buffer = Vec::new();
         futures::pin_mut!(upstream);
 
@@ -191,6 +211,41 @@ fn create_anthropic_reverse_model_stream(
                         let line_bytes = buffer[processed_until..idx].to_vec();
                         let processed =
                             reverse_model_in_sse_line_bytes(&line_bytes, &original_model);
+
+                        // 从 SSE data 行提取 token 数据
+                        if let Ok(line_str) = std::str::from_utf8(&line_bytes) {
+                            if let Some(json_str) = line_str.strip_prefix("data: ") {
+                                if let Ok(val) = serde_json::from_str::<serde_json::Value>(json_str) {
+                                    match val.get("type").and_then(|t| t.as_str()) {
+                                        Some("message_start") => {
+                                            // message_start 包含 input_tokens 和 cache 字段
+                                            // 路径：message.usage.{input_tokens, cache_creation_input_tokens, cache_read_input_tokens}
+                                            let usage = val.get("message").and_then(|m| m.get("usage"));
+                                            partial_input_tokens = usage.and_then(|u| u.get("input_tokens")).and_then(|v| v.as_i64());
+                                            partial_cache_creation = usage.and_then(|u| u.get("cache_creation_input_tokens")).and_then(|v| v.as_i64());
+                                            partial_cache_read = usage.and_then(|u| u.get("cache_read_input_tokens")).and_then(|v| v.as_i64());
+                                        }
+                                        Some("message_delta") => {
+                                            // message_delta 包含 output_tokens 和 stop_reason
+                                            // 路径：usage.output_tokens, delta.stop_reason
+                                            let usage = val.get("usage");
+                                            let output_tokens = usage.and_then(|u| u.get("output_tokens")).and_then(|v| v.as_i64());
+                                            let stop_reason = val.get("delta").and_then(|d| d.get("stop_reason")).and_then(|s| s.as_str()).map(|s| s.to_string());
+                                            // 合并 message_start 中积累的 input/cache 数据
+                                            collected_token_data = Some(crate::traffic::log::StreamTokenData {
+                                                input_tokens: partial_input_tokens,
+                                                output_tokens,
+                                                cache_creation_tokens: partial_cache_creation,
+                                                cache_read_tokens: partial_cache_read,
+                                                stop_reason,
+                                            });
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                        }
+
                         let mut output = processed.to_vec();
                         output.push(b'\n');
 
@@ -218,6 +273,158 @@ fn create_anthropic_reverse_model_stream(
             let processed = reverse_model_in_sse_line_bytes(&buffer, &original_model);
             yield Ok::<bytes::Bytes, std::io::Error>(processed);
         }
+
+        // 流结束，回传 token 数据
+        if let Some(data) = collected_token_data {
+            if let Some(tx) = token_tx.take() {
+                let _ = tx.send(data);
+            }
+        }
+    }
+}
+
+/// 将 ProtocolType 转换为小写字符串，用于存入 DB 的 protocol_type 列
+fn protocol_type_str(pt: &ProtocolType) -> &'static str {
+    match pt {
+        ProtocolType::Anthropic => "anthropic",
+        ProtocolType::OpenAiChatCompletions => "open_ai_chat_completions",
+        ProtocolType::OpenAiResponses => "open_ai_responses",
+    }
+}
+
+/// 从原始上游响应中提取 token 用量和 stop_reason。
+///
+/// 根据 ResponseTranslationMode 判断协议类型，从原始（转换前）响应 JSON 中提取字段。
+/// 返回 (input_tokens, output_tokens, cache_creation, cache_read, stop_reason)。
+/// 任何字段提取失败时返回 None（不 panic）。
+fn extract_tokens_from_response(
+    resp_value: &Value,
+    response_mode: &ResponseTranslationMode,
+) -> (Option<i64>, Option<i64>, Option<i64>, Option<i64>, Option<String>) {
+    match response_mode {
+        ResponseTranslationMode::AnthropicPassthrough { .. } => {
+            extract_anthropic_tokens(resp_value)
+        }
+        ResponseTranslationMode::OpenAiChatCompletions { .. } => {
+            extract_openai_chat_tokens(resp_value)
+        }
+        ResponseTranslationMode::OpenAiResponses { .. } => {
+            extract_responses_tokens(resp_value)
+        }
+        ResponseTranslationMode::Passthrough => {
+            // 透传请求（非 /v1/messages），尝试 Anthropic 格式
+            extract_anthropic_tokens(resp_value)
+        }
+    }
+}
+
+/// Anthropic 协议 token 提取
+fn extract_anthropic_tokens(
+    v: &Value,
+) -> (Option<i64>, Option<i64>, Option<i64>, Option<i64>, Option<String>) {
+    let usage = v.get("usage");
+    let input = usage
+        .and_then(|u| u.get("input_tokens"))
+        .and_then(|v| v.as_i64());
+    let output = usage
+        .and_then(|u| u.get("output_tokens"))
+        .and_then(|v| v.as_i64());
+    let cache_creation = usage
+        .and_then(|u| u.get("cache_creation_input_tokens"))
+        .and_then(|v| v.as_i64());
+    let cache_read = usage
+        .and_then(|u| u.get("cache_read_input_tokens"))
+        .and_then(|v| v.as_i64());
+    let stop_reason = v
+        .get("stop_reason")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    (input, output, cache_creation, cache_read, stop_reason)
+}
+
+/// OpenAI Chat Completions token 提取（从原始 OpenAI 响应，非转换后的 Anthropic 格式）
+fn extract_openai_chat_tokens(
+    v: &Value,
+) -> (Option<i64>, Option<i64>, Option<i64>, Option<i64>, Option<String>) {
+    let usage = v.get("usage");
+    let input = usage
+        .and_then(|u| u.get("prompt_tokens"))
+        .and_then(|v| v.as_i64());
+    let output = usage
+        .and_then(|u| u.get("completion_tokens"))
+        .and_then(|v| v.as_i64());
+    // OpenAI 缓存 token: usage.prompt_tokens_details.cached_tokens
+    let cache_read = usage
+        .and_then(|u| u.get("prompt_tokens_details"))
+        .and_then(|d| d.get("cached_tokens"))
+        .and_then(|v| v.as_i64());
+    // OpenAI Chat Completions 无 cache_creation 概念
+    let cache_creation = None;
+    // stop_reason 从 choices[0].finish_reason 提取原始值（不做映射）
+    let stop_reason = v
+        .get("choices")
+        .and_then(|c| c.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|choice| choice.get("finish_reason"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    (input, output, cache_creation, cache_read, stop_reason)
+}
+
+/// OpenAI Responses API token 提取
+fn extract_responses_tokens(
+    v: &Value,
+) -> (Option<i64>, Option<i64>, Option<i64>, Option<i64>, Option<String>) {
+    let usage = v.get("usage");
+    let input = usage
+        .and_then(|u| u.get("input_tokens"))
+        .and_then(|v| v.as_i64());
+    let output = usage
+        .and_then(|u| u.get("output_tokens"))
+        .and_then(|v| v.as_i64());
+    // Responses API 缓存字段暂不提取（Phase 27 留 null）
+    let cache_creation = None;
+    let cache_read = None;
+    // Responses API 无统一 stop_reason 字段，留 None
+    let stop_reason = None;
+    (input, output, cache_creation, cache_read, stop_reason)
+}
+
+/// 在请求失败时（upstream 获取后）发送错误日志
+fn send_error_log(
+    state: &ProxyState,
+    request_start_ms: i64,
+    start_time: &std::time::Instant,
+    upstream: &UpstreamTarget,
+    method: &axum::http::Method,
+    path: &str,
+    request_model: &Option<String>,
+    upstream_model: &Option<String>,
+    is_streaming: bool,
+    error: &ProxyError,
+) {
+    if let Some(tx) = state.log_sender() {
+        let entry = LogEntry {
+            created_at: request_start_ms,
+            provider_name: upstream.provider_name.clone(),
+            cli_id: state.cli_id().to_string(),
+            method: method.to_string(),
+            path: path.to_string(),
+            status_code: None,
+            is_streaming: if is_streaming { 1 } else { 0 },
+            request_model: request_model.clone(),
+            upstream_model: upstream_model.clone(),
+            protocol_type: protocol_type_str(&upstream.protocol_type).to_string(),
+            input_tokens: None,
+            output_tokens: None,
+            cache_creation_tokens: None,
+            cache_read_tokens: None,
+            ttfb_ms: None,
+            duration_ms: Some(start_time.elapsed().as_millis() as i64),
+            stop_reason: None,
+            error_message: Some(format!("{}", error)),
+        };
+        let _ = tx.try_send(entry);
     }
 }
 
@@ -229,7 +436,17 @@ pub async fn proxy_handler(
     State(state): State<ProxyState>,
     req: axum::extract::Request,
 ) -> Result<Response, ProxyError> {
+    // 日志计时：在请求最开始记录，供后续日志发送使用
+    let start_time = std::time::Instant::now();
+    let request_start_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+
     // 步骤 A：获取上游目标
+    // 注意：NoUpstreamConfigured 时不记录流量日志 —— 有意设计。
+    // 此时无可用 UpstreamTarget（无 provider_name / api_key），LogEntry 的 provider_name
+    // 是 NOT NULL 字段无法填写有意义的值。此错误属于配置问题而非请求错误。
     let upstream = state
         .get_upstream()
         .await
@@ -249,6 +466,9 @@ pub async fn proxy_handler(
     let body_bytes = axum::body::to_bytes(req.into_body(), 200 * 1024 * 1024)
         .await
         .map_err(|e| ProxyError::Internal(format!("读取请求体失败: {}", e)))?;
+
+    // 在 body_bytes 被 move 之前提取 request_model（用于日志）
+    let log_request_model = extract_model_from_json_bytes(&body_bytes);
 
     // 步骤 C 之后：协议路由分支
     let (upstream_url, final_body_bytes, response_mode) = match upstream.protocol_type {
@@ -315,32 +535,29 @@ pub async fn proxy_handler(
             )
         }
         ProtocolType::Anthropic if path == "/v1/messages" => {
-            // Anthropic 协议 + /v1/messages：执行模型映射（若有配置）
+            // Anthropic 协议 + /v1/messages：统一走 AnthropicPassthrough 以支持 token 提取
+            // 从 body 中提取 model 名（GET 请求或空 body 时优雅降级，不中断请求）
+            let request_model: String = serde_json::from_slice::<Value>(&body_bytes)
+                .ok()
+                .and_then(|v| v.get("model").and_then(|m| m.as_str()).map(|s| s.to_string()))
+                .unwrap_or_else(|| "unknown".to_string());
             let has_mapping = has_effective_upstream_model_mapping(&upstream);
+            let url = translate::request::build_upstream_url(&upstream.base_url, &path, &query);
             if has_mapping {
-                // 解析请求体
+                // 有映射时解析请求体、替换模型名、重新序列化
                 let body_value: Value = serde_json::from_slice(&body_bytes)
                     .map_err(|e| ProxyError::TranslateError(format!("无法解析请求体: {}", e)))?;
-                // 记录原始模型名（用于响应反向映射）
-                let request_model = body_value
-                    .get("model")
-                    .and_then(|m| m.as_str())
-                    .unwrap_or("unknown")
-                    .to_string();
-                // 复用现有三级优先级映射函数
-                let body_value = apply_upstream_model_mapping(body_value, &upstream);
-                let new_bytes = serde_json::to_vec(&body_value)
+                let mapped = apply_upstream_model_mapping(body_value, &upstream);
+                let new_bytes = serde_json::to_vec(&mapped)
                     .map_err(|e| ProxyError::Internal(e.to_string()))?;
-                let url = translate::request::build_upstream_url(&upstream.base_url, &path, &query);
                 (
                     url,
                     Bytes::from(new_bytes),
                     ResponseTranslationMode::AnthropicPassthrough { request_model },
                 )
             } else {
-                // 无映射配置 — 纯透传（保持原有行为）
-                let url = translate::request::build_upstream_url(&upstream.base_url, &path, &query);
-                (url, body_bytes, ResponseTranslationMode::Passthrough)
+                // 无映射时原样透传 body bytes（避免重新序列化损失格式）
+                (url, body_bytes, ResponseTranslationMode::AnthropicPassthrough { request_model })
             }
         }
         _ => {
@@ -349,9 +566,10 @@ pub async fn proxy_handler(
             (url, body_bytes, ResponseTranslationMode::Passthrough)
         }
     };
+    let log_upstream_model = extract_model_from_json_bytes(&final_body_bytes);
 
     // 步骤 E & F：构建 reqwest 请求，透传 headers（跳过 hop-by-hop + 替换凭据）
-    let mut req_builder = state.http_client.request(method, &upstream_url);
+    let mut req_builder = state.http_client.request(method.clone(), &upstream_url);
 
     // 跟踪是否已存在占位凭据（需要被替换）
     let mut needs_credential_injection = false;
@@ -396,9 +614,26 @@ pub async fn proxy_handler(
         .body(final_body_bytes.to_vec())
         .send()
         .await
-        .map_err(|e| ProxyError::UpstreamUnreachable(e.to_string()))?;
+        .map_err(|e| {
+            let err = ProxyError::UpstreamUnreachable(e.to_string());
+            send_error_log(
+                &state,
+                request_start_ms,
+                &start_time,
+                &upstream,
+                &method,
+                &path,
+                &log_request_model,
+                &log_upstream_model,
+                false,
+                &err,
+            );
+            err
+        })?;
 
     // 步骤 I：构建响应——透传上游 status + headers
+    let ttfb_ms = start_time.elapsed().as_millis() as i64;
+
     let status = upstream_resp.status();
     let resp_headers = upstream_resp.headers().clone();
     let upstream_is_sse = is_sse_response(&resp_headers);
@@ -418,25 +653,46 @@ pub async fn proxy_handler(
     }
 
     // 步骤 J：按 protocol_type 分支处理响应体
+    // 日志 token 变量：非流式分支中赋值，流式和透传分支保持 None
+    let mut log_input_tokens: Option<i64> = None;
+    let mut log_output_tokens: Option<i64> = None;
+    let mut log_cache_creation: Option<i64> = None;
+    let mut log_cache_read: Option<i64> = None;
+    let mut log_stop_reason: Option<String> = None;
+
+    // 流式请求的 oneshot receiver（stream EOF 后由后台 task 接收 token 数据并 UPDATE DB）
+    let mut streaming_token_rx: Option<tokio::sync::oneshot::Receiver<crate::traffic::log::StreamTokenData>> = None;
+
     let body = match response_mode {
         ResponseTranslationMode::OpenAiChatCompletions { request_model } => {
             if !status.is_success() {
                 // 4xx/5xx 直接透传（RESP-05）
                 Body::from_stream(upstream_resp.bytes_stream())
             } else if upstream_is_sse {
-                // 流式：wrap 为 SSE 转换流
+                // 流式：创建 oneshot channel，wrap 为 SSE 转换流
+                let (tx, rx) = tokio::sync::oneshot::channel::<crate::traffic::log::StreamTokenData>();
+                streaming_token_rx = Some(rx);
                 Body::from_stream(translate::stream::create_anthropic_sse_stream(
                     upstream_resp.bytes_stream(),
                     request_model,
+                    tx,
                 ))
             } else {
-                // 非流式：读完整响应，转换后返回
+                // 非流式：读完整响应，提取 token，转换后返回
                 let resp_bytes = upstream_resp
                     .bytes()
                     .await
                     .map_err(|e| ProxyError::Internal(format!("读取上游响应失败: {}", e)))?;
                 let resp_value: Value = serde_json::from_slice(&resp_bytes)
                     .map_err(|e| ProxyError::TranslateError(format!("响应解析失败: {}", e)))?;
+                // 在 resp_value 被 move 之前提取 token（从原始 OpenAI 格式）
+                let (it, ot, cc, cr, sr) =
+                    extract_openai_chat_tokens(&resp_value);
+                log_input_tokens = it;
+                log_output_tokens = ot;
+                log_cache_creation = cc;
+                log_cache_read = cr;
+                log_stop_reason = sr;
                 let anthropic_resp = translate::response::openai_to_anthropic(resp_value)?;
                 let resp_bytes = serde_json::to_vec(&anthropic_resp)
                     .map_err(|e| ProxyError::Internal(e.to_string()))?;
@@ -448,21 +704,32 @@ pub async fn proxy_handler(
                 // 4xx/5xx 直接透传（RESP-05）
                 Body::from_stream(upstream_resp.bytes_stream())
             } else if upstream_is_sse {
-                // 流式：wrap 为 Responses API -> Anthropic SSE 转换流
+                // 流式：创建 oneshot channel，wrap 为 Responses API -> Anthropic SSE 转换流
+                let (tx, rx) = tokio::sync::oneshot::channel::<crate::traffic::log::StreamTokenData>();
+                streaming_token_rx = Some(rx);
                 Body::from_stream(
                     translate::responses_stream::create_responses_anthropic_sse_stream(
                         upstream_resp.bytes_stream(),
                         request_model,
+                        tx,
                     ),
                 )
             } else {
-                // 非流式：读完整响应，转换后返回
+                // 非流式：读完整响应，提取 token，转换后返回
                 let resp_bytes = upstream_resp
                     .bytes()
                     .await
                     .map_err(|e| ProxyError::Internal(format!("读取上游响应失败: {}", e)))?;
                 let resp_value: Value = serde_json::from_slice(&resp_bytes)
                     .map_err(|e| ProxyError::TranslateError(format!("响应解析失败: {}", e)))?;
+                // 在 resp_value 被 move 之前提取 token（从原始 Responses API 格式）
+                let (it, ot, cc, cr, sr) =
+                    extract_responses_tokens(&resp_value);
+                log_input_tokens = it;
+                log_output_tokens = ot;
+                log_cache_creation = cc;
+                log_cache_read = cr;
+                log_stop_reason = sr;
                 let anthropic_resp =
                     translate::responses_response::responses_to_anthropic(resp_value)?;
                 let resp_bytes = serde_json::to_vec(&anthropic_resp)
@@ -475,19 +742,30 @@ pub async fn proxy_handler(
                 // 4xx/5xx 错误响应直接透传，不做 model 替换
                 Body::from_stream(upstream_resp.bytes_stream())
             } else if upstream_is_sse {
-                // 流式：逐行扫描替换 model 字段
+                // 流式：创建 oneshot channel，逐行扫描替换 model 字段
+                let (tx, rx) = tokio::sync::oneshot::channel::<crate::traffic::log::StreamTokenData>();
+                streaming_token_rx = Some(rx);
                 Body::from_stream(create_anthropic_reverse_model_stream(
                     upstream_resp.bytes_stream(),
                     request_model,
+                    tx,
                 ))
             } else {
-                // 非流式：读完整响应，替换 model 后返回
+                // 非流式：读完整响应，提取 token，替换 model 后返回
                 let resp_bytes = upstream_resp
                     .bytes()
                     .await
                     .map_err(|e| ProxyError::Internal(format!("读取上游响应失败: {}", e)))?;
                 let resp_value: Value = serde_json::from_slice(&resp_bytes)
                     .map_err(|e| ProxyError::TranslateError(format!("响应解析失败: {}", e)))?;
+                // 在 resp_value 被 move 之前提取 token（从原始 Anthropic 格式）
+                let (it, ot, cc, cr, sr) =
+                    extract_anthropic_tokens(&resp_value);
+                log_input_tokens = it;
+                log_output_tokens = ot;
+                log_cache_creation = cc;
+                log_cache_read = cr;
+                log_stop_reason = sr;
                 let reversed = reverse_model_in_response(resp_value, &request_model);
                 let resp_bytes = serde_json::to_vec(&reversed)
                     .map_err(|e| ProxyError::Internal(e.to_string()))?;
@@ -495,10 +773,110 @@ pub async fn proxy_handler(
             }
         }
         ResponseTranslationMode::Passthrough => {
-            // 透传（现有行为）
+            // 透传（现有行为，token 留 None）
             Body::from_stream(upstream_resp.bytes_stream())
         }
     };
+
+    // 日志采集
+    let entry = LogEntry {
+        created_at: request_start_ms,
+        provider_name: upstream.provider_name.clone(),
+        cli_id: state.cli_id().to_string(),
+        method: method.to_string(),
+        path: path.clone(),
+        status_code: Some(status.as_u16() as i64),
+        is_streaming: if upstream_is_sse { 1 } else { 0 },
+        request_model: log_request_model,
+        upstream_model: log_upstream_model,
+        protocol_type: protocol_type_str(&upstream.protocol_type).to_string(),
+        input_tokens: log_input_tokens,
+        output_tokens: log_output_tokens,
+        cache_creation_tokens: log_cache_creation,
+        cache_read_tokens: log_cache_read,
+        ttfb_ms: Some(ttfb_ms), // TTFB 统一采样（send().await 返回后）
+        duration_ms: if upstream_is_sse {
+            None // 流式请求 duration 在 EOF 后由后台 task 填充
+        } else {
+            Some(start_time.elapsed().as_millis() as i64)
+        },
+        stop_reason: log_stop_reason,
+        error_message: None,
+    };
+
+    let mut log_row_id: Option<i64> = None;
+
+    if upstream_is_sse {
+        // 流式请求：直接 INSERT 获取 rowid（不走 log_worker channel，以便获取 id 用于后续 UPDATE）
+        // 技术原因：mpsc log_worker 是 fire-and-forget 模式无法返回 rowid，
+        // 而流式请求需要 rowid 以便 stream EOF 后 UPDATE token/duration。
+        // 与 STORE-03 描述略有偏差但功能等价，经 Phase 28 验证正确。
+        if let Some(app_handle) = state.app_handle() {
+            use tauri::{Emitter, Manager};
+            if let Some(db) = app_handle.try_state::<crate::traffic::TrafficDb>() {
+                match db.insert_request_log(&entry) {
+                    Ok(id) => {
+                        // emit type="new"（token 为 None 的初始状态）
+                        let payload = crate::traffic::log::TrafficLogPayload::from_entry(id, &entry, "new");
+                        if let Err(e) = app_handle.emit("traffic-log", &payload) {
+                            log::warn!("流式日志 emit new 失败: {}", e);
+                        }
+                        log_row_id = Some(id);
+                    }
+                    Err(e) => log::warn!("流式日志 INSERT 失败: {}", e),
+                }
+            }
+        }
+    } else {
+        // 非流式请求：走 log_worker channel（现有逻辑）
+        if let Some(tx) = state.log_sender() {
+            if let Err(e) = tx.try_send(entry.clone()) {
+                log::warn!("日志 channel 发送失败（可能已满）: {}", e);
+            }
+        }
+    }
+
+    // 流式请求：spawn 后台 task 等待 stream EOF 后 UPDATE token/duration 并 emit update
+    if let (Some(rx), Some(row_id)) = (streaming_token_rx, log_row_id) {
+        let app_handle = state.app_handle().cloned();
+        let start_time_clone = start_time;
+        let ttfb = ttfb_ms;
+        let entry_for_update = entry.clone();
+
+        tokio::spawn(async move {
+            match rx.await {
+                Ok(token_data) => {
+                    let duration_ms = start_time_clone.elapsed().as_millis() as i64;
+                    if let Some(ref handle) = app_handle {
+                        use tauri::{Emitter, Manager};
+                        if let Some(db) = handle.try_state::<crate::traffic::TrafficDb>() {
+                            if let Err(e) = db.update_streaming_log(row_id, &token_data, Some(ttfb), Some(duration_ms)) {
+                                log::warn!("流式日志 UPDATE 失败: {}", e);
+                            } else {
+                                // emit type="update"
+                                let mut updated_entry = entry_for_update;
+                                updated_entry.input_tokens = token_data.input_tokens;
+                                updated_entry.output_tokens = token_data.output_tokens;
+                                updated_entry.cache_creation_tokens = token_data.cache_creation_tokens;
+                                updated_entry.cache_read_tokens = token_data.cache_read_tokens;
+                                updated_entry.stop_reason = token_data.stop_reason;
+                                updated_entry.ttfb_ms = Some(ttfb);
+                                updated_entry.duration_ms = Some(duration_ms);
+                                let payload = crate::traffic::log::TrafficLogPayload::from_entry(row_id, &updated_entry, "update");
+                                if let Err(e) = handle.emit("traffic-log", &payload) {
+                                    log::warn!("emit traffic-log update 失败: {}", e);
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(_) => {
+                    // oneshot sender 被 drop（stream 异常中断，客户端断开）
+                    log::debug!("流式 token 回传 channel 已关闭（stream 可能被客户端中断）");
+                }
+            }
+        });
+    }
 
     builder
         .body(body)
@@ -526,6 +904,7 @@ mod tests {
             protocol_type: crate::provider::ProtocolType::OpenAiResponses,
             upstream_model: None,
             upstream_model_map: None,
+            provider_name: "test".to_string(),
         }
     }
 
@@ -536,6 +915,7 @@ mod tests {
             protocol_type: crate::provider::ProtocolType::OpenAiChatCompletions,
             upstream_model: None,
             upstream_model_map: None,
+            provider_name: "test".to_string(),
         }
     }
 
@@ -592,6 +972,7 @@ mod tests {
             protocol_type,
             upstream_model: None,
             upstream_model_map: None,
+            provider_name: "test".to_string(),
         };
 
         let service = crate::proxy::ProxyService::new();
@@ -884,6 +1265,7 @@ mod tests {
             protocol_type: crate::provider::ProtocolType::OpenAiResponses,
             upstream_model: None,
             upstream_model_map: Some(model_map),
+            provider_name: "test".to_string(),
         };
 
         let service = crate::proxy::ProxyService::new();
@@ -979,6 +1361,7 @@ mod tests {
             protocol_type: ProtocolType::OpenAiChatCompletions,
             upstream_model: None,
             upstream_model_map: None,
+            provider_name: "test".to_string(),
         };
 
         let service = crate::proxy::ProxyService::new();
@@ -1217,6 +1600,7 @@ mod tests {
             protocol_type: ProtocolType::OpenAiChatCompletions,
             upstream_model: Some("gpt-3.5-turbo".to_string()), // 默认值，应被精确匹配覆盖
             upstream_model_map: Some(model_map),
+            provider_name: "test".to_string(),
         };
         let body = json!({"model": "claude-3-5-sonnet-20241022", "messages": []});
         let result = apply_upstream_model_mapping(body, &upstream);
@@ -1234,6 +1618,7 @@ mod tests {
             protocol_type: ProtocolType::OpenAiChatCompletions,
             upstream_model: Some("gpt-4o-mini".to_string()),
             upstream_model_map: Some(model_map),
+            provider_name: "test".to_string(),
         };
         // 请求的模型名不在 map 中
         let body = json!({"model": "claude-3-5-sonnet-20241022", "messages": []});
@@ -1250,10 +1635,46 @@ mod tests {
             protocol_type: ProtocolType::OpenAiChatCompletions,
             upstream_model: None,
             upstream_model_map: None,
+            provider_name: "test".to_string(),
         };
         let body = json!({"model": "claude-3-5-sonnet-20241022", "messages": []});
         let result = apply_upstream_model_mapping(body, &upstream);
         assert_eq!(result["model"], "claude-3-5-sonnet-20241022");
+    }
+
+    #[test]
+    fn test_extract_model_from_json_bytes_returns_actual_mapped_model() {
+        let mut model_map = HashMap::new();
+        model_map.insert(
+            "claude-3-5-sonnet-20241022".to_string(),
+            "gpt-4o".to_string(),
+        );
+        let upstream = UpstreamTarget {
+            api_key: "key".to_string(),
+            base_url: "http://example.com".to_string(),
+            protocol_type: ProtocolType::OpenAiChatCompletions,
+            upstream_model: Some("gpt-4o-mini".to_string()),
+            upstream_model_map: Some(model_map),
+            provider_name: "test".to_string(),
+        };
+        let body = json!({"model": "claude-3-5-sonnet-20241022", "messages": []});
+        let mapped = apply_upstream_model_mapping(body, &upstream);
+        let mapped_bytes = serde_json::to_vec(&mapped).unwrap();
+
+        assert_eq!(
+            extract_model_from_json_bytes(&mapped_bytes),
+            Some("gpt-4o".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_model_from_json_bytes_preserves_passthrough_model() {
+        let body = br#"{"model":"claude-3-5-sonnet-20241022","messages":[]}"#;
+
+        assert_eq!(
+            extract_model_from_json_bytes(body),
+            Some("claude-3-5-sonnet-20241022".to_string())
+        );
     }
 
     #[tokio::test]
@@ -1274,6 +1695,7 @@ mod tests {
             protocol_type: crate::provider::ProtocolType::Anthropic,
             upstream_model: None,
             upstream_model_map: None,
+            provider_name: "test".to_string(),
         }
     }
 
@@ -1328,6 +1750,7 @@ mod tests {
             protocol_type: crate::provider::ProtocolType::Anthropic,
             upstream_model: None,
             upstream_model_map: Some(model_map),
+            provider_name: "test".to_string(),
         };
 
         let service = crate::proxy::ProxyService::new();
@@ -1414,6 +1837,7 @@ mod tests {
             protocol_type: crate::provider::ProtocolType::Anthropic,
             upstream_model: Some("default-upstream-model".to_string()),
             upstream_model_map: None,
+            provider_name: "test".to_string(),
         };
 
         let service = crate::proxy::ProxyService::new();
@@ -1583,6 +2007,7 @@ mod tests {
             protocol_type: crate::provider::ProtocolType::Anthropic,
             upstream_model: None,
             upstream_model_map: Some(model_map),
+            provider_name: "test".to_string(),
         };
 
         let service = crate::proxy::ProxyService::new();
@@ -1675,6 +2100,7 @@ mod tests {
             protocol_type: crate::provider::ProtocolType::Anthropic,
             upstream_model: None,
             upstream_model_map: Some(model_map),
+            provider_name: "test".to_string(),
         };
 
         let service = crate::proxy::ProxyService::new();
@@ -1742,9 +2168,11 @@ mod tests {
             Ok::<Bytes, reqwest::Error>(Bytes::copy_from_slice(&raw_bytes[split_at..])),
         ];
 
+        let (token_tx, _token_rx) = tokio::sync::oneshot::channel();
         let output = create_anthropic_reverse_model_stream(
             stream::iter(chunks),
             "claude-3-5-sonnet-20241022".to_string(),
+            token_tx,
         )
         .collect::<Vec<_>>()
         .await;
@@ -1779,9 +2207,11 @@ mod tests {
             Err(upstream_error),
         ];
 
+        let (token_tx, _token_rx) = tokio::sync::oneshot::channel();
         let output = create_anthropic_reverse_model_stream(
             stream::iter(chunks),
             "claude-3-5-sonnet-20241022".to_string(),
+            token_tx,
         )
         .collect::<Vec<_>>()
         .await;
@@ -1885,6 +2315,7 @@ mod tests {
             protocol_type: crate::provider::ProtocolType::Anthropic,
             upstream_model: None,
             upstream_model_map: Some(HashMap::new()),
+            provider_name: "test".to_string(),
         };
 
         assert!(
@@ -1906,6 +2337,7 @@ mod tests {
             protocol_type: crate::provider::ProtocolType::Anthropic,
             upstream_model: None,
             upstream_model_map: Some(model_map),
+            provider_name: "test".to_string(),
         };
 
         assert!(has_effective_upstream_model_mapping(&upstream));
@@ -2039,5 +2471,125 @@ mod tests {
         // 普通 headers 应保留
         assert!(forwarded.contains(&"content-type".to_string()));
         assert!(forwarded.contains(&"x-custom-header".to_string()));
+    }
+
+    // ── Task 2：token 提取函数单元测试 ──
+
+    /// 验证 extract_anthropic_tokens 从完整 Anthropic 响应中正确提取所有字段
+    #[test]
+    fn test_extract_anthropic_tokens_full() {
+        let v = json!({
+            "id": "msg_test",
+            "type": "message",
+            "stop_reason": "end_turn",
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 42,
+                "cache_creation_input_tokens": 30,
+                "cache_read_input_tokens": 20
+            }
+        });
+        let (input, output, cc, cr, sr) = extract_anthropic_tokens(&v);
+        assert_eq!(input, Some(100));
+        assert_eq!(output, Some(42));
+        assert_eq!(cc, Some(30));
+        assert_eq!(cr, Some(20));
+        assert_eq!(sr, Some("end_turn".to_string()));
+    }
+
+    /// 验证 extract_anthropic_tokens 对缺少 usage 的 JSON 返回全 None
+    #[test]
+    fn test_extract_anthropic_tokens_no_usage() {
+        let v = json!({"id": "msg_test", "type": "message"});
+        let (input, output, cc, cr, sr) = extract_anthropic_tokens(&v);
+        assert_eq!(input, None);
+        assert_eq!(output, None);
+        assert_eq!(cc, None);
+        assert_eq!(cr, None);
+        assert_eq!(sr, None);
+    }
+
+    /// 验证 extract_openai_chat_tokens 从完整 OpenAI Chat Completions 响应中正确提取所有字段
+    #[test]
+    fn test_extract_openai_chat_tokens_full() {
+        let v = json!({
+            "id": "chatcmpl-test",
+            "object": "chat.completion",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "Hello"},
+                "finish_reason": "stop"
+            }],
+            "usage": {
+                "prompt_tokens": 50,
+                "completion_tokens": 25,
+                "total_tokens": 75,
+                "prompt_tokens_details": {
+                    "cached_tokens": 10
+                }
+            }
+        });
+        let (input, output, cc, cr, sr) = extract_openai_chat_tokens(&v);
+        assert_eq!(input, Some(50));
+        assert_eq!(output, Some(25));
+        assert_eq!(cc, None); // Chat Completions 无 cache_creation
+        assert_eq!(cr, Some(10));
+        assert_eq!(sr, Some("stop".to_string()));
+    }
+
+    /// 验证 extract_openai_chat_tokens 在缺少 prompt_tokens_details 时 cache_read 返回 None
+    #[test]
+    fn test_extract_openai_chat_tokens_no_cache() {
+        let v = json!({
+            "choices": [{
+                "finish_reason": "length"
+            }],
+            "usage": {
+                "prompt_tokens": 30,
+                "completion_tokens": 15
+            }
+        });
+        let (input, output, cc, cr, sr) = extract_openai_chat_tokens(&v);
+        assert_eq!(input, Some(30));
+        assert_eq!(output, Some(15));
+        assert_eq!(cc, None);
+        assert_eq!(cr, None); // 无 prompt_tokens_details
+        assert_eq!(sr, Some("length".to_string()));
+    }
+
+    /// 验证 extract_responses_tokens 正确提取 input/output，cache 字段为 None
+    #[test]
+    fn test_extract_responses_tokens() {
+        let v = json!({
+            "id": "resp_test",
+            "object": "response",
+            "usage": {
+                "input_tokens": 80,
+                "output_tokens": 35
+            }
+        });
+        let (input, output, cc, cr, sr) = extract_responses_tokens(&v);
+        assert_eq!(input, Some(80));
+        assert_eq!(output, Some(35));
+        assert_eq!(cc, None); // Phase 27 留 null
+        assert_eq!(cr, None); // Phase 27 留 null
+        assert_eq!(sr, None); // Responses API 无统一 stop_reason 字段
+    }
+
+    /// 验证 protocol_type_str 对三种 ProtocolType 返回正确的小写字符串
+    #[test]
+    fn test_protocol_type_str() {
+        assert_eq!(
+            protocol_type_str(&ProtocolType::Anthropic),
+            "anthropic"
+        );
+        assert_eq!(
+            protocol_type_str(&ProtocolType::OpenAiChatCompletions),
+            "open_ai_chat_completions"
+        );
+        assert_eq!(
+            protocol_type_str(&ProtocolType::OpenAiResponses),
+            "open_ai_responses"
+        );
     }
 }

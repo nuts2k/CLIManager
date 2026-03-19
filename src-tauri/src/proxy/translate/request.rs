@@ -66,6 +66,10 @@ pub fn anthropic_to_openai(body: Value) -> Result<Value, ProxyError> {
     }
     if let Some(v) = body.get("stream") {
         result["stream"] = v.clone();
+        // 流式请求需要 stream_options.include_usage = true 才能在最终 chunk 收到 usage 数据
+        if v.as_bool() == Some(true) {
+            result["stream_options"] = json!({"include_usage": true});
+        }
     }
 
     // 工具定义转换（过滤 BatchTool）
@@ -724,6 +728,22 @@ mod tests {
         assert_eq!(result["temperature"], 0.7);
         assert_eq!(result["top_p"], 0.9);
         assert_eq!(result["stream"], true);
+        // 流式请求应自动注入 stream_options.include_usage = true
+        assert_eq!(result["stream_options"]["include_usage"], true);
+    }
+
+    #[test]
+    fn test_stream_false_no_stream_options() {
+        let body = json!({
+            "model": "claude-3-opus",
+            "max_tokens": 1024,
+            "stream": false,
+            "messages": [{"role": "user", "content": "Hi"}]
+        });
+        let result = anthropic_to_openai(body).unwrap();
+        assert_eq!(result["stream"], false);
+        // 非流式请求不应注入 stream_options
+        assert!(result.get("stream_options").is_none(), "stream=false 时不应有 stream_options");
     }
 
     #[test]

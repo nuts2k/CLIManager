@@ -638,6 +638,7 @@ pub async fn update_provider(
             protocol_type: result.protocol_type.clone(),
             upstream_model: result.upstream_model.clone(),
             upstream_model_map: result.upstream_model_map.clone(),
+            provider_name: result.name.clone(),
         };
         if let Err(e) = proxy_service.update_upstream(&cli_id, upstream).await {
             log::error!(
@@ -721,6 +722,7 @@ pub(crate) async fn _set_active_provider_in_proxy_mode(
             protocol_type: provider.protocol_type.clone(),
             upstream_model: provider.upstream_model.clone(),
             upstream_model_map: provider.upstream_model_map.clone(),
+            provider_name: provider.name.clone(),
         })
     } else {
         None

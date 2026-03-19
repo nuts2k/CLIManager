@@ -318,6 +318,55 @@
 
 ---
 
+## Milestone: v2.6 — 流量监控
+
+**Shipped:** 2026-03-19
+**Phases:** 6 | **Plans:** 12 | **Commits:** ~126
+
+### What Was Built
+- SQLite WAL 模式 traffic.db 自动初始化（app_local_data_dir，非 iCloud）+ rusqlite_migration schema 迁移
+- mpsc channel 非阻塞日志写入管道 + handler 三协议非流式 token 提取
+- 流式 SSE Token 提取：oneshot 回传信号 + 后台 task UPDATE/emit，stream EOF 后统一回写
+- 独立 TrafficPage 实时日志表格 + Provider 筛选 + 5 张统计摘要卡片（含 SVG sparkline）
+- rollup_and_prune 定时任务（启动 + 每小时）+ Provider/Cache 排行榜 + recharts ComposedChart 双轴趋势图
+- 技术债务修复：cache_creation_tokens 暴露、try_state 安全访问、dbError inline banner、WON'T FIX 设计注释
+
+### What Worked
+- Phase 26 → 27 → 28/29 并行 → 30 → 31 依赖图清晰：存储 → 写入 → token提取/前端 并行 → 聚合 → 债务修复
+- 双轨数据加载（command 初始拉取 + event 增量追加）避免了 Tauri 事件丢失问题
+- oneshot + take() 模式精确处理 stream EOF 单次回传约束
+- try_state 替代 State 直接注入：DB 未 manage 时降级运行不 panic，与 rollup 定时任务同一模式
+- 审计驱动 Phase 31 gap closure：6 项技术债务精准分类（3 项修复 + 3 项 WON'T FIX 带设计注释）
+
+### What Was Inefficient
+- SUMMARY frontmatter 的 one_liner 和 requirements_completed 字段在多个 Phase 中为空 — 执行器 agent 未一致填充
+- ROADMAP plan 复选框（Plans: - [ ]）在完成后仍为未勾选 — 连续六个里程碑的同一问题
+- Nyquist VALIDATION.md 6 个阶段均为 draft partial — 验证流程未正式完成
+- 流式 token null bug 消耗了额外调试时间（3 个 hotfix commits）
+
+### Patterns Established
+- `traffic/` 五子模块结构：db（连接管理）、log（LogEntry + log_worker + mpsc）、rollup（rollup_and_prune + 聚合查询）、schema（MIGRATIONS + create_tables）、mod（re-export）
+- `StreamTokenData` + `update_streaming_log`：流式请求先 INSERT 空行 → stream EOF 后 UPDATE 7 字段
+- `oneshot::channel<StreamTokenData>` + `Option<Sender>.take()`：流函数单次回传 token 数据
+- `useTrafficLogs` 双轨加载：getRecentLogs(100) 初始 + traffic-log event 增量（update type 查找替换）
+- `buildHourlyData` / `buildDailyData` 前端时间点填充：生成完整时间序列，后端数据覆盖对应项，缺失补 0
+- `try_state::<TrafficDb>()` 安全访问模式：DB 未初始化返回 Err 而非 panic
+
+### Key Lessons
+1. mpsc channel fire-and-forget 是日志写入的正确模式 — 代理请求不应因日志写入而增加延迟
+2. 流式 token 必须在 stream 完全结束后统一提取 — 中途提取会遇到部分/错误数据
+3. oneshot channel 是 stream EOF 信号传递的自然选择 — 比 shared state 更安全，比 mpsc 更轻量
+4. rollup_and_prune 必须用增量 upsert（ON CONFLICT DO UPDATE）— INSERT OR REPLACE 会丢失历史累积
+5. recharts 双轴图（Bar + Line）比纯折线更好地同时展示请求数和 Token 量的数量级差异
+6. try_state 比 State 注入更健壮 — 可选依赖不应导致整个 command 不可用
+
+### Cost Observations
+- Model mix: balanced profile (sonnet-based agents, opus orchestration)
+- Total execution: ~2 days for 12 plans
+- Notable: 6 phases 12 plans 2 天完成 — 底层设施（SQLite + mpsc）搭建后前端迭代快
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -332,6 +381,7 @@
 | v2.3 | ~27 | 6 | Frontend polish — design tokens first + UI/UX refinement |
 | v2.4 | ~8 | 1 | Anthropic model mapping — reuse existing infra + parallel plans |
 | v2.5 | 29 | 2 | Claude overlay — E2E feature + test coverage, startup cache queue |
+| v2.6 | ~126 | 6 | Traffic monitoring — SQLite + mpsc + SSE token + recharts, audit-driven debt closure |
 
 ### Cumulative Quality
 
@@ -345,6 +395,7 @@
 | v2.3 | ~19,000 | 82 modified | — |
 | v2.4 | ~19,600 | 2 modified | 7.5min |
 | v2.5 | ~24,000 | 34 modified | — |
+| v2.6 | ~27,721 | ~50 modified | — |
 
 ### Top Lessons (Verified Across Milestones)
 
@@ -360,3 +411,6 @@
 10. 反向映射需在请求阶段记录原始值 — 响应模式变体携带上下文比全局状态更干净 (verified v2.4)
 11. startup 阶段事件发送不可靠 — 缓存队列 + take 语义是 Tauri setup vs 前端就绪时序问题的标准解法 (verified v2.5)
 12. 测试注入模式（path_override）优于 mock 全局存储 — 代码侵入性最小且测试真实路径 (verified v2.5)
+13. mpsc channel fire-and-forget 是日志/后台写入的正确模式 — 不阻塞主流程延迟 (verified v2.6)
+14. oneshot channel 适合 stream EOF 单次信号传递 — 比 shared state 更安全更轻量 (verified v2.6)
+15. try_state 比 State 直接注入更健壮 — 可选依赖不应导致 command panic (verified v2.6)

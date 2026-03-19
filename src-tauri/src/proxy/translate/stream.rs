@@ -162,6 +162,7 @@ fn extract_cache_read_tokens(usage: &Usage) -> Option<u32> {
 /// # 参数
 /// - `upstream`: OpenAI Chat Completions 格式的 SSE 字节流（reqwest body stream）
 /// - `model`: 用于 message_start 事件中的 model 字段（调用方传入的 Anthropic 模型名）
+/// - `token_tx`: stream EOF 时通过 oneshot 回传 StreamTokenData（handler 后台 task 用于 UPDATE DB）
 ///
 /// # 返回
 /// Anthropic SSE 格式字节流，每个 item 为完整的 SSE 块（`event: {type}\ndata: {json}\n\n`）
@@ -175,8 +176,14 @@ fn extract_cache_read_tokens(usage: &Usage) -> Option<u32> {
 pub fn create_anthropic_sse_stream(
     upstream: impl Stream<Item = Result<Bytes, reqwest::Error>> + Send + 'static,
     model: String,
+    token_tx: tokio::sync::oneshot::Sender<crate::traffic::log::StreamTokenData>,
 ) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send {
     async_stream::stream! {
+        // 用 Option 包裹，支持 take()（oneshot 只能 send 一次）
+        let mut token_tx = Some(token_tx);
+        // 积累 stream EOF 时的 token 数据
+        let mut collected_token_data: Option<crate::traffic::log::StreamTokenData> = None;
+
         // 跨 chunk SSE 字节缓冲（处理 SSE 块被 TCP 分片的情况）
         let mut buffer = Vec::new();
 
@@ -529,6 +536,15 @@ pub fn create_anthropic_sse_stream(
                                     open_block_indices.clear();
                                 }
 
+                                // 提取 token 回传数据（在构建 usage_val 之前）
+                                collected_token_data = Some(crate::traffic::log::StreamTokenData {
+                                    input_tokens: chunk_val.usage.as_ref().map(|u| u.prompt_tokens as i64),
+                                    output_tokens: chunk_val.usage.as_ref().map(|u| u.completion_tokens as i64),
+                                    cache_creation_tokens: chunk_val.usage.as_ref().and_then(|u| u.cache_creation_input_tokens.map(|v| v as i64)),
+                                    cache_read_tokens: chunk_val.usage.as_ref().and_then(|u| extract_cache_read_tokens(u).map(|v| v as i64)),
+                                    stop_reason: Some(finish_reason.to_string()),
+                                });
+
                                 // message_delta（含 stop_reason + usage）
                                 let stop_reason = map_finish_reason(finish_reason);
                                 let usage_val: Value = chunk_val.usage.as_ref().map(|u| {
@@ -563,6 +579,13 @@ pub fn create_anthropic_sse_stream(
                 }
             }
         }
+
+        // 流结束，回传 token 数据
+        if let Some(data) = collected_token_data {
+            if let Some(tx) = token_tx.take() {
+                let _ = tx.send(data);
+            }
+        }
     }
 }
 
@@ -581,7 +604,8 @@ mod tests {
         upstream: impl futures::Stream<Item = Result<Bytes, reqwest::Error>> + Send + 'static,
         model: &str,
     ) -> Vec<Value> {
-        let out_stream = create_anthropic_sse_stream(upstream, model.to_string());
+        let (token_tx, _token_rx) = tokio::sync::oneshot::channel();
+        let out_stream = create_anthropic_sse_stream(upstream, model.to_string(), token_tx);
         let chunks: Vec<_> = out_stream.collect().await;
         let merged: String = chunks
             .into_iter()
@@ -1000,6 +1024,40 @@ mod tests {
                 .and_then(|v| v.as_str()),
             Some("max_tokens"),
             "finish_reason=length 应映射为 max_tokens"
+        );
+    }
+
+    // ── token 回传：finish_reason chunk 后 oneshot 返回正确 StreamTokenData ──
+
+    #[tokio::test]
+    async fn test_token_callback_on_finish_reason() {
+        let chunks = vec![
+            make_chunk(
+                r#"{"id":"chatcmpl-7","model":"gpt-4o","choices":[{"delta":{"content":"Hi"}}]}"#,
+            ),
+            // finish_reason chunk 含 usage
+            make_chunk(
+                r#"{"id":"chatcmpl-7","model":"gpt-4o","choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"prompt_tokens_details":{"cached_tokens":3}}}"#,
+            ),
+            done_chunk(),
+        ];
+
+        let (token_tx, token_rx) = tokio::sync::oneshot::channel();
+        let out_stream =
+            create_anthropic_sse_stream(stream::iter(chunks), "claude-3-haiku".to_string(), token_tx);
+        // 消费流（驱动 stream! 宏执行）
+        let _: Vec<_> = out_stream.collect().await;
+
+        // 验证 oneshot 回传的 token 数据
+        let token_data = token_rx.await.expect("应收到 token 数据");
+        assert_eq!(token_data.input_tokens, Some(10), "input_tokens 应为 10");
+        assert_eq!(token_data.output_tokens, Some(5), "output_tokens 应为 5");
+        assert_eq!(token_data.cache_creation_tokens, None, "cache_creation_tokens 应为 None");
+        assert_eq!(token_data.cache_read_tokens, Some(3), "cache_read_tokens 应为 3（来自 prompt_tokens_details）");
+        assert_eq!(
+            token_data.stop_reason.as_deref(),
+            Some("stop"),
+            "stop_reason 应为原始 OpenAI finish_reason"
         );
     }
 }
