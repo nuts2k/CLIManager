@@ -131,18 +131,28 @@ date +"%Y-%m-%d"
 
 使用 Python 进行文本操作：
 ```bash
-python3 -c "
-import sys
-changelog = open('CHANGELOG.md', 'r').read()
-new_entry = '''${NEW_ENTRY}'''
-# 在 --- 之后插入新条目
+NEW_ENTRY="$NEW_ENTRY" python3 - <<'PY'
+from pathlib import Path
+import os
+
+path = Path('CHANGELOG.md')
+new_entry = os.environ['NEW_ENTRY']
+
+if path.exists():
+    changelog = path.read_text()
+else:
+    changelog = '# 更新日志\n\n所有重要变更都会记录在这个文件中。\n\n格式基于 [Conventional Commits](https://www.conventionalcommits.org/)。\n\n---\n'
+
 if '---' in changelog:
     parts = changelog.split('---', 1)
-    changelog = parts[0] + '---\n\n' + new_entry + '\n' + parts[1].lstrip()
+    changelog = parts[0] + '---\n\n' + new_entry + '\n\n' + parts[1].lstrip()
 else:
-    changelog = changelog + '\n' + new_entry
-open('CHANGELOG.md', 'w').write(changelog)
-"
+    changelog = changelog.rstrip() + '\n\n' + new_entry + '\n'
+
+path.write_text(changelog)
+PY
+
+grep -q "## v${NEW_VERSION}" CHANGELOG.md
 ```
 
 输出：`✅ CHANGELOG.md 已更新`
@@ -178,6 +188,21 @@ git push && git push --tags
 ```
 
 Repository 路径从 `git remote get-url origin` 解析。
+
+解析示例：
+```bash
+REMOTE_URL=$(git remote get-url origin)
+REPO=$(REMOTE_URL="$REMOTE_URL" python3 - <<'PY'
+import os, re
+url = os.environ['REMOTE_URL']
+for pattern in [r'github\.com[:/](.+?)(?:\.git)?$', r'^https?://github\.com/(.+?)(?:\.git)?$']:
+    m = re.search(pattern, url)
+    if m:
+        print(m.group(1))
+        break
+PY
+)
+```
 
 ---
 
