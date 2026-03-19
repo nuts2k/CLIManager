@@ -35,7 +35,7 @@ impl super::TrafficDb {
     /// 注意：created_at 是 epoch 毫秒，SQLite strftime('%s','now') 返回秒，需乘以 1000。
     pub fn rollup_and_prune(&self) -> Result<()> {
         let conn = self.conn.lock().unwrap();
-        conn.execute_batch(
+        let sql = format!(
             "
             BEGIN;
 
@@ -65,6 +65,7 @@ impl super::TrafficDb {
                 COALESCE(SUM(duration_ms), 0)                         AS sum_duration_ms
             FROM request_logs
             WHERE created_at < (strftime('%s', 'now') - 86400) * 1000
+              AND {}
             GROUP BY provider_name, strftime('%Y-%m-%d', created_at / 1000, 'unixepoch')
             ON CONFLICT(provider_name, rollup_date) DO UPDATE SET
                 request_count               = request_count + excluded.request_count,
@@ -88,7 +89,9 @@ impl super::TrafficDb {
 
             COMMIT;
             ",
-        )?;
+            super::HIDDEN_REQUESTS_SQL_FILTER
+        );
+        conn.execute_batch(&sql)?;
         Ok(())
     }
 
@@ -103,7 +106,7 @@ impl super::TrafficDb {
         match range {
             "24h" => {
                 let threshold_ms = (chrono::Utc::now().timestamp() - 86400) * 1000;
-                let mut stmt = conn.prepare(
+                let query = format!(
                     "SELECT
                         provider_name,
                         COUNT(*) AS request_count,
@@ -118,9 +121,12 @@ impl super::TrafficDb {
                         COALESCE(SUM(duration_ms), 0) AS sum_duration_ms
                     FROM request_logs
                     WHERE created_at >= ?1
+                      AND {}
                     GROUP BY provider_name
                     ORDER BY request_count DESC",
-                )?;
+                    super::HIDDEN_REQUESTS_SQL_FILTER
+                );
+                let mut stmt = conn.prepare(&query)?;
                 // 列索引：0=provider_name, 1=request_count, 2=success_count,
                 // 3=total_input_tokens, 4=total_output_tokens, 5=total_cache_creation_tokens,
                 // 6=total_cache_read_tokens, 7=cache_triggered_count, 8=cache_hit_count,
@@ -147,7 +153,7 @@ impl super::TrafficDb {
                 let threshold_date = (chrono::Utc::now() - chrono::Duration::days(7))
                     .format("%Y-%m-%d")
                     .to_string();
-                let mut stmt = conn.prepare(
+                let query = format!(
                     "SELECT
                         provider_name,
                         SUM(request_count) AS request_count,
@@ -192,11 +198,14 @@ impl super::TrafficDb {
                             COALESCE(SUM(duration_ms), 0) AS sum_duration_ms
                         FROM request_logs
                         WHERE created_at >= ?2
+                          AND {}
                         GROUP BY provider_name
                     )
                     GROUP BY provider_name
                     ORDER BY request_count DESC",
-                )?;
+                    super::HIDDEN_REQUESTS_SQL_FILTER
+                );
+                let mut stmt = conn.prepare(&query)?;
                 // 列索引：0=provider_name, 1=request_count, 2=success_count,
                 // 3=total_input_tokens, 4=total_output_tokens, 5=total_cache_creation_tokens,
                 // 6=total_cache_read_tokens, 7=cache_triggered_count, 8=cache_hit_count,
@@ -233,16 +242,19 @@ impl super::TrafficDb {
         match range {
             "24h" => {
                 let threshold_ms = (chrono::Utc::now().timestamp() - 86400) * 1000;
-                let mut stmt = conn.prepare(
+                let query = format!(
                     "SELECT
                         strftime('%H:00', created_at / 1000, 'unixepoch') AS hour_label,
                         COUNT(*) AS request_count,
                         COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0) AS total_tokens
                     FROM request_logs
                     WHERE created_at >= ?1
+                      AND {}
                     GROUP BY strftime('%Y-%m-%d %H', created_at / 1000, 'unixepoch')
                     ORDER BY hour_label ASC",
-                )?;
+                    super::HIDDEN_REQUESTS_SQL_FILTER
+                );
+                let mut stmt = conn.prepare(&query)?;
                 let rows = stmt.query_map(rusqlite::params![threshold_ms], |row| {
                     Ok(TimeStat {
                         label: row.get(0)?,
@@ -257,7 +269,7 @@ impl super::TrafficDb {
                 let threshold_date = (chrono::Utc::now() - chrono::Duration::days(7))
                     .format("%Y-%m-%d")
                     .to_string();
-                let mut stmt = conn.prepare(
+                let query = format!(
                     "SELECT
                         day_label,
                         SUM(request_count) AS request_count,
@@ -279,11 +291,14 @@ impl super::TrafficDb {
                             COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0) AS total_tokens
                         FROM request_logs
                         WHERE created_at >= ?2
+                          AND {}
                         GROUP BY strftime('%Y-%m-%d', created_at / 1000, 'unixepoch')
                     )
                     GROUP BY day_label
                     ORDER BY day_label ASC",
-                )?;
+                    super::HIDDEN_REQUESTS_SQL_FILTER
+                );
+                let mut stmt = conn.prepare(&query)?;
                 let rows = stmt.query_map(rusqlite::params![threshold_date, recent_threshold_ms], |row| {
                     Ok(TimeStat {
                         label: row.get(0)?,
@@ -330,13 +345,37 @@ mod tests {
         cache_creation: Option<i64>,
         cache_read: Option<i64>,
     ) {
+        insert_log_with_path(
+            db,
+            provider,
+            created_at,
+            status,
+            input,
+            output,
+            cache_creation,
+            cache_read,
+            "/v1/messages",
+        );
+    }
+
+    fn insert_log_with_path(
+        db: &TrafficDb,
+        provider: &str,
+        created_at: i64,
+        status: i64,
+        input: i64,
+        output: i64,
+        cache_creation: Option<i64>,
+        cache_read: Option<i64>,
+        path: &str,
+    ) {
         use crate::traffic::log::LogEntry;
         let entry = LogEntry {
             created_at,
             provider_name: provider.to_string(),
             cli_id: "claude".to_string(),
             method: "POST".to_string(),
-            path: "/v1/messages".to_string(),
+            path: path.to_string(),
             status_code: Some(status),
             is_streaming: 0,
             request_model: Some("claude-3-5-sonnet".to_string()),
@@ -512,6 +551,40 @@ mod tests {
         assert_eq!(total_output_1, total_output_2, "两次 rollup total_output_tokens 应一致（幂等）");
     }
 
+    /// Test: rollup_and_prune 不应将 token count 请求聚合到 daily_rollups
+    #[test]
+    fn test_rollup_excludes_token_count_requests() {
+        let db = make_test_db();
+        let ts = old_ts();
+
+        insert_log(&db, "provider-a", ts, 200, 100, 50);
+        insert_log_with_path(
+            &db,
+            "provider-a",
+            ts,
+            200,
+            999,
+            888,
+            None,
+            None,
+            "/v1/token_count",
+        );
+
+        db.rollup_and_prune().unwrap();
+
+        let conn = db.conn.lock().unwrap();
+        let (req_count, total_input, total_output): (i64, i64, i64) = conn
+            .query_row(
+                "SELECT request_count, total_input_tokens, total_output_tokens FROM daily_rollups",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(req_count, 1, "rollup 不应聚合 token count 请求");
+        assert_eq!(total_input, 100);
+        assert_eq!(total_output, 50);
+    }
+
     // ====================================================================
     // query_provider_stats 测试
     // ====================================================================
@@ -609,6 +682,49 @@ mod tests {
         assert_eq!(stats[2].provider_name, "provider-c");
         assert_eq!(stats[2].request_count, 1, "provider-c 仅来自最近 24h 明细");
         assert_eq!(stats[2].total_cache_creation_tokens, 0, "provider-c 无缓存创建 token");
+    }
+
+    /// Test: 统计查询应排除 token count 请求
+    #[test]
+    fn test_stats_queries_exclude_token_count_requests() {
+        let db = make_test_db();
+        let recent = recent_ts();
+
+        insert_log(&db, "provider-a", recent, 200, 100, 50);
+        insert_log_with_path(
+            &db,
+            "provider-a",
+            recent,
+            200,
+            999,
+            888,
+            None,
+            None,
+            "/v1/token_count",
+        );
+        insert_log_with_path(
+            &db,
+            "provider-a",
+            recent,
+            200,
+            777,
+            666,
+            None,
+            None,
+            "/v1/messages/count_tokens",
+        );
+
+        let provider_stats = db.query_provider_stats("24h").unwrap();
+        assert_eq!(provider_stats.len(), 1);
+        assert_eq!(provider_stats[0].request_count, 1, "provider 统计不应计入 token count 请求");
+        assert_eq!(provider_stats[0].total_input_tokens, 100);
+        assert_eq!(provider_stats[0].total_output_tokens, 50);
+
+        let trend = db.query_time_trend("24h").unwrap();
+        let total_req: i64 = trend.iter().map(|t| t.request_count).sum();
+        let total_tokens: i64 = trend.iter().map(|t| t.total_tokens).sum();
+        assert_eq!(total_req, 1, "时间趋势不应计入 token count 请求");
+        assert_eq!(total_tokens, 150, "时间趋势 token 总量不应计入 token count 请求");
     }
 
     // ====================================================================

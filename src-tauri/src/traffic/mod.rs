@@ -16,6 +16,14 @@ pub struct TrafficDb {
     pub conn: Mutex<rusqlite::Connection>,
 }
 
+pub const HIDDEN_REQUESTS_SQL_FILTER: &str =
+    "path != '/v1/token_count' AND path NOT LIKE '%/count_tokens'";
+
+/// 是否应从流量视图中隐藏该请求路径
+pub fn should_hide_request_from_traffic_views(path: &str) -> bool {
+    path == "/v1/token_count" || path.ends_with("/count_tokens")
+}
+
 /// 初始化 traffic DB，返回 Option<TrafficDb>
 ///
 /// - Some(TrafficDb)：DB 初始化成功，可通过 .manage() 注入 Tauri 状态
@@ -27,4 +35,15 @@ pub fn init_traffic_db() -> Option<TrafficDb> {
     db::open_traffic_db().map(|conn| TrafficDb {
         conn: Mutex::new(conn),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_should_hide_request_from_traffic_views() {
+        assert!(super::should_hide_request_from_traffic_views("/v1/token_count"));
+        assert!(super::should_hide_request_from_traffic_views("/v1/messages/count_tokens"));
+        assert!(!super::should_hide_request_from_traffic_views("/v1/messages"));
+        assert!(!super::should_hide_request_from_traffic_views("/v1/responses"));
+    }
 }

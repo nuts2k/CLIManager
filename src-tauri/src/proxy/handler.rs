@@ -819,9 +819,11 @@ pub async fn proxy_handler(
                 match db.insert_request_log(&entry) {
                     Ok(id) => {
                         // emit type="new"（token 为 None 的初始状态）
-                        let payload = crate::traffic::log::TrafficLogPayload::from_entry(id, &entry, "new");
-                        if let Err(e) = app_handle.emit("traffic-log", &payload) {
-                            log::warn!("流式日志 emit new 失败: {}", e);
+                        if !crate::traffic::should_hide_request_from_traffic_views(&path) {
+                            let payload = crate::traffic::log::TrafficLogPayload::from_entry(id, &entry, "new");
+                            if let Err(e) = app_handle.emit("traffic-log", &payload) {
+                                log::warn!("流式日志 emit new 失败: {}", e);
+                            }
                         }
                         log_row_id = Some(id);
                     }
@@ -864,9 +866,13 @@ pub async fn proxy_handler(
                                 updated_entry.stop_reason = token_data.stop_reason;
                                 updated_entry.ttfb_ms = Some(ttfb);
                                 updated_entry.duration_ms = Some(duration_ms);
-                                let payload = crate::traffic::log::TrafficLogPayload::from_entry(row_id, &updated_entry, "update");
-                                if let Err(e) = handle.emit("traffic-log", &payload) {
-                                    log::warn!("emit traffic-log update 失败: {}", e);
+                                if !crate::traffic::should_hide_request_from_traffic_views(
+                                    &updated_entry.path,
+                                ) {
+                                    let payload = crate::traffic::log::TrafficLogPayload::from_entry(row_id, &updated_entry, "update");
+                                    if let Err(e) = handle.emit("traffic-log", &payload) {
+                                        log::warn!("emit traffic-log update 失败: {}", e);
+                                    }
                                 }
                             }
                         }

@@ -166,15 +166,18 @@ impl super::TrafficDb {
     /// 查询最近 N 条日志，按 created_at 降序（最新在前）
     pub fn query_recent_logs(&self, limit: i64) -> rusqlite::Result<Vec<TrafficLogPayload>> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
+        let query = format!(
             "SELECT id, created_at, provider_name, cli_id, method, path,
                     status_code, is_streaming, request_model, upstream_model, protocol_type,
                     input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
                     ttfb_ms, duration_ms, stop_reason, error_message
              FROM request_logs
+             WHERE {}
              ORDER BY created_at DESC
              LIMIT ?1",
-        )?;
+            super::HIDDEN_REQUESTS_SQL_FILTER
+        );
+        let mut stmt = conn.prepare(&query)?;
 
         let rows = stmt.query_map(rusqlite::params![limit], |row| {
             Ok(TrafficLogPayload {
@@ -212,9 +215,11 @@ pub async fn log_worker(mut rx: mpsc::Receiver<LogEntry>, app_handle: tauri::App
         if let Some(db) = app_handle.try_state::<super::TrafficDb>() {
             match db.insert_request_log(&entry) {
                 Ok(id) => {
-                    let payload = TrafficLogPayload::from_entry(id, &entry, "new");
-                    if let Err(e) = app_handle.emit("traffic-log", &payload) {
-                        log::warn!("emit traffic-log 失败: {}", e);
+                    if !super::should_hide_request_from_traffic_views(&entry.path) {
+                        let payload = TrafficLogPayload::from_entry(id, &entry, "new");
+                        if let Err(e) = app_handle.emit("traffic-log", &payload) {
+                            log::warn!("emit traffic-log 失败: {}", e);
+                        }
                     }
                 }
                 Err(e) => log::warn!("写入 request_logs 失败: {}", e),
@@ -342,6 +347,34 @@ mod tests {
         assert_eq!(logs[0].created_at, 3_000_000, "最新记录应排第一");
         assert_eq!(logs[1].created_at, 2_000_000, "次新记录应排第二");
         assert_eq!(logs[2].created_at, 1_000_000, "最旧记录应排第三");
+    }
+
+    /// Test: query_recent_logs 不返回 token count 请求，避免出现在实时日志 UI 中
+    #[test]
+    fn test_query_recent_logs_excludes_token_count_requests() {
+        let db = make_test_db();
+
+        let mut visible = make_full_entry();
+        visible.created_at = 1_000_000;
+        visible.path = "/v1/messages".to_string();
+        visible.request_model = Some("claude-opus-4-6".to_string());
+        db.insert_request_log(&visible).unwrap();
+
+        let mut hidden_token_count = make_full_entry();
+        hidden_token_count.created_at = 2_000_000;
+        hidden_token_count.path = "/v1/token_count".to_string();
+        hidden_token_count.request_model = Some("claude-opus-4-6".to_string());
+        db.insert_request_log(&hidden_token_count).unwrap();
+
+        let mut hidden_count_tokens = make_full_entry();
+        hidden_count_tokens.created_at = 3_000_000;
+        hidden_count_tokens.path = "/v1/messages/count_tokens".to_string();
+        hidden_count_tokens.request_model = Some("claude-opus-4-6".to_string());
+        db.insert_request_log(&hidden_count_tokens).unwrap();
+
+        let logs = db.query_recent_logs(10).unwrap();
+        assert_eq!(logs.len(), 1, "token count 请求不应出现在实时日志历史列表中");
+        assert_eq!(logs[0].path, "/v1/messages");
     }
 
     /// Test: LogEntry 所有 18 个字段均可正确写入和读取（含 Option 字段为 None 的情况）
