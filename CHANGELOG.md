@@ -6,6 +6,30 @@
 
 ---
 
+## v0.2.6 (2026-03-19)
+
+### 新功能
+- 代理模式完整流量监控：SQLite WAL 持久化日志 + 三协议 token 提取（含流式 SSE）
+- mpsc channel 非阻塞日志写入管道，后台 task 异步写入不阻塞代理请求
+- 三协议流式 SSE Token 提取（Anthropic/OpenAI Chat/Responses），oneshot 回传 + 后台 UPDATE
+- 独立 TrafficPage 实时日志表格 + Provider 筛选 + 5 张统计摘要卡片
+- rollup_and_prune 定时聚合（启动 + 每小时），24h 明细 + 7d 统计自动清理
+- Provider/Cache 排行榜 + recharts ComposedChart 双轴趋势图（24h/7d 切换）
+- try_state 安全 DB 访问 + dbError 内联警告 banner
+- total_cache_creation_tokens 暴露到 ProviderStat API 和 CacheLeaderboard 前端
+
+### 修复
+- 修正上游模型记录与展示
+- 修正 7d 趋势图日期标签时区偏移
+- 修正 24h 趋势图滚动时间轴
+- 补齐 7d 流量统计最近 24h 数据
+- TPS 计算扣除 TTFB，反映真实 token 生成速率
+- 修复流式请求 token 数据全为 null 的问题
+- DB 初始化失败时 try_state 安全访问 + 前端 dbError 内联警告
+- 修正 30-03-SUMMARY.md 中 i18n 文件路径记录
+
+### 其他
+- WON'T FIX 技术债务添加设计意图注释（3 项）
 ## v0.2.5 (2026-03-17)
 
 ### 新功能
