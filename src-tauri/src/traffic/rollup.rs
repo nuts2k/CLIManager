@@ -52,7 +52,7 @@ impl super::TrafficDb {
             )
             SELECT
                 provider_name,
-                strftime('%Y-%m-%d', created_at / 1000, 'unixepoch') AS rollup_date,
+                strftime('%Y-%m-%d', created_at / 1000, 'unixepoch', 'localtime') AS rollup_date,
                 COUNT(*)                                               AS request_count,
                 SUM(CASE WHEN status_code >= 200 AND status_code < 300 THEN 1 ELSE 0 END) AS success_count,
                 COALESCE(SUM(input_tokens), 0)                        AS total_input_tokens,
@@ -66,7 +66,7 @@ impl super::TrafficDb {
             FROM request_logs
             WHERE created_at < (strftime('%s', 'now') - 86400) * 1000
               AND {}
-            GROUP BY provider_name, strftime('%Y-%m-%d', created_at / 1000, 'unixepoch')
+            GROUP BY provider_name, strftime('%Y-%m-%d', created_at / 1000, 'unixepoch', 'localtime')
             ON CONFLICT(provider_name, rollup_date) DO UPDATE SET
                 request_count               = request_count + excluded.request_count,
                 success_count               = success_count + excluded.success_count,
@@ -85,7 +85,7 @@ impl super::TrafficDb {
 
             -- 步骤 3：删除超过 7d 的 daily_rollups 记录
             DELETE FROM daily_rollups
-            WHERE rollup_date < strftime('%Y-%m-%d', 'now', '-7 days');
+            WHERE rollup_date < strftime('%Y-%m-%d', 'now', 'localtime', '-7 days');
 
             COMMIT;
             ",
@@ -150,7 +150,7 @@ impl super::TrafficDb {
             }
             "7d" => {
                 let recent_threshold_ms = (chrono::Utc::now().timestamp() - 86400) * 1000;
-                let threshold_date = (chrono::Utc::now() - chrono::Duration::days(7))
+                let threshold_date = (chrono::Local::now() - chrono::Duration::days(7))
                     .format("%Y-%m-%d")
                     .to_string();
                 let query = format!(
@@ -244,13 +244,13 @@ impl super::TrafficDb {
                 let threshold_ms = (chrono::Utc::now().timestamp() - 86400) * 1000;
                 let query = format!(
                     "SELECT
-                        strftime('%H:00', created_at / 1000, 'unixepoch') AS hour_label,
+                        strftime('%H:00', created_at / 1000, 'unixepoch', 'localtime') AS hour_label,
                         COUNT(*) AS request_count,
                         COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0) AS total_tokens
                     FROM request_logs
                     WHERE created_at >= ?1
                       AND {}
-                    GROUP BY strftime('%Y-%m-%d %H', created_at / 1000, 'unixepoch')
+                    GROUP BY strftime('%Y-%m-%d %H', created_at / 1000, 'unixepoch', 'localtime')
                     ORDER BY hour_label ASC",
                     super::HIDDEN_REQUESTS_SQL_FILTER
                 );
@@ -266,7 +266,7 @@ impl super::TrafficDb {
             }
             "7d" => {
                 let recent_threshold_ms = (chrono::Utc::now().timestamp() - 86400) * 1000;
-                let threshold_date = (chrono::Utc::now() - chrono::Duration::days(7))
+                let threshold_date = (chrono::Local::now() - chrono::Duration::days(7))
                     .format("%Y-%m-%d")
                     .to_string();
                 let query = format!(
@@ -286,13 +286,13 @@ impl super::TrafficDb {
                         UNION ALL
 
                         SELECT
-                            strftime('%Y-%m-%d', created_at / 1000, 'unixepoch') AS day_label,
+                            strftime('%Y-%m-%d', created_at / 1000, 'unixepoch', 'localtime') AS day_label,
                             COUNT(*) AS request_count,
                             COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0) AS total_tokens
                         FROM request_logs
                         WHERE created_at >= ?2
                           AND {}
-                        GROUP BY strftime('%Y-%m-%d', created_at / 1000, 'unixepoch')
+                        GROUP BY strftime('%Y-%m-%d', created_at / 1000, 'unixepoch', 'localtime')
                     )
                     GROUP BY day_label
                     ORDER BY day_label ASC",

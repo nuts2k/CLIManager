@@ -23,8 +23,8 @@ import type { TimeStat, TimeRange } from "@/types/traffic";
 
 /**
  * 将后端返回的小时级 TimeStat 填充为完整滚动 24 小时点（缺失填 0）。
- * 后端 label 格式：如 "08:00"；本函数以当前 UTC 整点为终点，向前生成 24 个标签，
- * 与后端按 `unixepoch` 聚合得到的小时标签保持一致，缺失项补 0。
+ * 后端 label 格式：如 "08:00"（本地时间）；本函数以当前本地整点为终点，
+ * 向前生成 24 个标签，与后端按 `unixepoch, 'localtime'` 聚合得到的小时标签保持一致，缺失项补 0。
  */
 export function buildHourlyData(raw: TimeStat[], now = new Date()): TimeStat[] {
   const map = new Map<string, TimeStat>();
@@ -33,12 +33,12 @@ export function buildHourlyData(raw: TimeStat[], now = new Date()): TimeStat[] {
   }
 
   const currentHour = new Date(now);
-  currentHour.setUTCMinutes(0, 0, 0);
+  currentHour.setMinutes(0, 0, 0);
 
   return Array.from({ length: 24 }, (_, index) => {
     const point = new Date(currentHour);
-    point.setUTCHours(currentHour.getUTCHours() - (23 - index));
-    const label = `${String(point.getUTCHours()).padStart(2, "0")}:00`;
+    point.setHours(currentHour.getHours() - (23 - index));
+    const label = `${String(point.getHours()).padStart(2, "0")}:00`;
     return map.get(label) ?? { label, request_count: 0, total_tokens: 0 };
   });
 }
