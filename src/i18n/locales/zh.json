@@ -213,7 +213,8 @@
       "cli": "CLI",
       "stopReason": "终止原因",
       "errorMessage": "错误信息",
-      "placeholder": "--"
+      "placeholder": "--",
+      "pending": "请求中"
     },
     "empty": {
       "title": "暂无流量记录",

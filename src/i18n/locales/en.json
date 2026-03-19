@@ -213,7 +213,8 @@
       "cli": "CLI",
       "stopReason": "Stop Reason",
       "errorMessage": "Error",
-      "placeholder": "--"
+      "placeholder": "--",
+      "pending": "Pending"
     },
     "empty": {
       "title": "No traffic records",
