@@ -302,7 +302,13 @@ fn protocol_type_str(pt: &ProtocolType) -> &'static str {
 fn extract_tokens_from_response(
     resp_value: &Value,
     response_mode: &ResponseTranslationMode,
-) -> (Option<i64>, Option<i64>, Option<i64>, Option<i64>, Option<String>) {
+) -> (
+    Option<i64>,
+    Option<i64>,
+    Option<i64>,
+    Option<i64>,
+    Option<String>,
+) {
     match response_mode {
         ResponseTranslationMode::AnthropicPassthrough { .. } => {
             extract_anthropic_tokens(resp_value)
@@ -310,9 +316,7 @@ fn extract_tokens_from_response(
         ResponseTranslationMode::OpenAiChatCompletions { .. } => {
             extract_openai_chat_tokens(resp_value)
         }
-        ResponseTranslationMode::OpenAiResponses { .. } => {
-            extract_responses_tokens(resp_value)
-        }
+        ResponseTranslationMode::OpenAiResponses { .. } => extract_responses_tokens(resp_value),
         ResponseTranslationMode::Passthrough => {
             // 透传请求（非 /v1/messages），尝试 Anthropic 格式
             extract_anthropic_tokens(resp_value)
@@ -320,10 +324,34 @@ fn extract_tokens_from_response(
     }
 }
 
+fn finalize_streaming_failure_log(
+    db: &crate::traffic::TrafficDb,
+    row_id: i64,
+    entry_for_update: &LogEntry,
+    ttfb_ms: i64,
+    duration_ms: i64,
+    error_message: &str,
+) -> rusqlite::Result<LogEntry> {
+    db.update_streaming_log_failure(row_id, error_message, Some(ttfb_ms), Some(duration_ms))?;
+
+    let mut updated_entry = entry_for_update.clone();
+    updated_entry.ttfb_ms = updated_entry.ttfb_ms.or(Some(ttfb_ms));
+    updated_entry.duration_ms = Some(duration_ms);
+    updated_entry.error_message = Some(error_message.to_string());
+
+    Ok(updated_entry)
+}
+
 /// Anthropic 协议 token 提取
 fn extract_anthropic_tokens(
     v: &Value,
-) -> (Option<i64>, Option<i64>, Option<i64>, Option<i64>, Option<String>) {
+) -> (
+    Option<i64>,
+    Option<i64>,
+    Option<i64>,
+    Option<i64>,
+    Option<String>,
+) {
     let usage = v.get("usage");
     let input = usage
         .and_then(|u| u.get("input_tokens"))
@@ -347,7 +375,13 @@ fn extract_anthropic_tokens(
 /// OpenAI Chat Completions token 提取（从原始 OpenAI 响应，非转换后的 Anthropic 格式）
 fn extract_openai_chat_tokens(
     v: &Value,
-) -> (Option<i64>, Option<i64>, Option<i64>, Option<i64>, Option<String>) {
+) -> (
+    Option<i64>,
+    Option<i64>,
+    Option<i64>,
+    Option<i64>,
+    Option<String>,
+) {
     let usage = v.get("usage");
     let input = usage
         .and_then(|u| u.get("prompt_tokens"))
@@ -376,7 +410,13 @@ fn extract_openai_chat_tokens(
 /// OpenAI Responses API token 提取
 fn extract_responses_tokens(
     v: &Value,
-) -> (Option<i64>, Option<i64>, Option<i64>, Option<i64>, Option<String>) {
+) -> (
+    Option<i64>,
+    Option<i64>,
+    Option<i64>,
+    Option<i64>,
+    Option<String>,
+) {
     let usage = v.get("usage");
     let input = usage
         .and_then(|u| u.get("input_tokens"))
@@ -541,7 +581,11 @@ pub async fn proxy_handler(
             // 从 body 中提取 model 名（GET 请求或空 body 时优雅降级，不中断请求）
             let request_model: String = serde_json::from_slice::<Value>(&body_bytes)
                 .ok()
-                .and_then(|v| v.get("model").and_then(|m| m.as_str()).map(|s| s.to_string()))
+                .and_then(|v| {
+                    v.get("model")
+                        .and_then(|m| m.as_str())
+                        .map(|s| s.to_string())
+                })
                 .unwrap_or_else(|| "unknown".to_string());
             let has_mapping = has_effective_upstream_model_mapping(&upstream);
             let url = translate::request::build_upstream_url(&upstream.base_url, &path, &query);
@@ -550,8 +594,8 @@ pub async fn proxy_handler(
                 let body_value: Value = serde_json::from_slice(&body_bytes)
                     .map_err(|e| ProxyError::TranslateError(format!("无法解析请求体: {}", e)))?;
                 let mapped = apply_upstream_model_mapping(body_value, &upstream);
-                let new_bytes = serde_json::to_vec(&mapped)
-                    .map_err(|e| ProxyError::Internal(e.to_string()))?;
+                let new_bytes =
+                    serde_json::to_vec(&mapped).map_err(|e| ProxyError::Internal(e.to_string()))?;
                 (
                     url,
                     Bytes::from(new_bytes),
@@ -559,7 +603,11 @@ pub async fn proxy_handler(
                 )
             } else {
                 // 无映射时原样透传 body bytes（避免重新序列化损失格式）
-                (url, body_bytes, ResponseTranslationMode::AnthropicPassthrough { request_model })
+                (
+                    url,
+                    body_bytes,
+                    ResponseTranslationMode::AnthropicPassthrough { request_model },
+                )
             }
         }
         _ => {
@@ -663,7 +711,9 @@ pub async fn proxy_handler(
     let mut log_stop_reason: Option<String> = None;
 
     // 流式请求的 oneshot receiver（stream EOF 后由后台 task 接收 token 数据并 UPDATE DB）
-    let mut streaming_token_rx: Option<tokio::sync::oneshot::Receiver<crate::traffic::log::StreamTokenData>> = None;
+    let mut streaming_token_rx: Option<
+        tokio::sync::oneshot::Receiver<crate::traffic::log::StreamTokenData>,
+    > = None;
 
     let body = match response_mode {
         ResponseTranslationMode::OpenAiChatCompletions { request_model } => {
@@ -672,7 +722,8 @@ pub async fn proxy_handler(
                 Body::from_stream(upstream_resp.bytes_stream())
             } else if upstream_is_sse {
                 // 流式：创建 oneshot channel，wrap 为 SSE 转换流
-                let (tx, rx) = tokio::sync::oneshot::channel::<crate::traffic::log::StreamTokenData>();
+                let (tx, rx) =
+                    tokio::sync::oneshot::channel::<crate::traffic::log::StreamTokenData>();
                 streaming_token_rx = Some(rx);
                 Body::from_stream(translate::stream::create_anthropic_sse_stream(
                     upstream_resp.bytes_stream(),
@@ -688,8 +739,7 @@ pub async fn proxy_handler(
                 let resp_value: Value = serde_json::from_slice(&resp_bytes)
                     .map_err(|e| ProxyError::TranslateError(format!("响应解析失败: {}", e)))?;
                 // 在 resp_value 被 move 之前提取 token（从原始 OpenAI 格式）
-                let (it, ot, cc, cr, sr) =
-                    extract_openai_chat_tokens(&resp_value);
+                let (it, ot, cc, cr, sr) = extract_openai_chat_tokens(&resp_value);
                 log_input_tokens = it;
                 log_output_tokens = ot;
                 log_cache_creation = cc;
@@ -707,7 +757,8 @@ pub async fn proxy_handler(
                 Body::from_stream(upstream_resp.bytes_stream())
             } else if upstream_is_sse {
                 // 流式：创建 oneshot channel，wrap 为 Responses API -> Anthropic SSE 转换流
-                let (tx, rx) = tokio::sync::oneshot::channel::<crate::traffic::log::StreamTokenData>();
+                let (tx, rx) =
+                    tokio::sync::oneshot::channel::<crate::traffic::log::StreamTokenData>();
                 streaming_token_rx = Some(rx);
                 Body::from_stream(
                     translate::responses_stream::create_responses_anthropic_sse_stream(
@@ -725,8 +776,7 @@ pub async fn proxy_handler(
                 let resp_value: Value = serde_json::from_slice(&resp_bytes)
                     .map_err(|e| ProxyError::TranslateError(format!("响应解析失败: {}", e)))?;
                 // 在 resp_value 被 move 之前提取 token（从原始 Responses API 格式）
-                let (it, ot, cc, cr, sr) =
-                    extract_responses_tokens(&resp_value);
+                let (it, ot, cc, cr, sr) = extract_responses_tokens(&resp_value);
                 log_input_tokens = it;
                 log_output_tokens = ot;
                 log_cache_creation = cc;
@@ -745,7 +795,8 @@ pub async fn proxy_handler(
                 Body::from_stream(upstream_resp.bytes_stream())
             } else if upstream_is_sse {
                 // 流式：创建 oneshot channel，逐行扫描替换 model 字段
-                let (tx, rx) = tokio::sync::oneshot::channel::<crate::traffic::log::StreamTokenData>();
+                let (tx, rx) =
+                    tokio::sync::oneshot::channel::<crate::traffic::log::StreamTokenData>();
                 streaming_token_rx = Some(rx);
                 Body::from_stream(create_anthropic_reverse_model_stream(
                     upstream_resp.bytes_stream(),
@@ -761,8 +812,7 @@ pub async fn proxy_handler(
                 let resp_value: Value = serde_json::from_slice(&resp_bytes)
                     .map_err(|e| ProxyError::TranslateError(format!("响应解析失败: {}", e)))?;
                 // 在 resp_value 被 move 之前提取 token（从原始 Anthropic 格式）
-                let (it, ot, cc, cr, sr) =
-                    extract_anthropic_tokens(&resp_value);
+                let (it, ot, cc, cr, sr) = extract_anthropic_tokens(&resp_value);
                 log_input_tokens = it;
                 log_output_tokens = ot;
                 log_cache_creation = cc;
@@ -820,7 +870,9 @@ pub async fn proxy_handler(
                     Ok(id) => {
                         // emit type="new"（token 为 None 的初始状态）
                         if !crate::traffic::should_hide_request_from_traffic_views(&path) {
-                            let payload = crate::traffic::log::TrafficLogPayload::from_entry(id, &entry, "new");
+                            let payload = crate::traffic::log::TrafficLogPayload::from_entry(
+                                id, &entry, "new",
+                            );
                             if let Err(e) = app_handle.emit("traffic-log", &payload) {
                                 log::warn!("流式日志 emit new 失败: {}", e);
                             }
@@ -854,14 +906,20 @@ pub async fn proxy_handler(
                     if let Some(ref handle) = app_handle {
                         use tauri::{Emitter, Manager};
                         if let Some(db) = handle.try_state::<crate::traffic::TrafficDb>() {
-                            if let Err(e) = db.update_streaming_log(row_id, &token_data, Some(ttfb), Some(duration_ms)) {
+                            if let Err(e) = db.update_streaming_log(
+                                row_id,
+                                &token_data,
+                                Some(ttfb),
+                                Some(duration_ms),
+                            ) {
                                 log::warn!("流式日志 UPDATE 失败: {}", e);
                             } else {
                                 // emit type="update"
                                 let mut updated_entry = entry_for_update;
                                 updated_entry.input_tokens = token_data.input_tokens;
                                 updated_entry.output_tokens = token_data.output_tokens;
-                                updated_entry.cache_creation_tokens = token_data.cache_creation_tokens;
+                                updated_entry.cache_creation_tokens =
+                                    token_data.cache_creation_tokens;
                                 updated_entry.cache_read_tokens = token_data.cache_read_tokens;
                                 updated_entry.stop_reason = token_data.stop_reason;
                                 updated_entry.ttfb_ms = Some(ttfb);
@@ -869,7 +927,12 @@ pub async fn proxy_handler(
                                 if !crate::traffic::should_hide_request_from_traffic_views(
                                     &updated_entry.path,
                                 ) {
-                                    let payload = crate::traffic::log::TrafficLogPayload::from_entry(row_id, &updated_entry, "update");
+                                    let payload =
+                                        crate::traffic::log::TrafficLogPayload::from_entry(
+                                            row_id,
+                                            &updated_entry,
+                                            "update",
+                                        );
                                     if let Err(e) = handle.emit("traffic-log", &payload) {
                                         log::warn!("emit traffic-log update 失败: {}", e);
                                     }
@@ -879,8 +942,40 @@ pub async fn proxy_handler(
                     }
                 }
                 Err(_) => {
-                    // oneshot sender 被 drop（stream 异常中断，客户端断开）
-                    log::debug!("流式 token 回传 channel 已关闭（stream 可能被客户端中断）");
+                    // 未收到最终 token 回传，补写一次失败终态，避免实时日志长期停留在 Pending。
+                    let duration_ms = start_time_clone.elapsed().as_millis() as i64;
+                    let error_message = "stream ended before final usage was received";
+                    log::debug!("未收到流式最终 token 回传，写入失败终态");
+                    if let Some(ref handle) = app_handle {
+                        use tauri::{Emitter, Manager};
+                        if let Some(db) = handle.try_state::<crate::traffic::TrafficDb>() {
+                            match finalize_streaming_failure_log(
+                                &db,
+                                row_id,
+                                &entry_for_update,
+                                ttfb,
+                                duration_ms,
+                                error_message,
+                            ) {
+                                Ok(updated_entry) => {
+                                    if !crate::traffic::should_hide_request_from_traffic_views(
+                                        &updated_entry.path,
+                                    ) {
+                                        let payload =
+                                            crate::traffic::log::TrafficLogPayload::from_entry(
+                                                row_id,
+                                                &updated_entry,
+                                                "update",
+                                            );
+                                        if let Err(e) = handle.emit("traffic-log", &payload) {
+                                            log::warn!("emit traffic-log update 失败: {}", e);
+                                        }
+                                    }
+                                }
+                                Err(e) => log::warn!("流式日志失败终态 UPDATE 失败: {}", e),
+                            }
+                        }
+                    }
                 }
             }
         });
@@ -898,7 +993,7 @@ mod tests {
     use axum::Router;
     use serde_json::{json, Value};
     use std::collections::HashMap;
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
     use std::time::Duration;
     use tokio::net::TcpListener;
     use tokio::sync::{oneshot, Mutex as TokioMutex};
@@ -914,6 +1009,72 @@ mod tests {
             upstream_model_map: None,
             provider_name: "test".to_string(),
         }
+    }
+
+    fn make_test_traffic_db() -> crate::traffic::TrafficDb {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::traffic::schema::MIGRATIONS
+            .to_latest(&mut conn)
+            .unwrap();
+        crate::traffic::TrafficDb {
+            conn: Mutex::new(conn),
+        }
+    }
+
+    fn make_streaming_log_entry(ttfb_ms: Option<i64>) -> LogEntry {
+        LogEntry {
+            created_at: 1_700_000_000_000,
+            provider_name: "test".to_string(),
+            cli_id: "claude".to_string(),
+            method: "POST".to_string(),
+            path: "/v1/messages".to_string(),
+            status_code: Some(200),
+            is_streaming: 1,
+            request_model: Some("claude-3-5-sonnet-20241022".to_string()),
+            upstream_model: Some("mapped-model-name".to_string()),
+            protocol_type: "anthropic".to_string(),
+            input_tokens: Some(11),
+            output_tokens: Some(7),
+            cache_creation_tokens: Some(3),
+            cache_read_tokens: Some(2),
+            ttfb_ms,
+            duration_ms: None,
+            stop_reason: Some("end_turn".to_string()),
+            error_message: None,
+        }
+    }
+
+    fn insert_streaming_log(db: &crate::traffic::TrafficDb, entry: &LogEntry) -> i64 {
+        db.insert_request_log(entry).unwrap()
+    }
+
+    fn query_log_by_id(
+        db: &crate::traffic::TrafficDb,
+        id: i64,
+    ) -> crate::traffic::log::TrafficLogPayload {
+        db.query_recent_logs(10)
+            .unwrap()
+            .into_iter()
+            .find(|log| log.id == id)
+            .expect("应能查询到目标日志")
+    }
+
+    fn simulate_streaming_failure_for_test(
+        db: &crate::traffic::TrafficDb,
+        row_id: i64,
+        entry_for_update: &LogEntry,
+        ttfb_ms: i64,
+        duration_ms: i64,
+    ) -> LogEntry {
+        finalize_streaming_failure_log(
+            db,
+            row_id,
+            entry_for_update,
+            ttfb_ms,
+            duration_ms,
+            "stream ended before final usage was received",
+        )
+        .expect("失败终态补写应成功")
     }
 
     fn make_upstream_openai_target(base_url: &str) -> super::super::state::UpstreamTarget {
@@ -2198,7 +2359,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_create_anthropic_reverse_model_stream_prefers_message_delta_usage_when_start_is_placeholder() {
+    async fn test_create_anthropic_reverse_model_stream_prefers_message_delta_usage_when_start_is_placeholder(
+    ) {
         use futures::stream;
         use futures::StreamExt;
 
@@ -2272,6 +2434,50 @@ mod tests {
         assert!(
             output.last().is_some_and(|item| item.is_err()),
             "上游读取错误不应被静默吞掉"
+        );
+    }
+
+    #[test]
+    fn test_finalize_streaming_failure_log_preserves_existing_success_fields() {
+        let db = make_test_traffic_db();
+        let entry = make_streaming_log_entry(Some(120));
+        let row_id = insert_streaming_log(&db, &entry);
+
+        let updated_entry = simulate_streaming_failure_for_test(&db, row_id, &entry, 999, 500);
+
+        assert_eq!(
+            updated_entry.ttfb_ms,
+            Some(120),
+            "内存 payload 不应覆盖已有 ttfb_ms"
+        );
+        assert_eq!(
+            updated_entry.input_tokens,
+            Some(11),
+            "既有 token 字段不应被清空"
+        );
+        assert_eq!(
+            updated_entry.stop_reason.as_deref(),
+            Some("end_turn"),
+            "既有 stop_reason 不应被清空"
+        );
+        assert_eq!(
+            updated_entry.error_message.as_deref(),
+            Some("stream ended before final usage was received")
+        );
+        assert_eq!(updated_entry.duration_ms, Some(500));
+
+        let log = query_log_by_id(&db, row_id);
+        assert_eq!(
+            log.error_message.as_deref(),
+            Some("stream ended before final usage was received")
+        );
+        assert_eq!(log.duration_ms, Some(500));
+        assert_eq!(log.ttfb_ms, Some(120), "DB 中已有 ttfb_ms 不应被覆盖");
+        assert_eq!(log.input_tokens, Some(11), "DB 中既有 token 字段不应被清空");
+        assert_eq!(
+            log.stop_reason.as_deref(),
+            Some("end_turn"),
+            "DB 中既有 stop_reason 不应被清空"
         );
     }
 
@@ -2618,10 +2824,7 @@ mod tests {
     /// 验证 protocol_type_str 对三种 ProtocolType 返回正确的小写字符串
     #[test]
     fn test_protocol_type_str() {
-        assert_eq!(
-            protocol_type_str(&ProtocolType::Anthropic),
-            "anthropic"
-        );
+        assert_eq!(protocol_type_str(&ProtocolType::Anthropic), "anthropic");
         assert_eq!(
             protocol_type_str(&ProtocolType::OpenAiChatCompletions),
             "open_ai_chat_completions"

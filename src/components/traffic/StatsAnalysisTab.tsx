@@ -14,10 +14,21 @@ import type { TimeRange } from "@/types/traffic";
  */
 export function StatsAnalysisTab() {
   const { t } = useTranslation();
-  const { timeRange, setTimeRange, providerStats, timeTrend, loading } =
-    useTrafficStats();
+  const {
+    timeRange,
+    setTimeRange,
+    providerStats,
+    timeTrend,
+    loading,
+    dbError,
+    lastSuccessfulRange,
+  } = useTrafficStats();
 
   const ranges: TimeRange[] = ["24h", "7d"];
+  const hasData = providerStats.length > 0 || timeTrend.length > 0;
+  const showErrorBanner = !!dbError && hasData;
+  const isStale = showErrorBanner && lastSuccessfulRange !== null && lastSuccessfulRange !== timeRange;
+  const displayedRange = lastSuccessfulRange ?? timeRange;
 
   return (
     <div className="flex flex-col gap-5 pt-2">
@@ -41,14 +52,35 @@ export function StatsAnalysisTab() {
         </div>
       </div>
 
+      {showErrorBanner && (
+        <div className="px-4 py-3 rounded-md bg-destructive/10 border border-destructive/20 text-sm text-destructive">
+          <span className="font-medium">{t("traffic.dbErrorTitle")}</span>
+          <span className="ml-1 text-destructive/80">
+            {t(isStale ? "traffic.analysis.dbErrorShowingPreviousData" : "traffic.dbErrorDesc")}
+          </span>
+        </div>
+      )}
+
       {/* 加载中骨架 */}
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <span className="text-sm text-muted-foreground animate-pulse">
-            Loading...
+            {t("traffic.analysis.loading")}
           </span>
         </div>
-      ) : providerStats.length === 0 ? (
+      ) : dbError && !hasData ? (
+        <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
+          <BarChart2 className="size-10 text-destructive/60" />
+          <div>
+            <h3 className="text-base font-medium text-destructive">
+              {t("traffic.dbErrorTitle")}
+            </h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {t("traffic.dbErrorDesc")}
+            </p>
+          </div>
+        </div>
+      ) : !hasData ? (
         /* 空状态 */
         <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
           <BarChart2 className="size-10 text-muted-foreground/50" />
@@ -68,7 +100,7 @@ export function StatsAnalysisTab() {
           <CacheLeaderboard data={providerStats} />
 
           {/* 趋势图：双轴（请求数柱状 + Token 折线） */}
-          <TrafficTrendChart data={timeTrend} timeRange={timeRange} />
+          <TrafficTrendChart data={timeTrend} timeRange={displayedRange} />
         </div>
       )}
     </div>

@@ -1,4 +1,4 @@
-// TrafficLog 接口 — 与后端 TrafficLogPayload 字段一一对应（含 type 字段）
+// 流量相关类型定义；其中 TrafficLog 与后端 TrafficLogPayload 字段一一对应（含 type 字段）
 // 后端来源：src-tauri/src/traffic/log.rs:38-60
 
 /** 按 Provider 聚合统计（对应后端 rollup.rs 的 ProviderStat） */

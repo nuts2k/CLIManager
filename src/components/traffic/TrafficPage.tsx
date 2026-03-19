@@ -59,7 +59,7 @@ export function TrafficPage() {
               /* 加载中：简洁骨架提示 */
               <div className="flex items-center justify-center h-full">
                 <span className="text-sm text-muted-foreground animate-pulse">
-                  Loading...
+                  {t("traffic.table.loading")}
                 </span>
               </div>
             ) : filteredLogs.length === 0 ? (
