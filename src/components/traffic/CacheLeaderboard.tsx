@@ -80,8 +80,8 @@ export function CacheLeaderboard({ data }: CacheLeaderboardProps) {
         vb = b.total_cache_read_tokens;
         break;
       case "total_tokens":
-        va = a.total_input_tokens + a.total_output_tokens;
-        vb = b.total_input_tokens + b.total_output_tokens;
+        va = a.total_input_tokens + a.total_output_tokens + a.total_cache_creation_tokens + a.total_cache_read_tokens;
+        vb = b.total_input_tokens + b.total_output_tokens + b.total_cache_creation_tokens + b.total_cache_read_tokens;
         break;
     }
 
@@ -144,7 +144,7 @@ export function CacheLeaderboard({ data }: CacheLeaderboardProps) {
             stat.cache_triggered_count > 0
               ? ((stat.cache_hit_count / stat.cache_triggered_count) * 100).toFixed(1) + "%"
               : "--";
-          const totalTokens = stat.total_input_tokens + stat.total_output_tokens;
+          const totalTokens = stat.total_input_tokens + stat.total_output_tokens + stat.total_cache_creation_tokens + stat.total_cache_read_tokens;
           const isLast = idx === sorted.length - 1;
           const borderClass = isLast ? "" : "border-b border-border/30";
 
