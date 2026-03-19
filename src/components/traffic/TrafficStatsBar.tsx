@@ -92,10 +92,16 @@ export function TrafficStatsBar({ logs }: TrafficStatsBarProps) {
       0
     );
 
-    const cacheHitCount = windowLogs.filter(
-      (l) => l.cache_read_tokens !== null && l.cache_read_tokens > 0
-    ).length;
-    const cacheHitRate = total > 0 ? (cacheHitCount / total) * 100 : 0;
+    const cacheReadTokens = windowLogs.reduce(
+      (sum, l) => sum + (l.cache_read_tokens ?? 0),
+      0
+    );
+    const cacheCreationTokens = windowLogs.reduce(
+      (sum, l) => sum + (l.cache_creation_tokens ?? 0),
+      0
+    );
+    const inputSideTokens = inputTokens + cacheCreationTokens + cacheReadTokens;
+    const cacheHitRate = inputSideTokens > 0 ? (cacheReadTokens / inputSideTokens) * 100 : 0;
 
     return { total, successRate, inputTokens, outputTokens, cacheHitRate, windowLogs };
   }, [logs]);

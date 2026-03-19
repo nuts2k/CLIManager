@@ -61,16 +61,13 @@ export function CacheLeaderboard({ data }: CacheLeaderboardProps) {
         va = a.cache_triggered_count;
         vb = b.cache_triggered_count;
         break;
-      case "cache_hit_rate":
-        va =
-          a.cache_triggered_count > 0
-            ? a.cache_hit_count / a.cache_triggered_count
-            : -1;
-        vb =
-          b.cache_triggered_count > 0
-            ? b.cache_hit_count / b.cache_triggered_count
-            : -1;
+      case "cache_hit_rate": {
+        const aInput = a.total_input_tokens + a.total_cache_creation_tokens + a.total_cache_read_tokens;
+        va = aInput > 0 ? a.total_cache_read_tokens / aInput : -1;
+        const bInput = b.total_input_tokens + b.total_cache_creation_tokens + b.total_cache_read_tokens;
+        vb = bInput > 0 ? b.total_cache_read_tokens / bInput : -1;
         break;
+      }
       case "total_cache_creation_tokens":
         va = a.total_cache_creation_tokens;
         vb = b.total_cache_creation_tokens;
@@ -140,9 +137,10 @@ export function CacheLeaderboard({ data }: CacheLeaderboardProps) {
 
         {/* 数据行 */}
         {sorted.map((stat, idx) => {
+          const inputSideTokens = stat.total_input_tokens + stat.total_cache_creation_tokens + stat.total_cache_read_tokens;
           const hitRate =
-            stat.cache_triggered_count > 0
-              ? ((stat.cache_hit_count / stat.cache_triggered_count) * 100).toFixed(1) + "%"
+            inputSideTokens > 0
+              ? ((stat.total_cache_read_tokens / inputSideTokens) * 100).toFixed(1) + "%"
               : "--";
           const totalTokens = stat.total_input_tokens + stat.total_output_tokens + stat.total_cache_creation_tokens + stat.total_cache_read_tokens;
           const isLast = idx === sorted.length - 1;
