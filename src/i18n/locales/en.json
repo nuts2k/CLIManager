@@ -2,6 +2,11 @@
   "app": {
     "title": "CLIManager"
   },
+  "nav": {
+    "home": "Home",
+    "traffic": "Traffic",
+    "settings": "Settings"
+  },
   "tabs": {
     "claude": "Claude Code",
     "codex": "Codex"

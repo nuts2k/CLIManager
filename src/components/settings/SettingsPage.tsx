@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,11 +29,10 @@ import { AboutSection } from "@/components/settings/AboutSection";
 import { useUpdater } from "@/components/updater/useUpdater";
 
 interface SettingsPageProps {
-  onBack: () => void;
   onShowImport?: () => void;
 }
 
-export function SettingsPage({ onBack, onShowImport }: SettingsPageProps) {
+export function SettingsPage({ onShowImport }: SettingsPageProps) {
   const { t } = useTranslation();
   const { settings, updateSettings } = useSettings();
   const { proxyStatus, refresh: refreshProxyStatus } = useProxyStatus();
@@ -222,17 +220,10 @@ export function SettingsPage({ onBack, onShowImport }: SettingsPageProps) {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header with back button */}
-      <div className="flex h-12 items-center gap-2 border-b border-border px-4">
-        <Button variant="ghost" size="icon" onClick={onBack}>
-          <ArrowLeft className="size-4" />
-        </Button>
-        <h2 className="text-base font-semibold">{t("settings.title")}</h2>
-      </div>
-
       {/* Tabs 容器 */}
       <Tabs defaultValue="general" className="flex-1 flex flex-col overflow-hidden">
-        <div className="px-6 pt-4">
+        <div className="flex items-center px-6 pt-4 pb-2 gap-4">
+          <h2 className="text-lg font-bold">{t("settings.title")}</h2>
           <TabsList variant="line">
             <TabsTrigger value="general">{t("settings.tabGeneral")}</TabsTrigger>
             <TabsTrigger value="advanced">{t("settings.tabAdvanced")}</TabsTrigger>

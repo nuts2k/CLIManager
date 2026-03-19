@@ -2,6 +2,11 @@
   "app": {
     "title": "CLIManager"
   },
+  "nav": {
+    "home": "主页",
+    "traffic": "监控",
+    "settings": "设置"
+  },
   "tabs": {
     "claude": "Claude Code",
     "codex": "Codex"

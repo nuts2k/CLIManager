@@ -187,7 +187,6 @@ export function AppShell() {
             }`}
           >
             <SettingsPage
-              onBack={() => handleNavigate("main")}
               onShowImport={handleShowImport}
             />
           </div>
