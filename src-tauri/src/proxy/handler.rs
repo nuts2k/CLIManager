@@ -226,17 +226,19 @@ fn create_anthropic_reverse_model_stream(
                                             partial_cache_read = usage.and_then(|u| u.get("cache_read_input_tokens")).and_then(|v| v.as_i64());
                                         }
                                         Some("message_delta") => {
-                                            // message_delta 包含 output_tokens 和 stop_reason
-                                            // 路径：usage.output_tokens, delta.stop_reason
+                                            // 某些 Anthropic 兼容上游会把最终 usage 放在 message_delta.usage 中，
+                                            // 需要覆盖 message_start 的占位 0 值。
                                             let usage = val.get("usage");
+                                            let input_tokens = usage.and_then(|u| u.get("input_tokens")).and_then(|v| v.as_i64()).or(partial_input_tokens);
                                             let output_tokens = usage.and_then(|u| u.get("output_tokens")).and_then(|v| v.as_i64());
+                                            let cache_creation_tokens = usage.and_then(|u| u.get("cache_creation_input_tokens")).and_then(|v| v.as_i64()).or(partial_cache_creation);
+                                            let cache_read_tokens = usage.and_then(|u| u.get("cache_read_input_tokens")).and_then(|v| v.as_i64()).or(partial_cache_read);
                                             let stop_reason = val.get("delta").and_then(|d| d.get("stop_reason")).and_then(|s| s.as_str()).map(|s| s.to_string());
-                                            // 合并 message_start 中积累的 input/cache 数据
                                             collected_token_data = Some(crate::traffic::log::StreamTokenData {
-                                                input_tokens: partial_input_tokens,
+                                                input_tokens,
                                                 output_tokens,
-                                                cache_creation_tokens: partial_cache_creation,
-                                                cache_read_tokens: partial_cache_read,
+                                                cache_creation_tokens,
+                                                cache_read_tokens,
                                                 stop_reason,
                                             });
                                         }
@@ -2187,6 +2189,37 @@ mod tests {
             raw,
             "跨 chunk 的 UTF-8 字符应保持原样透传"
         );
+    }
+
+    #[tokio::test]
+    async fn test_create_anthropic_reverse_model_stream_prefers_message_delta_usage_when_start_is_placeholder() {
+        use futures::stream;
+        use futures::StreamExt;
+
+        let chunks = vec![
+            Ok::<Bytes, reqwest::Error>(Bytes::from_static(
+                b"data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_test\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"mapped-model-name\",\"content\":[],\"stop_reason\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\n",
+            )),
+            Ok::<Bytes, reqwest::Error>(Bytes::from_static(
+                b"data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"input_tokens\":792,\"output_tokens\":14,\"cache_read_input_tokens\":125440}}\n\n",
+            )),
+            Ok::<Bytes, reqwest::Error>(Bytes::from_static(b"data: [DONE]\n\n")),
+        ];
+
+        let (token_tx, token_rx) = tokio::sync::oneshot::channel();
+        let _: Vec<_> = create_anthropic_reverse_model_stream(
+            stream::iter(chunks),
+            "claude-3-5-sonnet-20241022".to_string(),
+            token_tx,
+        )
+        .collect()
+        .await;
+
+        let token_data = token_rx.await.expect("应收到 token 数据");
+        assert_eq!(token_data.input_tokens, Some(792));
+        assert_eq!(token_data.output_tokens, Some(14));
+        assert_eq!(token_data.cache_read_tokens, Some(125440));
+        assert_eq!(token_data.stop_reason.as_deref(), Some("end_turn"));
     }
 
     /// 测试 5.2：Anthropic SSE 包装器应把上游读取错误产出为 Err
