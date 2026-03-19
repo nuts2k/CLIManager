@@ -549,7 +549,7 @@ dependencies = [
 
 [[package]]
 name = "cli-manager"
-version = "0.2.8"
+version = "0.2.11"
 dependencies = [
  "async-stream",
  "axum",
