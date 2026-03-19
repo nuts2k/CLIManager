@@ -1,6 +1,6 @@
 [package]
 name = "cli-manager"
-version = "0.2.6"
+version = "0.2.8"
 description = "Desktop app for managing AI CLI provider configurations"
 authors = ["you"]
 edition = "2021"
