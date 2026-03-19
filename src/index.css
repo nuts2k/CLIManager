@@ -79,6 +79,7 @@
 
 /* Dark-only theme: dark values set directly on :root (no theme toggle) */
 :root {
+  color-scheme: dark; /* 告知浏览器使用暗色方案，确保系统原生滚动条也渲染为暗色 */
   --radius: 0.625rem;
   --background: 0.145 0.02 285.823;
   --foreground: 0.985 0.002 247.839;
