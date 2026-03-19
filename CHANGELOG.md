@@ -6,6 +6,19 @@
 
 ---
 
+## v0.2.7 (2026-03-19)
+
+### 修复
+- hide token count requests from logs and stats
+- read final anthropic usage from message_delta
+- avoid Claude settings write races
+
+### 文档
+- create phase plan
+- add validation strategy
+- research phase SQLite 基础设施
+- capture phase context
+
 ## v0.2.6 (2026-03-19)
 
 ### 新功能
