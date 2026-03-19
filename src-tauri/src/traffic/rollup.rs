@@ -21,7 +21,7 @@ pub struct ProviderStat {
 pub struct TimeStat {
     pub label: String,       // "HH:00" 或 "YYYY-MM-DD"
     pub request_count: i64,
-    pub total_tokens: i64,   // input + output 合计
+    pub total_tokens: i64,   // input + output + cache_creation + cache_read 合计
 }
 
 impl super::TrafficDb {
@@ -246,7 +246,7 @@ impl super::TrafficDb {
                     "SELECT
                         strftime('%H:00', created_at / 1000, 'unixepoch', 'localtime') AS hour_label,
                         COUNT(*) AS request_count,
-                        COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0) AS total_tokens
+                        COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0) + COALESCE(SUM(cache_creation_tokens), 0) + COALESCE(SUM(cache_read_tokens), 0) AS total_tokens
                     FROM request_logs
                     WHERE created_at >= ?1
                       AND {}
@@ -278,7 +278,7 @@ impl super::TrafficDb {
                         SELECT
                             rollup_date AS day_label,
                             SUM(request_count) AS request_count,
-                            SUM(total_input_tokens) + SUM(total_output_tokens) AS total_tokens
+                            SUM(total_input_tokens) + SUM(total_output_tokens) + SUM(total_cache_creation_tokens) + SUM(total_cache_read_tokens) AS total_tokens
                         FROM daily_rollups
                         WHERE rollup_date >= ?1
                         GROUP BY rollup_date
@@ -288,7 +288,7 @@ impl super::TrafficDb {
                         SELECT
                             strftime('%Y-%m-%d', created_at / 1000, 'unixepoch', 'localtime') AS day_label,
                             COUNT(*) AS request_count,
-                            COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0) AS total_tokens
+                            COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0) + COALESCE(SUM(cache_creation_tokens), 0) + COALESCE(SUM(cache_read_tokens), 0) AS total_tokens
                         FROM request_logs
                         WHERE created_at >= ?2
                           AND {}

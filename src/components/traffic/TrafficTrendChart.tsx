@@ -16,6 +16,7 @@ import {
   Legend,
 } from "recharts";
 import type { TimeStat, TimeRange } from "@/types/traffic";
+import { formatTokenCount } from "./formatters";
 
 // ──────────────────────────────────────────────
 // 数据填充纯函数
@@ -142,6 +143,7 @@ export function TrafficTrendChart({ data, timeRange }: TrafficTrendChartProps) {
             axisLine={false}
             allowDecimals={false}
             width={48}
+            tickFormatter={(v: number) => formatTokenCount(v)}
           />
           <Tooltip
             contentStyle={{
@@ -153,6 +155,12 @@ export function TrafficTrendChart({ data, timeRange }: TrafficTrendChartProps) {
             }}
             labelStyle={{ color: "var(--color-muted-foreground)" }}
             cursor={{ fill: "var(--color-muted)/0.1" }}
+            formatter={(value: number, name: string) => [
+              name === t("traffic.analysis.chartTokens")
+                ? formatTokenCount(value)
+                : value,
+              name,
+            ]}
           />
           <Legend
             wrapperStyle={{
