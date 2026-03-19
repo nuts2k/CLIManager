@@ -208,7 +208,7 @@
       "duration": "Duration",
       "secondsAgo": "{{count}}s ago",
       "minutesAgo": "{{count}}m ago",
-      "cacheRead": "cache read",
+      "cacheRead": "Cache Read",
       "ttfb": "TTFB",
       "tps": "t/s",
       "streaming": "Streaming",
@@ -219,7 +219,8 @@
       "stopReason": "Stop Reason",
       "errorMessage": "Error",
       "placeholder": "--",
-      "pending": "Pending"
+      "pending": "Pending",
+      "loading": "Loading..."
     },
     "empty": {
       "title": "No traffic records",
@@ -246,6 +247,8 @@
       "colCacheCreationTokens": "Cache Creation",
       "colCacheReadTokens": "Cache Read Tokens",
       "colTotalTokens": "Total Tokens",
+      "loading": "Loading...",
+      "dbErrorShowingPreviousData": "Analytics could not be refreshed. Showing data from the last successful load.",
       "noData": "No analytics data yet",
       "noDataDesc": "Analytics will appear here once traffic logs are recorded",
       "chartRequests": "Requests",

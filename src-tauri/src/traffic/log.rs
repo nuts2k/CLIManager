@@ -3,13 +3,13 @@ use tokio::sync::mpsc;
 /// 日志条目：对应 request_logs 表的 18 个数据列（不含 id）
 #[derive(Debug, Clone)]
 pub struct LogEntry {
-    pub created_at: i64,      // epoch ms
+    pub created_at: i64, // epoch ms
     pub provider_name: String,
     pub cli_id: String,
     pub method: String,
     pub path: String,
     pub status_code: Option<i64>,
-    pub is_streaming: i64,    // 0 或 1
+    pub is_streaming: i64, // 0 或 1
     pub request_model: Option<String>,
     pub upstream_model: Option<String>,
     pub protocol_type: String,
@@ -159,6 +159,29 @@ impl super::TrafficDb {
                 duration_ms,
                 id,
             ],
+        )?;
+        Ok(())
+    }
+
+    /// 流式请求异常中断后补写最小失败终态。
+    ///
+    /// 仅更新 error_message / duration_ms，并在已有值为空时补写 ttfb_ms，
+    /// 避免覆盖已写入的 token / stop_reason 等成功终态字段。
+    pub fn update_streaming_log_failure(
+        &self,
+        id: i64,
+        error_message: &str,
+        ttfb_ms: Option<i64>,
+        duration_ms: Option<i64>,
+    ) -> rusqlite::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE request_logs SET
+                ttfb_ms = COALESCE(ttfb_ms, ?1),
+                duration_ms = ?2,
+                error_message = ?3
+             WHERE id = ?4",
+            rusqlite::params![ttfb_ms, duration_ms, error_message, id],
         )?;
         Ok(())
     }
@@ -373,7 +396,11 @@ mod tests {
         db.insert_request_log(&hidden_count_tokens).unwrap();
 
         let logs = db.query_recent_logs(10).unwrap();
-        assert_eq!(logs.len(), 1, "token count 请求不应出现在实时日志历史列表中");
+        assert_eq!(
+            logs.len(),
+            1,
+            "token count 请求不应出现在实时日志历史列表中"
+        );
         assert_eq!(logs[0].path, "/v1/messages");
     }
 
@@ -504,7 +531,11 @@ mod tests {
             stop_reason: Some("end_turn".to_string()),
         };
         let result = db.update_streaming_log(999, &data, None, None);
-        assert!(result.is_ok(), "UPDATE 不存在的 id 应返回 Ok，实际: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "UPDATE 不存在的 id 应返回 Ok，实际: {:?}",
+            result
+        );
     }
 
     /// Test: UPDATE 部分字段为 None，验证字段按预期写入（None 字段写为 SQL NULL）
@@ -549,11 +580,63 @@ mod tests {
         let log = &logs[0];
         assert_eq!(log.input_tokens, Some(50));
         assert_eq!(log.output_tokens, Some(20));
-        assert!(log.cache_creation_tokens.is_none(), "cache_creation_tokens 应为 None");
-        assert!(log.cache_read_tokens.is_none(), "cache_read_tokens 应为 None");
+        assert!(
+            log.cache_creation_tokens.is_none(),
+            "cache_creation_tokens 应为 None"
+        );
+        assert!(
+            log.cache_read_tokens.is_none(),
+            "cache_read_tokens 应为 None"
+        );
         assert_eq!(log.stop_reason, Some("max_tokens".to_string()));
         assert_eq!(log.ttfb_ms, Some(80));
         assert!(log.duration_ms.is_none(), "duration_ms 应为 None");
+    }
+
+    /// Test: 流式失败终态更新会写入 error_message / duration_ms，并保留已有 ttfb_ms
+    #[test]
+    fn test_update_streaming_log_failure_writes_error_and_duration() {
+        let db = make_test_db();
+
+        let entry = LogEntry {
+            created_at: 1_700_000_000_000,
+            provider_name: "test-provider".to_string(),
+            cli_id: "claude".to_string(),
+            method: "POST".to_string(),
+            path: "/v1/messages".to_string(),
+            status_code: Some(200),
+            is_streaming: 1,
+            request_model: Some("claude-3-5-sonnet".to_string()),
+            upstream_model: None,
+            protocol_type: "anthropic".to_string(),
+            input_tokens: None,
+            output_tokens: None,
+            cache_creation_tokens: None,
+            cache_read_tokens: None,
+            ttfb_ms: Some(120),
+            duration_ms: None,
+            stop_reason: None,
+            error_message: None,
+        };
+        let id = db.insert_request_log(&entry).unwrap();
+
+        db.update_streaming_log_failure(
+            id,
+            "stream ended before final usage was received",
+            Some(999),
+            Some(500),
+        )
+        .unwrap();
+
+        let logs = db.query_recent_logs(10).unwrap();
+        assert_eq!(logs.len(), 1);
+        let log = &logs[0];
+        assert_eq!(
+            log.error_message.as_deref(),
+            Some("stream ended before final usage was received")
+        );
+        assert_eq!(log.duration_ms, Some(500));
+        assert_eq!(log.ttfb_ms, Some(120), "失败补写不应覆盖已有 ttfb_ms");
     }
 
     /// Test: TrafficLogPayload 能从 LogEntry + id + type 构建，derive Serialize 正确

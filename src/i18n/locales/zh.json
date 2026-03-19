@@ -208,7 +208,7 @@
       "duration": "耗时",
       "secondsAgo": "{{count}}秒前",
       "minutesAgo": "{{count}}分前",
-      "cacheRead": "cache read",
+      "cacheRead": "缓存读取",
       "ttfb": "TTFB",
       "tps": "t/s",
       "streaming": "流式",
@@ -219,7 +219,8 @@
       "stopReason": "终止原因",
       "errorMessage": "错误信息",
       "placeholder": "--",
-      "pending": "请求中"
+      "pending": "请求中",
+      "loading": "加载中..."
     },
     "empty": {
       "title": "暂无流量记录",
@@ -246,6 +247,8 @@
       "colCacheCreationTokens": "缓存创建 Token",
       "colCacheReadTokens": "缓存读取 Token",
       "colTotalTokens": "总 Token",
+      "loading": "加载中...",
+      "dbErrorShowingPreviousData": "统计数据暂不可刷新，当前展示的是上一次成功加载的数据",
       "noData": "暂无统计数据",
       "noDataDesc": "有流量记录后统计数据将在此处展示",
       "chartRequests": "请求数",
