@@ -112,22 +112,7 @@ pub fn run() {
                 }
             });
 
-            // Startup overlay apply（COVL-10：best-effort，不阻断启动）
-            // 因为 setup 早于 WebView 事件监听，startup 结果写入缓存队列
-            // 由前端 useSyncListener 挂载后主动 take。
-            {
-                let handle_startup = app.handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    if let Err(e) = commands::claude_settings::apply_claude_settings_overlay(
-                        &handle_startup,
-                        commands::claude_settings::ApplySource::Startup,
-                    ) {
-                        log::error!("startup overlay apply 失败: {}", e);
-                    }
-                });
-            }
-
-            // 崩溃恢复：检测并还原遗留 takeover 标志
+            // 崩溃恢复：检测并还原遗留 takeover 标志（同步，必须先于后续 CLI 配置写入）
             let providers_dir =
                 crate::storage::icloud::get_icloud_providers_dir().map_err(|e| e.to_string())?;
             let local_settings_path = crate::storage::local::get_local_settings_path();
@@ -137,12 +122,15 @@ pub fn run() {
                 log::error!("崩溃恢复失败: {}", e);
             }
 
-            // 自动恢复代理状态（UX-02）：根据持久化的开关状态重新开启代理
-            let handle_for_restore = app.handle().clone();
+            // 代理恢复 + overlay apply 串行化：
+            // 三个操作都写 ~/.claude/settings.json，必须串行执行避免并发写入竞争。
+            // 执行顺序：recover_on_startup（同步，上方已完成）→ restore_proxy_state → overlay apply
+            let handle_for_startup = app.handle().clone();
             let providers_dir_clone = providers_dir.clone();
             let local_settings_path_clone = local_settings_path.clone();
             tauri::async_runtime::spawn(async move {
-                let proxy_service = handle_for_restore.state::<proxy::ProxyService>();
+                // Step 1: 恢复代理状态（UX-02）
+                let proxy_service = handle_for_startup.state::<proxy::ProxyService>();
                 if let Err(e) = commands::proxy::restore_proxy_state(
                     &providers_dir_clone,
                     &local_settings_path_clone,
@@ -151,6 +139,16 @@ pub fn run() {
                 .await
                 {
                     log::error!("代理状态恢复失败: {}", e);
+                }
+
+                // Step 2: overlay apply（COVL-10：best-effort，不阻断启动）
+                // setup 早于 WebView 事件监听，结果写入缓存队列，
+                // 由前端 useSyncListener 挂载后主动 take。
+                if let Err(e) = commands::claude_settings::apply_claude_settings_overlay(
+                    &handle_for_startup,
+                    commands::claude_settings::ApplySource::Startup,
+                ) {
+                    log::error!("startup overlay apply 失败: {}", e);
                 }
             });
 
