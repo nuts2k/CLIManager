@@ -58,11 +58,21 @@ git tag -l "v{NEW_VERSION}"
 
 ### 第 4 步：bump Cargo.toml 版本号
 
-使用 `sed` 替换 `src-tauri/Cargo.toml` 中的版本字段：
+使用 **Edit 工具**替换 `src-tauri/Cargo.toml` 中的版本字段（不要用 sed，macOS sed -i 行为不可靠）：
+
+```
+old_string: version = "{OLD_VERSION}"
+new_string: version = "{NEW_VERSION}"
+```
+
+修改后必须验证：
 
 ```bash
-sed -i '' 's/^version = "'"${OLD_VERSION}"'"/version = "'"${NEW_VERSION}"'"/' src-tauri/Cargo.toml
+grep '^version = ' src-tauri/Cargo.toml | head -1
 ```
+
+确认输出包含新版本号 `{NEW_VERSION}`。如果仍为旧版本，**停止执行**并报错：
+> Cargo.toml 版本号修改失败，请手动检查文件内容。
 
 仅修改 `src-tauri/Cargo.toml`，不修改 `tauri.conf.json`（项目决策：版本来源唯一为 Cargo.toml）。
 
