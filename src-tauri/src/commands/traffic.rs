@@ -12,6 +12,18 @@ pub async fn get_recent_logs(
     db.query_recent_logs(limit).map_err(|e| e.to_string())
 }
 
+/// 查询最近 24h 请求总数（从 DB 精确统计，不受前端内存上限影响）
+#[tauri::command]
+pub async fn get_request_count_24h(
+    app_handle: tauri::AppHandle,
+) -> Result<i64, String> {
+    use tauri::Manager;
+    let db = app_handle
+        .try_state::<crate::traffic::TrafficDb>()
+        .ok_or_else(|| "数据库不可用（DB 初始化失败，请检查磁盘空间和权限）".to_string())?;
+    db.query_request_count_24h().map_err(|e| e.to_string())
+}
+
 /// 查询按 Provider 聚合的统计数据
 #[tauri::command]
 pub async fn get_provider_stats(

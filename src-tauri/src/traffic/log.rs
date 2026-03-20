@@ -186,6 +186,17 @@ impl super::TrafficDb {
         Ok(())
     }
 
+    /// 查询最近 24h 内的请求总数（排除隐藏请求）
+    pub fn query_request_count_24h(&self) -> rusqlite::Result<i64> {
+        let conn = self.conn.lock().unwrap();
+        let threshold_ms = (chrono::Utc::now().timestamp() - 86400) * 1000;
+        let query = format!(
+            "SELECT COUNT(*) FROM request_logs WHERE created_at >= ?1 AND {}",
+            super::HIDDEN_REQUESTS_SQL_FILTER
+        );
+        conn.query_row(&query, rusqlite::params![threshold_ms], |row| row.get(0))
+    }
+
     /// 查询最近 N 条日志，按 created_at 降序（最新在前）
     pub fn query_recent_logs(&self, limit: i64) -> rusqlite::Result<Vec<TrafficLogPayload>> {
         let conn = self.conn.lock().unwrap();

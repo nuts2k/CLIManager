@@ -135,6 +135,11 @@ export async function getRecentLogs(limit?: number): Promise<TrafficLog[]> {
   return invoke("get_recent_logs", { limit });
 }
 
+/// 查询最近 24h 请求总数（DB 精确统计）
+export async function getRequestCount24h(): Promise<number> {
+  return invoke("get_request_count_24h");
+}
+
 /// 拉取指定时间范围的 Provider 聚合统计
 export async function getProviderStats(range: TimeRange): Promise<ProviderStat[]> {
   return invoke("get_provider_stats", { range });

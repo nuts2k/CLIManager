@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { getRecentLogs } from "@/lib/tauri";
+import { getRecentLogs, getRequestCount24h } from "@/lib/tauri";
 import type { TrafficLog } from "@/types/traffic";
 
 /** 内存中最多保留的日志条数，超出时丢弃最旧条目 */
@@ -10,17 +10,25 @@ const MAX_LOGS = 500;
  * 双轨数据 hook：
  * - 初始化时通过 Tauri command 拉取最近 100 条历史日志
  * - 监听 traffic-log 事件进行增量追加或更新
+ * - totalCount: 从 DB 查询的 24h 精确请求总数（不受 MAX_LOGS 限制）
  */
-export function useTrafficLogs(): { logs: TrafficLog[]; loading: boolean; dbError: string | null } {
+export function useTrafficLogs(): {
+  logs: TrafficLog[];
+  totalCount: number;
+  loading: boolean;
+  dbError: string | null;
+} {
   const [logs, setLogs] = useState<TrafficLog[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
 
-  // 初始拉取历史日志
+  // 初始拉取历史日志 + 精确计数
   useEffect(() => {
-    getRecentLogs(100)
-      .then((history) => {
+    Promise.all([getRecentLogs(100), getRequestCount24h()])
+      .then(([history, count]) => {
         setLogs(history);
+        setTotalCount(count);
       })
       .catch((err) => {
         console.error("Failed to fetch recent traffic logs:", err);
@@ -42,6 +50,8 @@ export function useTrafficLogs(): { logs: TrafficLog[]; loading: boolean; dbErro
           const next = [payload, ...prev];
           return next.length > MAX_LOGS ? next.slice(0, MAX_LOGS) : next;
         });
+        // 精确计数 +1
+        setTotalCount((prev) => prev + 1);
       } else if (payload.type === "update") {
         // 替换同 id 条目；找不到则静默忽略（避免竞态问题）
         setLogs((prev) => {
@@ -62,5 +72,5 @@ export function useTrafficLogs(): { logs: TrafficLog[]; loading: boolean; dbErro
     };
   }, []);
 
-  return { logs, loading, dbError };
+  return { logs, totalCount, loading, dbError };
 }

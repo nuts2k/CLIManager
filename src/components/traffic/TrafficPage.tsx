@@ -10,7 +10,7 @@ import { StatsAnalysisTab } from "./StatsAnalysisTab";
 
 export function TrafficPage() {
   const { t } = useTranslation();
-  const { logs, loading, dbError } = useTrafficLogs();
+  const { logs, totalCount, loading, dbError } = useTrafficLogs();
 
   /** 当前选中的 Provider 筛选（"__all__" 表示全部） */
   const [selectedProvider, setSelectedProvider] = useState("__all__");
@@ -43,7 +43,7 @@ export function TrafficPage() {
           )}
 
           {/* 5 张统计摘要卡片（基于筛选后日志） */}
-          <TrafficStatsBar logs={filteredLogs} />
+          <TrafficStatsBar logs={filteredLogs} totalCount={totalCount} isFiltered={selectedProvider !== "__all__"} />
 
           {/* Provider 筛选下拉框（基于全量日志提取 provider 列表） */}
           <TrafficFilter

@@ -14,6 +14,10 @@ import { formatTokenCount } from "./formatters";
 interface TrafficStatsBarProps {
   /** 已经过筛选的日志列表 */
   logs: TrafficLog[];
+  /** 从 DB 查询的 24h 精确请求总数（不受内存上限影响），仅在无 Provider 筛选时使用 */
+  totalCount: number;
+  /** 是否处于 Provider 筛选状态 */
+  isFiltered?: boolean;
 }
 
 /** 将 24h 窗口内日志按时间分为 12 个桶（每桶 2h），统计每桶请求数 */
@@ -69,7 +73,7 @@ function Sparkline({ data }: { data: number[] }) {
   );
 }
 
-export function TrafficStatsBar({ logs }: TrafficStatsBarProps) {
+export function TrafficStatsBar({ logs, totalCount, isFiltered }: TrafficStatsBarProps) {
   const { t } = useTranslation();
 
   const stats = useMemo(() => {
@@ -115,7 +119,7 @@ export function TrafficStatsBar({ logs }: TrafficStatsBarProps) {
     {
       icon: Activity,
       label: t("traffic.stats.totalRequests"),
-      value: String(stats.total),
+      value: String(isFiltered ? stats.total : totalCount),
     },
     {
       icon: ArrowDownRight,

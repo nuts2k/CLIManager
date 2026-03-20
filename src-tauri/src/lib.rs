@@ -49,6 +49,7 @@ pub fn run() {
             commands::claude_settings::apply_claude_settings_overlay_cmd,
             commands::claude_settings::take_claude_overlay_startup_notifications,
             commands::traffic::get_recent_logs,
+            commands::traffic::get_request_count_24h,
             commands::traffic::get_provider_stats,
             commands::traffic::get_time_trend,
         ]);
