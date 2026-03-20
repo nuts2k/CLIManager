@@ -24,9 +24,8 @@ export function TrafficPage() {
   return (
     <div className="flex flex-col h-full">
       <Tabs defaultValue="logs" className="flex flex-col h-full">
-        {/* 页面标题 + Tab 切换行 */}
-        <div className="flex items-center px-6 pt-4 pb-2 gap-4">
-          <h2 className="text-lg font-bold">{t("traffic.title")}</h2>
+        {/* 仅保留 Tab 切换的紧凑顶栏 */}
+        <div className="px-6 pt-3 pb-1.5">
           <TabsList variant="line">
             <TabsTrigger value="logs">{t("traffic.tabLogs")}</TabsTrigger>
             <TabsTrigger value="stats">{t("traffic.tabStats")}</TabsTrigger>

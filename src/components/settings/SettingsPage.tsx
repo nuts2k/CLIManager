@@ -222,8 +222,7 @@ export function SettingsPage({ onShowImport }: SettingsPageProps) {
     <div className="flex h-full flex-col">
       {/* Tabs 容器 */}
       <Tabs defaultValue="general" className="flex-1 flex flex-col overflow-hidden">
-        <div className="flex items-center px-6 pt-4 pb-2 gap-4">
-          <h2 className="text-lg font-bold">{t("settings.title")}</h2>
+        <div className="px-6 pt-3 pb-1.5">
           <TabsList variant="line">
             <TabsTrigger value="general">{t("settings.tabGeneral")}</TabsTrigger>
             <TabsTrigger value="advanced">{t("settings.tabAdvanced")}</TabsTrigger>
